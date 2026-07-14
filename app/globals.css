@@ -42,7 +42,7 @@ button { color: inherit; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 
 .app-shell { min-height: 100vh; }
-.sidebar { position: fixed; inset: 0 auto 0 0; width: 248px; background: linear-gradient(180deg, #0a5f6b 0%, #083e47 100%); color: #efffff; padding: 22px 16px 18px; display: flex; flex-direction: column; z-index: 20; overflow-y: auto; }
+.sidebar { position: fixed; inset: 0 auto 0 0; width: 248px; background: linear-gradient(180deg, #0a5f6b 0%, #083e47 100%); color: #efffff; padding: 22px 16px 18px; display: flex; flex-direction: column; z-index: 20; overflow-y: auto; overflow-x: hidden; transition: width .18s var(--ease-out, ease), padding .18s var(--ease-out, ease); }
 .brand-lockup { display: flex; align-items: center; gap: 11px; padding: 0 6px 20px; }
 .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: #0f5960; box-shadow: inset 0 0 0 1px rgba(255,255,255,.11); overflow: hidden; flex: 0 0 auto; }
 .brand-mark img { width: 31px; height: 31px; object-fit: contain; }
@@ -59,13 +59,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sidebar nav button > i { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,.06); color: #93c4c5; display: grid; place-items: center; flex: 0 0 auto; }
 .sidebar nav button > span { flex: 1; min-width: 0; }
 .sidebar nav button.active > i { background: rgba(53,231,217,.16); color: var(--aqua); }
-/* Collapsed rail */
+/* Collapsed rail — a slim icon strip that expands on hover as an overlay */
 .sidebar.collapsed { width: 78px; padding-left: 13px; padding-right: 13px; }
-.sidebar.collapsed .brand-lockup { flex-direction: column; gap: 12px; padding: 0 0 16px; }
-.sidebar.collapsed .brand-words, .sidebar.collapsed .nav-label, .sidebar.collapsed nav button > span, .sidebar.collapsed nav button > em, .sidebar.collapsed .system-state span, .sidebar.collapsed .sidebar-foot > p { display: none; }
-.sidebar.collapsed .sidebar-toggle { margin: 0; }
-.sidebar.collapsed nav button { justify-content: center; padding: 9px 0; }
-.sidebar.collapsed .system-state { justify-content: center; padding: 15px 0; }
+.sidebar.collapsed:hover { width: 248px; padding-left: 16px; padding-right: 16px; box-shadow: 8px 0 30px rgba(4,35,38,.32); }
+.sidebar.collapsed:not(:hover) .brand-lockup { flex-direction: column; gap: 12px; padding: 0 0 16px; }
+.sidebar.collapsed:not(:hover) .brand-words, .sidebar.collapsed:not(:hover) .nav-label, .sidebar.collapsed:not(:hover) nav button > span, .sidebar.collapsed:not(:hover) nav button > em, .sidebar.collapsed:not(:hover) .system-state span, .sidebar.collapsed:not(:hover) .sidebar-foot > p { display: none; }
+.sidebar.collapsed:not(:hover) .sidebar-toggle { margin: 0; }
+.sidebar.collapsed:not(:hover) nav button { justify-content: center; padding: 9px 0; }
+.sidebar.collapsed:not(:hover) .system-state { justify-content: center; padding: 15px 0; }
 .sidebar.collapsed + .workspace { margin-left: 78px; }
 .sidebar nav button em { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; display: grid; place-items: center; font-style: normal; font-size: 11.5px; background: #16757b; color: #dfffff; }
 .sidebar nav button em.warn { background: rgba(239, 164, 70, .16); color: #ffc979; }
