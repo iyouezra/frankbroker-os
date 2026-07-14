@@ -1,6 +1,7 @@
 import { prisma } from "../../../lib/prisma";
 import { resolveBrokerId } from "../../../lib/server-auth";
 import { toNum } from "../../../lib/money";
+import { apiError } from "../../../lib/api";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,6 @@ export async function GET(request: Request) {
       })),
     });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to load tenant." }, { status: 500 });
+    return apiError(error);
   }
 }

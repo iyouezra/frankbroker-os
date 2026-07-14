@@ -1,6 +1,7 @@
 import { prisma } from "../../../lib/prisma";
 import { D } from "../../../lib/money";
 import { requirePermission, resolveActor } from "../../../lib/server-auth";
+import { apiError } from "../../../lib/api";
 
 export const runtime = "nodejs";
 
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
     });
     return Response.json({ batches: batches.map(serializeBatch) });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to load reconciliation batches." }, { status: 500 });
+    return apiError(error);
   }
 }
 
@@ -140,6 +141,6 @@ export async function POST(request: Request) {
 
     return Response.json({ batch: serializeBatch(batch), matchRate: rows.length ? Math.round((matchedRecords / rows.length) * 1_000) / 10 : 0 }, { status: 201 });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to process reconciliation file." }, { status: 500 });
+    return apiError(error);
   }
 }

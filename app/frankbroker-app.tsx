@@ -154,7 +154,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [orders, setOrders] = useState<DemoOrder[]>(initialOrders);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<Role>("broker_admin");
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [clients, setClients] = useState<BrokerClient[]>(fallbackClients);
   const [selectedClientId, setSelectedClientId] = useState(fallbackClients[0].id);
   const [reconBatch, setReconBatch] = useState<ReconBatch>(fallbackReconBatch);
@@ -218,8 +218,8 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     return orders.filter((order) => [order.id, order.client, order.clientCode, order.symbol, order.status].some((value) => String(value).toLowerCase().includes(needle)));
   }, [orders, query]);
 
-  const notify = (message: string) => {
-    setToast(message);
+  const notify = (message: string, tone: "success" | "error" = "success") => {
+    setToast({ message, tone });
     window.setTimeout(() => setToast(null), 3600);
   };
 
@@ -249,7 +249,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
 
   const actionOrder = async (action: "approve" | "reject" | "cancel" | "settle") => {
     const permission = action === "settle" ? "settle" : action === "cancel" ? "create" : action;
-    if (!hasPermission(role, permission)) return notify(`${roleLabels[role]} cannot ${action} orders.`);
+    if (!hasPermission(role, permission)) return notify(`${roleLabels[role]} cannot ${action} orders.`, "error");
     setBusyAction(action);
     try {
       const result = await persistAction(selected.id, { action, reason: action === "reject" ? "Rejected after compliance review" : action === "cancel" ? "Cancelled by broker" : undefined });
@@ -257,14 +257,14 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       notify(`${selected.id} marked ${statusLabels[result.status].toLowerCase()}. Audit event recorded.`);
       setDrawer(null);
     } catch (error) {
-      notify(error instanceof Error ? error.message : "The workflow action failed.");
+      notify(error instanceof Error ? error.message : "The workflow action failed.", "error");
     } finally {
       setBusyAction(null);
     }
   };
 
   const openTrade = (order: DemoOrder) => {
-    if (!hasPermission(role, "trade")) return notify(`${roleLabels[role]} cannot capture trades.`);
+    if (!hasPermission(role, "trade")) return notify(`${roleLabels[role]} cannot capture trades.`, "error");
     setSelectedId(order.id);
     setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: "2026-07-14" });
     setDrawer("trade");
@@ -275,7 +275,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     const quantity = Number(tradeForm.quantity);
     const price = Number(tradeForm.price);
     const remaining = selected.remainingQuantity ?? selected.quantity;
-    if (!quantity || !price || quantity > remaining) return notify(`Enter a quantity up to the remaining ${fmt.format(remaining)} units.`);
+    if (!quantity || !price || quantity > remaining) return notify(`Enter a quantity up to the remaining ${fmt.format(remaining)} units.`, "error");
     setBusyAction("execute");
     try {
       const result = await persistAction(selected.id, { action: "execute", executionPrice: price, quantityFilled: quantity, tradeDate: tradeForm.tradeDate });
@@ -289,7 +289,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       setDrawer(null);
       notify(`${result.trade?.id ?? "Trade"} captured. Settlement is due ${result.trade?.settlementDate}.`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Trade capture failed.");
+      notify(error instanceof Error ? error.message : "Trade capture failed.", "error");
     } finally {
       setBusyAction(null);
     }
@@ -319,7 +319,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
 
   const submitOrder = async (event: FormEvent) => {
     event.preventDefault();
-    if (!checks?.every((item) => item.passed)) return notify("Run validation and resolve failed checks before submission.");
+    if (!checks?.every((item) => item.passed)) return notify("Run validation and resolve failed checks before submission.", "error");
     const quantity = Number(newOrder.quantity);
     const price = Number(newOrder.price);
     setBusyAction("create");
@@ -332,7 +332,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       setOrders((current) => [created, ...current]);
       if (result.order.status === "validation_failed") {
         setView("orders");
-        notify(failed[0] ? `${created.id} held — ${failed[0].message}` : `${created.id} held: pre-trade checks failed.`);
+        notify(failed[0] ? `${created.id} held — ${failed[0].message}` : `${created.id} held: pre-trade checks failed.`, "error");
         return;
       }
       setDrawer(null);
@@ -340,7 +340,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       setView("orders");
       notify(`${created.id} submitted for broker review.`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Order submission failed.");
+      notify(error instanceof Error ? error.message : "Order submission failed.", "error");
     } finally {
       setBusyAction(null);
     }
@@ -359,7 +359,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   };
 
   const openNewOrder = () => {
-    if (!hasPermission(role, "create")) return notify(`${roleLabels[role]} has read-only access.`);
+    if (!hasPermission(role, "create")) return notify(`${roleLabels[role]} has read-only access.`, "error");
     setChecks(null);
     setDrawer("new");
   };
@@ -409,7 +409,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   };
 
   const processReconFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".csv")) return notify("Use the CSV template for this demonstration importer.");
+    if (!file.name.toLowerCase().endsWith(".csv")) return notify("Use the CSV template for this demonstration importer.", "error");
     setBusyAction("reconcile");
     try {
       const rows = parseCsv(await file.text());
@@ -421,7 +421,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       setReconBatch(result.batch);
       notify(`${result.batch.matchedRecords}/${result.batch.totalRecords} records matched (${result.matchRate}%).`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Reconciliation processing failed.");
+      notify(error instanceof Error ? error.message : "Reconciliation processing failed.", "error");
     } finally {
       setBusyAction(null);
     }
@@ -441,7 +441,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       }));
       notify("Exception resolved and audit event recorded.");
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Exception resolution failed.");
+      notify(error instanceof Error ? error.message : "Exception resolution failed.", "error");
     } finally {
       setBusyAction(null);
     }
@@ -493,7 +493,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           {drawer === "contract" && <ContractNote order={selected} onPrint={() => window.print()} />}
         </aside>
       </div>}
-      {toast && <div className="toast"><span>✓</span>{toast}</div>}
+      {toast && <div className={`toast${toast.tone === "error" ? " toast-error" : ""}`}><span>{toast.tone === "error" ? "!" : "✓"}</span>{toast.message}</div>}
     </div>
   );
 }

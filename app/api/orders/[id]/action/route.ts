@@ -2,13 +2,9 @@ import { settlementDateFrom } from "../../../../../lib/frank";
 import { prisma } from "../../../../../lib/prisma";
 import { requirePermission } from "../../../../../lib/server-auth";
 import { computeAmounts, D, money, ZERO, toNum } from "../../../../../lib/money";
+import { apiError as routeError } from "../../../../../lib/api";
 
 export const runtime = "nodejs";
-
-function routeError(error: unknown) {
-  if (error instanceof Response) return error;
-  return Response.json({ error: error instanceof Error ? error.message : "Unexpected error" }, { status: 500 });
-}
 
 function dateOnly(value: string) {
   return new Date(`${value}T00:00:00.000Z`);

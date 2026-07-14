@@ -1,5 +1,6 @@
 import { prisma } from "../../../../../lib/prisma";
 import { requirePermission } from "../../../../../lib/server-auth";
+import { apiError } from "../../../../../lib/api";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     ]);
     return Response.json({ ok: true, status: "resolved" });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to resolve exception." }, { status: 500 });
+    return apiError(error);
   }
 }

@@ -1,14 +1,9 @@
 import { prisma } from "../../../lib/prisma";
 import { requirePermission, resolveActor } from "../../../lib/server-auth";
 import { computeAmounts, D, toNum } from "../../../lib/money";
+import { apiError as routeError } from "../../../lib/api";
 
 export const runtime = "nodejs";
-
-function routeError(error: unknown) {
-  if (error instanceof Response) return error;
-  const message = error instanceof Error ? error.message : "Unexpected error";
-  return Response.json({ error: message }, { status: 500 });
-}
 
 export async function GET(request: Request) {
   try {

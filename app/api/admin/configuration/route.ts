@@ -2,6 +2,7 @@ import { Prisma } from "../../../../app/generated/prisma/client";
 import { prisma } from "../../../../lib/prisma";
 import { toNum } from "../../../../lib/money";
 import { requirePlatformAdmin } from "../../../../lib/server-auth";
+import { apiError as routeError } from "../../../../lib/api";
 
 export const runtime = "nodejs";
 
@@ -16,11 +17,6 @@ const roleToDb: Record<string, string> = {
 const title = (value: string) => value.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 const dateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const initials = (value: string) => value.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
-
-function routeError(error: unknown) {
-  if (error instanceof Response) return error;
-  return Response.json({ error: error instanceof Error ? error.message : "Unexpected error" }, { status: 500 });
-}
 
 function audit(brokerId: string | null, action: string, entityType: string, entityId: string, summary: string, previousValue?: unknown, newValue?: unknown) {
   return prisma.auditLog.create({ data: {
