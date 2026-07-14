@@ -58,7 +58,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by the development server. The starter config creates a local D1 binding automatically.
+Open the local URL printed by the development server. The app creates and seeds a fresh local D1 binding on the first order API request; hosted deployments apply the generated migration before serving traffic.
 
 Useful checks:
 

@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../../../../db";
+import { ensureDb, getDb } from "../../../../../db";
 import {
   accounts,
   auditLogs,
@@ -31,6 +31,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     };
     const permission = payload.action === "execute" ? "trade" : payload.action === "settle" ? "settle" : payload.action === "cancel" ? "create" : payload.action ?? "approve";
     const actor = requirePermission(request, permission);
+    await ensureDb();
     const db = getDb();
     const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
     if (!order) return Response.json({ error: "Order not found." }, { status: 404 });

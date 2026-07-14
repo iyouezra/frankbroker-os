@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { getDb } from "../../../db";
+import { ensureDb, getDb } from "../../../db";
 import {
   accounts,
   auditLogs,
@@ -20,6 +20,7 @@ function routeError(error: unknown) {
 
 export async function GET() {
   try {
+    await ensureDb();
     const db = getDb();
     const rows = await db
       .select({
@@ -57,6 +58,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const actor = requirePermission(request, "create");
+    await ensureDb();
     const payload = (await request.json()) as {
       accountId?: string;
       instrumentId?: string;

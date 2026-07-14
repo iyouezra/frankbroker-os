@@ -10,3 +10,8 @@ declare module "cloudflare:workers" {
     ASSETS: Fetcher;
   };
 }
+
+declare module "*.sql?raw" {
+  const sql: string;
+  export default sql;
+}
