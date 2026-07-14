@@ -48,32 +48,35 @@ async function main() {
 
   await prisma.instrument.createMany({
     data: [
-      { id: "ins_ethio_telecom", symbol: "ETTEL", name: "Ethio telecom", assetClass: "equity", issuer: "Ethio telecom", tradingStatus: "tradable", currency: "ETB", lotSize: 10, tickSize: 0.5, settlementCycle: "T+2", lastPrice: 312.5 },
-      { id: "ins_wegagen", symbol: "WEGA", name: "Wegagen Bank S.C.", assetClass: "equity", issuer: "Wegagen Bank", tradingStatus: "tradable", currency: "ETB", lotSize: 10, tickSize: 0.5, settlementCycle: "T+2", lastPrice: 186 },
-      { id: "ins_tbill_182", symbol: "TB182-26", name: "Treasury Bill 182D", assetClass: "t_bill", issuer: "FDRE Ministry of Finance", tradingStatus: "tradable", currency: "ETB", lotSize: 1, tickSize: 0.01, settlementCycle: "T+1", faceValue: 100, maturityDate: dateOnly("2026-12-31"), couponRate: 0, couponFrequency: "at_maturity", lastPrice: 94.35 },
-      { id: "ins_cbe_bond", symbol: "CBE5Y30", name: "CBE 5-Year Bond 2030", assetClass: "bond", issuer: "Commercial Bank of Ethiopia", tradingStatus: "tradable", currency: "ETB", lotSize: 1, tickSize: 0.01, settlementCycle: "T+2", faceValue: 1_000, maturityDate: dateOnly("2030-06-30"), couponRate: 9.25, couponFrequency: "semi_annual", lastPrice: 101.2 },
-      { id: "ins_green_bond", symbol: "EEU7Y32", name: "EEU Green Bond 2032", assetClass: "bond", issuer: "Ethiopian Electric Utility", tradingStatus: "halted", currency: "ETB", lotSize: 1, tickSize: 0.01, settlementCycle: "T+2", faceValue: 1_000, maturityDate: dateOnly("2032-03-15"), couponRate: 10.1, couponFrequency: "semi_annual", lastPrice: 99.1 },
+      { id: "ins_tele", symbol: "TELE", name: "Ethio Telecom", assetClass: "equity", issuer: "Ethio Telecom", tradingStatus: "tradable", currency: "ETB", lotSize: 10, tickSize: 0.5, settlementCycle: "T+2", lastPrice: 305 },
+      { id: "ins_awab", symbol: "AWAB", name: "Awash Bank", assetClass: "equity", issuer: "Awash Bank", tradingStatus: "tradable", currency: "ETB", lotSize: 10, tickSize: 0.5, settlementCycle: "T+2", lastPrice: 9_650 },
+      { id: "ins_wgbx", symbol: "WGBX", name: "Wegagen Bank", assetClass: "equity", issuer: "Wegagen Bank", tradingStatus: "tradable", currency: "ETB", lotSize: 10, tickSize: 0.5, settlementCycle: "T+2", lastPrice: 1_742 },
+      { id: "ins_gdab", symbol: "GDAB", name: "Gadaa Bank", assetClass: "equity", issuer: "Gadaa Bank", tradingStatus: "tradable", currency: "ETB", lotSize: 10, tickSize: 0.5, settlementCycle: "T+2", lastPrice: 1_196 },
+      { id: "ins_abayb", symbol: "ABAYB", name: "Abay Bank", assetClass: "equity", issuer: "Abay Bank", tradingStatus: "tradable", currency: "ETB", lotSize: 10, tickSize: 0.5, settlementCycle: "T+2", lastPrice: 1_808 },
+      { id: "ins_goeb_2029", symbol: "GB2029", name: "GoE Treasury Bond 2029", assetClass: "bond", issuer: "Federal Democratic Republic of Ethiopia", tradingStatus: "tradable", currency: "ETB", lotSize: 1, tickSize: 0.01, settlementCycle: "T+2", faceValue: 1_000, maturityDate: dateOnly("2029-07-15"), couponRate: 14.5, couponFrequency: "semi_annual", lastPrice: 99.85 },
+      { id: "ins_goeb_2031", symbol: "GB2031", name: "GoE Treasury Bond 2031", assetClass: "bond", issuer: "Federal Democratic Republic of Ethiopia", tradingStatus: "tradable", currency: "ETB", lotSize: 1, tickSize: 0.01, settlementCycle: "T+2", faceValue: 1_000, maturityDate: dateOnly("2031-07-15"), couponRate: 15.2, couponFrequency: "semi_annual", lastPrice: 100.6 },
+      { id: "ins_goeb_2036", symbol: "GB2036", name: "GoE Treasury Bond 2036", assetClass: "bond", issuer: "Federal Democratic Republic of Ethiopia", tradingStatus: "halted", currency: "ETB", lotSize: 1, tickSize: 0.01, settlementCycle: "T+2", faceValue: 1_000, maturityDate: dateOnly("2036-07-15"), couponRate: 16, couponFrequency: "semi_annual", lastPrice: 101 },
     ],
     skipDuplicates: true,
   });
 
   await prisma.holding.createMany({
     data: [
-      { id: "hld_meron_wega", accountId: "acc_meron", instrumentId: "ins_wegagen", totalQuantity: 3_200, availableQuantity: 2_000, blockedQuantity: 1_200, averageCost: 172.4 },
-      { id: "hld_meron_cbe", accountId: "acc_meron", instrumentId: "ins_cbe_bond", totalQuantity: 3_000, availableQuantity: 3_000, averageCost: 101.2 },
-      { id: "hld_blue_wega", accountId: "acc_blue", instrumentId: "ins_wegagen", totalQuantity: 8_200, availableQuantity: 5_200, blockedQuantity: 3_000, averageCost: 181.75 },
-      { id: "hld_wegagen_ettel", accountId: "acc_wegagen", instrumentId: "ins_ethio_telecom", totalQuantity: 18_000, availableQuantity: 18_000, averageCost: 294.1 },
+      { id: "hld_meron_wgbx", accountId: "acc_meron", instrumentId: "ins_wgbx", totalQuantity: 3_200, availableQuantity: 2_000, blockedQuantity: 1_200, averageCost: 1_685 },
+      { id: "hld_meron_gb2031", accountId: "acc_meron", instrumentId: "ins_goeb_2031", totalQuantity: 3_000, availableQuantity: 3_000, averageCost: 100.6 },
+      { id: "hld_blue_wgbx", accountId: "acc_blue", instrumentId: "ins_wgbx", totalQuantity: 8_200, availableQuantity: 5_200, blockedQuantity: 3_000, averageCost: 1_710 },
+      { id: "hld_wegagen_tele", accountId: "acc_wegagen", instrumentId: "ins_tele", totalQuantity: 18_000, availableQuantity: 18_000, averageCost: 294.1 },
     ],
     skipDuplicates: true,
   });
 
   await prisma.order.createMany({
     data: [
-      { id: "ORD-2026-1048", brokerId: "brk_abyssinia", accountId: "acc_wegagen", instrumentId: "ins_ethio_telecom", side: "buy", quantity: 7_000, price: 312.5, orderType: "limit", validity: "day", estimatedGross: 2_187_500, estimatedFees: 10_937.5, estimatedNet: 2_198_437.5, status: "pending_broker_review", source: "manual", assignedTraderId: "usr_trader", riskFlag: "review", submittedAt: new Date("2026-07-14T10:42:00Z") },
-      { id: "ORD-2026-1047", brokerId: "brk_abyssinia", accountId: "acc_meron", instrumentId: "ins_wegagen", side: "sell", quantity: 1_200, price: 186, orderType: "limit", validity: "day", estimatedGross: 223_200, estimatedFees: 1_116, estimatedNet: 222_084, status: "approved", source: "manual", assignedTraderId: "usr_trader", riskFlag: "none", submittedAt: new Date("2026-07-14T10:19:00Z") },
-      { id: "ORD-2026-1046", brokerId: "brk_abyssinia", accountId: "acc_blue", instrumentId: "ins_tbill_182", side: "buy", quantity: 25_000, price: 94.35, orderType: "limit", validity: "day", estimatedGross: 2_358_750, estimatedFees: 11_793.75, estimatedNet: 2_370_543.75, status: "settlement_pending", source: "manual", assignedTraderId: "usr_trader", riskFlag: "review", submittedAt: new Date("2026-07-14T09:54:00Z") },
-      { id: "ORD-2026-1045", brokerId: "brk_abyssinia", accountId: "acc_meron", instrumentId: "ins_cbe_bond", side: "buy", quantity: 3_000, price: 101.2, orderType: "limit", validity: "day", estimatedGross: 303_600, estimatedFees: 1_518, estimatedNet: 305_118, status: "settled", source: "manual", assignedTraderId: "usr_trader", riskFlag: "none", submittedAt: new Date("2026-07-14T09:31:00Z") },
-      { id: "ORD-2026-1044", brokerId: "brk_abyssinia", accountId: "acc_selam", instrumentId: "ins_ethio_telecom", side: "buy", quantity: 500, price: 311, orderType: "limit", validity: "day", estimatedGross: 155_500, estimatedFees: 777.5, estimatedNet: 156_277.5, status: "validation_failed", source: "manual", riskFlag: "high", submittedAt: new Date("2026-07-14T09:08:00Z") },
+      { id: "ORD-2026-1048", brokerId: "brk_abyssinia", accountId: "acc_wegagen", instrumentId: "ins_tele", side: "buy", quantity: 7_000, price: 312.5, orderType: "limit", validity: "day", estimatedGross: 2_187_500, estimatedFees: 10_937.5, estimatedNet: 2_198_437.5, status: "pending_broker_review", source: "manual", assignedTraderId: "usr_trader", riskFlag: "review", submittedAt: new Date("2026-07-14T10:42:00Z") },
+      { id: "ORD-2026-1047", brokerId: "brk_abyssinia", accountId: "acc_meron", instrumentId: "ins_wgbx", side: "sell", quantity: 1_200, price: 1_735, orderType: "limit", validity: "day", estimatedGross: 2_082_000, estimatedFees: 10_410, estimatedNet: 2_071_590, status: "approved", source: "manual", assignedTraderId: "usr_trader", riskFlag: "review", submittedAt: new Date("2026-07-14T10:19:00Z") },
+      { id: "ORD-2026-1046", brokerId: "brk_abyssinia", accountId: "acc_blue", instrumentId: "ins_goeb_2029", side: "buy", quantity: 25_000, price: 99.85, orderType: "limit", validity: "day", estimatedGross: 2_496_250, estimatedFees: 12_481.25, estimatedNet: 2_508_731.25, status: "settlement_pending", source: "manual", assignedTraderId: "usr_trader", riskFlag: "review", submittedAt: new Date("2026-07-14T09:54:00Z") },
+      { id: "ORD-2026-1045", brokerId: "brk_abyssinia", accountId: "acc_meron", instrumentId: "ins_goeb_2031", side: "buy", quantity: 3_000, price: 100.6, orderType: "limit", validity: "day", estimatedGross: 301_800, estimatedFees: 1_509, estimatedNet: 303_309, status: "settled", source: "manual", assignedTraderId: "usr_trader", riskFlag: "none", submittedAt: new Date("2026-07-14T09:31:00Z") },
+      { id: "ORD-2026-1044", brokerId: "brk_abyssinia", accountId: "acc_selam", instrumentId: "ins_tele", side: "buy", quantity: 500, price: 311, orderType: "limit", validity: "day", estimatedGross: 155_500, estimatedFees: 777.5, estimatedNet: 156_277.5, status: "validation_failed", source: "manual", riskFlag: "high", submittedAt: new Date("2026-07-14T09:08:00Z") },
     ],
     skipDuplicates: true,
   });
@@ -90,15 +93,15 @@ async function main() {
 
   await prisma.trade.createMany({
     data: [
-      { id: "TRD-2026-0772", orderId: "ORD-2026-1046", executionPrice: 94.35, quantityFilled: 25_000, grossAmount: 2_358_750, fees: 11_793.75, netAmount: 2_370_543.75, tradeDate: dateOnly("2026-07-14"), settlementDate: dateOnly("2026-07-15"), capturedBy: "usr_trader" },
-      { id: "TRD-2026-0768", orderId: "ORD-2026-1045", executionPrice: 101.2, quantityFilled: 3_000, grossAmount: 303_600, fees: 1_518, netAmount: 305_118, tradeDate: dateOnly("2026-07-10"), settlementDate: dateOnly("2026-07-14"), capturedBy: "usr_trader" },
+      { id: "TRD-2026-0772", orderId: "ORD-2026-1046", executionPrice: 99.85, quantityFilled: 25_000, grossAmount: 2_496_250, fees: 12_481.25, netAmount: 2_508_731.25, tradeDate: dateOnly("2026-07-14"), settlementDate: dateOnly("2026-07-16"), capturedBy: "usr_trader" },
+      { id: "TRD-2026-0768", orderId: "ORD-2026-1045", executionPrice: 100.6, quantityFilled: 3_000, grossAmount: 301_800, fees: 1_509, netAmount: 303_309, tradeDate: dateOnly("2026-07-10"), settlementDate: dateOnly("2026-07-14"), capturedBy: "usr_trader" },
     ],
     skipDuplicates: true,
   });
 
   await prisma.settlement.createMany({
     data: [
-      { id: "STL-0772", tradeId: "TRD-2026-0772", status: "pending", settlementDate: dateOnly("2026-07-15"), cashStatus: "pending", securitiesStatus: "pending" },
+      { id: "STL-0772", tradeId: "TRD-2026-0772", status: "pending", settlementDate: dateOnly("2026-07-16"), cashStatus: "pending", securitiesStatus: "pending" },
       { id: "STL-0768", tradeId: "TRD-2026-0768", status: "settled", settlementDate: dateOnly("2026-07-14"), cashStatus: "settled", securitiesStatus: "settled", confirmedBy: "usr_settlement", confirmedAt: new Date("2026-07-14T09:33:18Z") },
     ],
     skipDuplicates: true,
@@ -112,14 +115,14 @@ async function main() {
   await prisma.reconciliationException.createMany({
     data: [
       { id: "rec_exc_1", batchId: "REC-2026-0714-A", reference: "TRD-2026-0759", exceptionType: "cash_variance", expectedValue: "418250.00", actualValue: "400000.00", status: "open" },
-      { id: "rec_exc_2", batchId: "REC-2026-0714-A", reference: "ETTEL", exceptionType: "quantity_mismatch", expectedValue: "12500", actualValue: "12495", status: "open" },
+      { id: "rec_exc_2", batchId: "REC-2026-0714-A", reference: "TELE", exceptionType: "quantity_mismatch", expectedValue: "12500", actualValue: "12495", status: "open" },
     ],
     skipDuplicates: true,
   });
 
   await prisma.auditLog.createMany({
     data: [
-      { id: "aud_1", brokerId: "brk_abyssinia", actorId: "usr_demo_admin", action: "ORDER_CREATED", entityType: "order", entityId: "ORD-2026-1048", summary: "Buy 7,000 ETTEL at 312.50 ETB", createdAt: new Date("2026-07-14T10:42:51Z") },
+      { id: "aud_1", brokerId: "brk_abyssinia", actorId: "usr_demo_admin", action: "ORDER_CREATED", entityType: "order", entityId: "ORD-2026-1048", summary: "Buy 7,000 TELE at 312.50 ETB", createdAt: new Date("2026-07-14T10:42:51Z") },
       { id: "aud_2", brokerId: "brk_abyssinia", actorId: "usr_demo_admin", action: "ORDER_VALIDATED", entityType: "order", entityId: "ORD-2026-1048", summary: "All required pre-trade checks passed", createdAt: new Date("2026-07-14T10:43:12Z") },
       { id: "aud_3", brokerId: "brk_abyssinia", actorId: "usr_trader", action: "TRADE_CAPTURED", entityType: "trade", entityId: "TRD-2026-0772", summary: "Manual trade linked to ORD-2026-1046", createdAt: new Date("2026-07-14T09:58:37Z") },
       { id: "aud_4", brokerId: "brk_abyssinia", actorId: "usr_settlement", action: "SETTLEMENT_UPDATED", entityType: "settlement", entityId: "STL-0768", summary: "Cash and securities legs confirmed", createdAt: new Date("2026-07-14T09:33:18Z") },
