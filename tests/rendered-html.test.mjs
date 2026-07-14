@@ -29,6 +29,11 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(investorApp, /Own a piece of Ethiopia/);
   assert.match(investorApp, /FrankScore 78/);
   assert.match(investorApp, /Review order/);
+  assert.match(investorApp, /Open your investment account/);
+  assert.match(investorApp, /Fayda ID number \(FIN\)/);
+  assert.match(investorApp, /Retail investor/);
+  assert.match(investorApp, /Business registration number/);
+  assert.match(investorApp, /Live Fayda and tax verification/);
   assert.match(investorData, /"AWAB"/);
   assert.match(investorData, /GB2036/);
   assert.match(investorStyles, /--investor-aqua-400: #35e7d9/);

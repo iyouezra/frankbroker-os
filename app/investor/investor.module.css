@@ -259,6 +259,53 @@
 .confirmDialog > div { display: flex; justify-content: flex-end; gap: 9px; }
 
 .onboarding { height: 100%; display: flex; flex-direction: column; padding: 18px 20px 24px; background: white; }
+.kycProgress { margin: 0 0 4px; }
+.kycProgress > span { display: flex; align-items: center; justify-content: space-between; color: var(--investor-teal-700); }
+.kycProgress b { font-size: 9px; letter-spacing: .1em; }
+.kycProgress small { color: var(--investor-ink-400); font-family: var(--font-mono); font-size: 9px; }
+.kycProgress > i { height: 4px; display: block; margin-top: 8px; overflow: hidden; border-radius: 999px; background: var(--investor-ink-100); }
+.kycProgress > i > em { height: 100%; display: block; border-radius: inherit; background: var(--investor-teal-700); transition: width 200ms ease-out; }
+.kycBrand { min-height: 56px; display: flex; align-items: flex-end; }
+.kycForm { min-height: 0; flex: 1; overflow-y: auto; padding-right: 2px; scrollbar-width: thin; }
+.kycField { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.kycField > span { font-size: 12px; font-weight: 650; }
+.kycField input { width: 100%; min-height: 48px; padding: 0 13px; border: 1px solid var(--investor-ink-200); border-radius: 12px; outline: 0; background: white; color: var(--investor-ink-900); font-family: var(--font-body); font-size: 14px; font-variant-numeric: tabular-nums; transition: border-color 120ms ease-out, box-shadow 120ms ease-out; }
+.kycField input:focus { border-color: var(--investor-teal-600); box-shadow: 0 0 0 3px rgba(20,211,200,.16); }
+.kycField input::placeholder { color: var(--investor-ink-300); }
+.kycField small { color: var(--investor-ink-400); font-size: 10px; line-height: 1.4; }
+.accountTypeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 14px; }
+.accountTypeGrid button { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; padding: 13px; border: 1.5px solid var(--investor-ink-200); border-radius: 14px; background: white; color: inherit; cursor: pointer; text-align: left; }
+.accountTypeGrid button > i { position: absolute; top: 12px; right: 12px; width: 20px; height: 20px; display: grid; place-items: center; border: 1.5px solid var(--investor-ink-300); border-radius: 50%; color: white; }
+.accountTypeGrid b { font-size: 13px; }
+.accountTypeGrid small { margin-top: 3px; color: var(--investor-ink-500); font-size: 10px; }
+.accountTypeGrid .accountTypeSelected { border-color: var(--investor-teal-600); background: var(--investor-aqua-100); }
+.accountTypeGrid .accountTypeSelected > i { border-color: var(--investor-teal-700); background: var(--investor-teal-700); }
+.demoNotice { display: flex; gap: 8px; margin: 2px 0 13px; padding: 10px 11px; border: 1px solid var(--investor-ink-100); border-radius: 11px; background: var(--investor-ink-50); color: var(--investor-ink-500); font-size: 10px; line-height: 1.45; }
+.demoNotice b { flex: 0 0 auto; color: var(--investor-teal-700); }
+.kycReview { min-height: 0; flex: 1; overflow-y: auto; padding: 8px 17px; }
+.kycReview dl { margin: 0; }
+.kycReview dl > div { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.kycReview dl > div:last-child { border-bottom: 0; }
+.kycReview dt { color: var(--investor-ink-500); font-size: 10px; }
+.kycReview dd { margin: 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 650; text-align: right; }
+.kycReview dl > div:nth-last-child(-n+3) dd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.consentRow { display: flex; align-items: flex-start; gap: 10px; margin: 0 1px 14px; cursor: pointer; }
+.consentRow input { position: absolute; opacity: 0; pointer-events: none; }
+.consentRow > i { width: 21px; height: 21px; display: grid; flex: 0 0 auto; place-items: center; border: 1.5px solid var(--investor-ink-300); border-radius: 6px; color: white; }
+.consentRow input:checked + i { border-color: var(--investor-teal-700); background: var(--investor-teal-700); }
+.consentRow span { color: var(--investor-ink-600); font-size: 10px; line-height: 1.45; }
+.kycComplete { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.kycComplete > span { width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: 14px; border-radius: 50%; background: var(--investor-aqua-100); color: var(--investor-teal-700); box-shadow: 0 0 0 8px var(--investor-ink-50); }
+.kycComplete > small { color: var(--investor-teal-700); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
+.kycComplete h1 { margin: 7px 0; font-size: 25px; }
+.kycComplete > p { max-width: 330px; margin: 0 0 18px; color: var(--investor-ink-500); font-size: 12px; line-height: 1.55; }
+.kycStatusCard { width: 100%; padding: 8px 15px; text-align: left; }
+.kycStatusCard > div { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.kycStatusCard > div:last-child { border-bottom: 0; }
+.kycStatusCard i { width: 23px; height: 23px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #e2f6ec; color: var(--investor-gain); }
+.kycStatusCard span { display: flex; flex-direction: column; }
+.kycStatusCard b { font-size: 11px; }
+.kycStatusCard small { margin-top: 2px; color: var(--investor-ink-500); font-size: 9px; }
 .skip { min-height: 40px; align-self: flex-end; padding: 0; border: 0; background: transparent; color: var(--investor-ink-400); cursor: pointer; font-size: 12px; font-weight: 650; }
 .onboardingIntro { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .onboardingIntro img { width: 74px; height: 74px; object-fit: contain; }

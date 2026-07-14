@@ -14,6 +14,16 @@ import styles from "./investor.module.css";
 
 type Tab = "home" | "markets" | "portfolio" | "plan" | "profile";
 type IconName = "home" | "markets" | "portfolio" | "plan" | "profile" | "search" | "back" | "bell" | "plus" | "shield" | "bulb" | "chevron" | "check";
+type InvestorKyc = {
+  accountType: "retail" | "institution";
+  fullName: string;
+  phone: string;
+  faydaId: string;
+  tin: string;
+  address: string;
+  registrationNumber: string;
+  representativeName: string;
+};
 
 const iconPaths: Record<IconName, string> = {
   home: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8 M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
@@ -86,7 +96,45 @@ function ProgressDots({ step }: { step: number }) {
   return <div className={styles.progressDots} aria-label={`Onboarding step ${Math.min(step, 3) + 1} of 4`}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
 }
 
-function Onboarding({ onDone }: { onDone: () => void }) {
+const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "Bole, Addis Ababa", registrationNumber: "", representativeName: "" };
+const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele" };
+
+function KycProgress({ step }: { step: number }) {
+  return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 4</small></span><i><em style={{ width: `${((step + 1) / 4) * 100}%` }} /></i></div>;
+}
+
+function KycField({ label, value, onChange, hint, placeholder, inputMode = "text", maxLength }: { label: string; value: string; onChange: (value: string) => void; hint?: string; placeholder?: string; inputMode?: "text" | "numeric" | "tel"; maxLength?: number }) {
+  return <label className={styles.kycField}><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} inputMode={inputMode} maxLength={maxLength} autoComplete="off" />{hint && <small>{hint}</small>}</label>;
+}
+
+function KycOnboarding({ onComplete }: { onComplete: (profile: InvestorKyc) => void }) {
+  const [step, setStep] = useState(0);
+  const [profile, setProfile] = useState<InvestorKyc>(retailDemo);
+  const [consent, setConsent] = useState(false);
+  const update = (field: keyof InvestorKyc, value: string) => setProfile((current) => ({ ...current, [field]: value }));
+  const chooseType = (accountType: InvestorKyc["accountType"]) => setProfile(accountType === "retail" ? retailDemo : institutionDemo);
+  const phoneValid = profile.phone.replace(/\D/g, "").length >= 9;
+  const faydaValid = /^\d{12}$/.test(profile.faydaId);
+  const tinValid = /^\d{10}(?:-\d{2})?$/.test(profile.tin);
+  const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid;
+  const identityStepValid = faydaValid && tinValid && profile.address.trim().length >= 4 && (profile.accountType === "retail" || (profile.registrationNumber.trim().length >= 4 && profile.representativeName.trim().length >= 3));
+  const masked = (value: string) => value.length <= 4 ? value : `${"•".repeat(Math.min(8, value.length - 4))} ${value.slice(-4)}`;
+
+  if (step === 3) return <div className={styles.onboarding}><KycProgress step={3} /><div className={styles.kycComplete}><span><Icon name="check" size={24} /></span><small>DEMO CHECK COMPLETE</small><h1>Your details are ready</h1><p>We checked the ID formats and captured your consent. Live Fayda and tax verification will be connected before real accounts are opened.</p><Card className={styles.kycStatusCard}><div><i><Icon name="check" size={14} /></i><span><b>Fayda ID format</b><small>12-digit FIN captured</small></span></div><div><i><Icon name="check" size={14} /></i><span><b>Tax information</b><small>TIN captured for review</small></span></div><div><i><Icon name="check" size={14} /></i><span><b>Account type</b><small>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</small></span></div></Card></div><Button className={styles.full} onClick={() => onComplete(profile)}>Build my investment plan</Button></div>;
+
+  if (step === 2) return <div className={styles.onboarding}><KycProgress step={2} /><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(1)} aria-label="Go back"><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>Check your details</h1><p>Make sure your name matches your official records.</p></div><Card className={styles.kycReview}><dl><div><dt>Account</dt><dd>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</dd></div><div><dt>Legal name</dt><dd>{profile.fullName}</dd></div>{profile.accountType === "institution" && <><div><dt>Representative</dt><dd>{profile.representativeName}</dd></div><div><dt>Registration</dt><dd>{profile.registrationNumber}</dd></div></>}<div><dt>Fayda ID</dt><dd>{masked(profile.faydaId)}</dd></div><div><dt>TIN</dt><dd>{masked(profile.tin)}</dd></div><div><dt>Phone</dt><dd>{profile.phone}</dd></div><div><dt>Address</dt><dd>{profile.address}</dd></div></dl></Card><label className={styles.consentRow}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><i>{consent && <Icon name="check" size={13} />}</i><span>I confirm these demo details are accurate and consent to identity and tax verification for account opening.</span></label><Button className={styles.full} disabled={!consent} onClick={() => setStep(3)}>Submit for verification</Button></div>;
+
+  if (step === 1) return <div className={styles.onboarding}><KycProgress step={1} /><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(0)} aria-label="Go back"><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>{profile.accountType === "retail" ? "Confirm your identity" : "Tell us about the institution"}</h1><p>{profile.accountType === "retail" ? "Use the details linked to your Fayda ID." : "We also need the authorized representative’s identity."}</p></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Fayda ID number (FIN)" : "Representative’s Fayda ID (FIN)"} value={profile.faydaId} onChange={(value) => update("faydaId", value.replace(/\D/g, "").slice(0, 12))} inputMode="numeric" maxLength={12} placeholder="12 digits" hint={profile.faydaId && !faydaValid ? "Fayda FIN must contain 12 digits." : "We’ll use this for identity verification."} /><KycField label="Taxpayer Identification Number (TIN)" value={profile.tin} onChange={(value) => update("tin", value.replace(/[^0-9-]/g, "").slice(0, 13))} inputMode="numeric" placeholder="0012814908" hint={profile.tin && !tinValid ? "Enter a 10-digit TIN or a TIN with its two-digit subTIN." : "Used for tax reporting and account records."} />{profile.accountType === "institution" && <><KycField label="Business registration number" value={profile.registrationNumber} onChange={(value) => update("registrationNumber", value)} placeholder="Registration or license number" /><KycField label="Authorized representative" value={profile.representativeName} onChange={(value) => update("representativeName", value)} placeholder="Full legal name" /></>}<KycField label={profile.accountType === "retail" ? "Current address" : "Registered address"} value={profile.address} onChange={(value) => update("address", value)} placeholder="City and sub-city" /></div><div className={styles.demoNotice}><b>Demo only</b><span>Use sample details. Nothing on this screen is sent or stored.</span></div><Button className={styles.full} disabled={!identityStepValid} onClick={() => setStep(2)}>Review details</Button></div>;
+
+  return <div className={styles.onboarding}><KycProgress step={0} /><div className={styles.kycBrand}><AppLogo /></div><div className={styles.onboardingCopy}><h1>Open your investment account</h1><p>First, tell us who will own this account. It takes a few minutes.</p></div><div className={styles.accountTypeGrid}><button className={profile.accountType === "retail" ? styles.accountTypeSelected : ""} onClick={() => chooseType("retail")}><i>{profile.accountType === "retail" && <Icon name="check" size={13} />}</i><b>Retail investor</b><small>An account for you</small></button><button className={profile.accountType === "institution" ? styles.accountTypeSelected : ""} onClick={() => chooseType("institution")}><i>{profile.accountType === "institution" && <Icon name="check" size={13} />}</i><b>Institution</b><small>A company or organization</small></button></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Full legal name" : "Legal organization name"} value={profile.fullName} onChange={(value) => update("fullName", value)} placeholder="As shown on official records" /><KycField label="Mobile number" value={profile.phone} onChange={(value) => update("phone", value.replace(/[^0-9+]/g, ""))} inputMode="tel" placeholder="09… or +251…" hint="We’ll use this for account updates and security." /></div><div className={styles.demoNotice}><b>Demo only</b><span>These are fictional sample details and stay in this browser session.</span></div><Button className={styles.full} disabled={!firstStepValid} onClick={() => setStep(1)}>Continue</Button></div>;
+}
+
+function Onboarding({ onDone }: { onDone: (name: string) => void }) {
+  const [kycProfile, setKycProfile] = useState<InvestorKyc | null>(null);
+  return kycProfile ? <InvestmentOnboarding onDone={() => onDone(kycProfile.fullName)} /> : <KycOnboarding onComplete={setKycProfile} />;
+}
+
+function InvestmentOnboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState("");
   const [horizon, setHorizon] = useState("");
@@ -148,8 +196,9 @@ function PlanScreen() {
   return <div className={styles.screen}><ScreenHeader title="Your plan" /><Card className={styles.planHero}><ScoreRing /><div><h2>FrankScore 78</h2><p>Healthy. Diversified and on track for your goal.</p></div></Card><Card><div className={styles.cardHeader}><h2>Mix</h2></div><AllocationBar bonds={mix[0]} stocks={mix[1]} /><div className={styles.legend}><span><i />Bonds {mix[0]}%</span><span><i />Stocks {mix[1]}%</span></div></Card><Card className={styles.planChoices}>{([ ["steady", "Steady", "70% bonds, 30% stocks. Built for sleeping well."], ["balanced", "Balanced", "Half and half. Some movement, some calm."], ["growth", "Growth", "70% stocks. Bigger swings, bigger potential."] ] as const).map(([value, label, description]) => <label key={value}><input type="radio" name="plan" checked={plan === value} onChange={() => setPlan(value)} /><i /><span><b>{label}</b><small>{description}</small></span></label>)}</Card><Card><div className={styles.cardHeader}><h2>Your goal</h2><span className={styles.badge}>2036</span></div><Sparkline values={[78, 82, 89, 101, 117, 140]} large /><div className={styles.goalValue}><span>On track for</span><b>ETB 1,240,000</b></div><p className={styles.cardIntro}>If you keep investing ETB 2,000 monthly. A rough estimate, not a promise — markets move.</p></Card><Card><label className={styles.switchRow}><span><b>Auto-invest ETB 2,000 monthly</b><small>We buy your mix on the 1st. Change or pause anytime.</small></span><input type="checkbox" checked={autoInvest} onChange={(event) => setAutoInvest(event.target.checked)} /><i /></label></Card><Button className={styles.full}>Keep this plan</Button></div>;
 }
 
-function ProfileScreen({ notify }: { notify: (message: string) => void }) {
-  return <div className={styles.screen}><ScreenHeader title="You" /><Card className={styles.profileCard}><span>SM</span><div><b>Selam Mekonnen</b><small>Investing since March 2026</small></div><em>Verified</em></Card><Card className={styles.menuCard}>{["Add money", "Withdraw", "Statements & tax", "Price alerts", "Security", "Help in Amharic"].map((item) => <button key={item} onClick={() => notify(`${item} is ready for the next demo phase.`)}><span>{item}</span><Icon name="chevron" size={18} /></button>)}</Card><p className={styles.license}>Frank Money is licensed by the Ethiopian Capital Market Authority.<br />Member of the Ethiopian Securities Exchange.</p></div>;
+function ProfileScreen({ notify, name }: { notify: (message: string) => void; name: string }) {
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "FM";
+  return <div className={styles.screen}><ScreenHeader title="You" /><Card className={styles.profileCard}><span>{initials}</span><div><b>{name}</b><small>Investor account · Demo profile</small></div><em>Demo checked</em></Card><Card className={styles.menuCard}>{["Identity & tax details", "Add money", "Withdraw", "Statements & tax", "Price alerts", "Security", "Help in Amharic"].map((item) => <button key={item} onClick={() => notify(`${item} is ready for the next demo phase.`)}><span>{item}</span><Icon name="chevron" size={18} /></button>)}</Card><p className={styles.license}>Frank Money is licensed by the Ethiopian Capital Market Authority.<br />Member of the Ethiopian Securities Exchange.</p></div>;
 }
 
 function OrderSheet({ stock, side, onClose, onPlaced }: { stock: InvestorStock; side: "Buy" | "Sell"; onClose: () => void; onPlaced: (detail: string) => void }) {
@@ -179,9 +228,10 @@ export default function InvestorApp() {
   const [tab, setTab] = useState<Tab>("home");
   const [stock, setStock] = useState<InvestorStock | null>(null);
   const [toast, setToast] = useState("");
+  const [profileName, setProfileName] = useState("Selam Mekonnen");
   const featured = useMemo(() => investorStocks.slice(0, 3), []);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
   const navigate = (next: Tab) => { setTab(next); setStock(null); };
 
-  return <main className={styles.investorPage}><section className={styles.desktopStory}><AppLogo /><span className={styles.licenseBadge}>Licensed-market demo</span><h1>Own a piece of Ethiopia&apos;s growth</h1><p>Buy shares on the Ethiopian Securities Exchange, explore government bonds, or let Frank build a steady plan around your goals.</p><Button onClick={() => setPhase("app")}>Explore the investor app</Button><div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div><small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small></section><section className={styles.appFrame} aria-label="Frank Money investor app"><div className={styles.appViewport}>{phase === "onboarding" ? <Onboarding onDone={() => setPhase("app")} /> : stock ? <StockDetail key={stock.ticker} stock={stock} onBack={() => setStock(null)} notify={notify} /> : <><div className={styles.scrollArea}>{tab === "home" ? <HomeScreen openStock={setStock} go={navigate} /> : tab === "markets" ? <MarketsScreen openStock={setStock} /> : tab === "portfolio" ? <PortfolioScreen openStock={setStock} /> : tab === "plan" ? <PlanScreen /> : <ProfileScreen notify={notify} />}</div><BottomNav active={tab} onChange={navigate} /></>}{toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Saved in this demo session.</small></span></div>}</div></section></main>;
+  return <main className={styles.investorPage}><section className={styles.desktopStory}><AppLogo /><span className={styles.licenseBadge}>Licensed-market demo</span><h1>Own a piece of Ethiopia&apos;s growth</h1><p>Buy shares on the Ethiopian Securities Exchange, explore government bonds, or let Frank build a steady plan around your goals.</p><Button onClick={() => setPhase("app")}>Explore the investor app</Button><div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div><small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small></section><section className={styles.appFrame} aria-label="Frank Money investor app"><div className={styles.appViewport}>{phase === "onboarding" ? <Onboarding onDone={(name) => { setProfileName(name); setPhase("app"); }} /> : stock ? <StockDetail key={stock.ticker} stock={stock} onBack={() => setStock(null)} notify={notify} /> : <><div className={styles.scrollArea}>{tab === "home" ? <HomeScreen openStock={setStock} go={navigate} /> : tab === "markets" ? <MarketsScreen openStock={setStock} /> : tab === "portfolio" ? <PortfolioScreen openStock={setStock} /> : tab === "plan" ? <PlanScreen /> : <ProfileScreen notify={notify} name={profileName} />}</div><BottomNav active={tab} onChange={navigate} /></>}{toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Saved in this demo session.</small></span></div>}</div></section></main>;
 }
