@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { demoAudit, demoClients, demoInstruments, initialOrders, type DemoOrder } from "../lib/demo-data";
 import { calculateOrderAmounts, hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
 
@@ -89,6 +89,30 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void fetch("/api/orders", { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Order API unavailable")))
+      .then((result: { orders?: Array<Omit<DemoOrder, "time" | "trader">> }) => {
+        if (!result.orders) return;
+        const persisted = result.orders.map((order) => ({
+          ...order,
+          time: new Date(order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
+          orderType: order.orderType.charAt(0).toUpperCase() + order.orderType.slice(1),
+          source: order.source.charAt(0).toUpperCase() + order.source.slice(1),
+          trader: "Assigned",
+        })) as DemoOrder[];
+        const persistedIds = new Set(persisted.map((order) => order.id));
+        setOrders([...persisted, ...initialOrders.filter((order) => !persistedIds.has(order.id))]);
+      })
+      .catch(() => {
+        // Keep the static demonstration surface available before a database is connected.
+      });
+
+    return () => controller.abort();
+  }, []);
+
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
   const filteredOrders = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -118,7 +142,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         body: JSON.stringify(payload),
       });
     } catch {
-      // The in-product demo remains interactive when the local D1 binding is unavailable.
+      // The in-product demo remains interactive when PostgreSQL is unavailable.
     }
   };
 

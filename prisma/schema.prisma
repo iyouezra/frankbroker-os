@@ -1,0 +1,336 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Broker {
+  id                    String                @id
+  name                  String
+  licenseNumber         String                @unique @map("license_number")
+  status                String                @default("active")
+  baseCurrency          String                @default("ETB") @map("base_currency")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  users                 User[]
+  clients               Client[]
+  orders                Order[]
+  reconciliationBatches ReconciliationBatch[]
+  auditLogs             AuditLog[]
+
+  @@map("brokers")
+}
+
+model User {
+  id                            String                    @id
+  brokerId                      String?                   @map("broker_id")
+  email                         String                    @unique
+  fullName                      String                    @map("full_name")
+  role                          String
+  status                        String                    @default("active")
+  lastLoginAt                   DateTime?                 @map("last_login_at")
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+  broker                        Broker?                   @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  assignedOrders                Order[]                   @relation("AssignedTrader")
+  approvedOrders                Order[]                   @relation("OrderApprover")
+  capturedTrades                Trade[]                   @relation("TradeCapturer")
+  confirmedSettlements          Settlement[]              @relation("SettlementConfirmer")
+  cashLedgerEntries             CashLedgerEntry[]         @relation("CashLedgerCreator")
+  securitiesLedgerEntries       SecuritiesLedgerEntry[]   @relation("SecuritiesLedgerCreator")
+  uploadedReconciliationBatches ReconciliationBatch[]     @relation("BatchUploader")
+  resolvedExceptions            ReconciliationException[] @relation("ExceptionResolver")
+  auditLogs                     AuditLog[]                @relation("AuditActor")
+
+  @@index([brokerId])
+  @@map("users")
+}
+
+model Client {
+  id         String    @id
+  brokerId   String    @map("broker_id")
+  clientCode String    @unique @map("client_code")
+  fullName   String    @map("full_name")
+  clientType String    @default("individual") @map("client_type")
+  phone      String?
+  email      String?
+  taxId      String?   @map("tax_id")
+  kycStatus  String    @default("pending") @map("kyc_status")
+  riskRating String    @default("standard") @map("risk_rating")
+  status     String    @default("active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  broker     Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  accounts   Account[]
+
+  @@index([brokerId])
+  @@map("clients")
+}
+
+model Account {
+  id                      String                  @id
+  clientId                String                  @map("client_id")
+  accountNumber           String                  @unique @map("account_number")
+  accountType             String                  @default("cash") @map("account_type")
+  currency                String                  @default("ETB")
+  totalCash               Float                   @default(0) @map("total_cash")
+  availableCash           Float                   @default(0) @map("available_cash")
+  blockedCash             Float                   @default(0) @map("blocked_cash")
+  unsettledCash           Float                   @default(0) @map("unsettled_cash")
+  status                  String                  @default("active")
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+  client                  Client                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  holdings                Holding[]
+  orders                  Order[]
+  cashLedgerEntries       CashLedgerEntry[]
+  securitiesLedgerEntries SecuritiesLedgerEntry[]
+
+  @@index([clientId])
+  @@map("accounts")
+}
+
+model Instrument {
+  id                      String                  @id
+  symbol                  String                  @unique
+  name                    String
+  assetClass              String                  @map("asset_class")
+  issuer                  String
+  tradingStatus           String                  @default("tradable") @map("trading_status")
+  currency                String                  @default("ETB")
+  lotSize                 Int                     @default(1) @map("lot_size")
+  tickSize                Float                   @default(0.01) @map("tick_size")
+  settlementCycle         String                  @default("T+2") @map("settlement_cycle")
+  faceValue               Float?                  @map("face_value")
+  maturityDate            DateTime?               @map("maturity_date") @db.Date
+  couponRate              Float?                  @map("coupon_rate")
+  couponFrequency         String?                 @map("coupon_frequency")
+  lastPrice               Float?                  @map("last_price")
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+  holdings                Holding[]
+  orders                  Order[]
+  securitiesLedgerEntries SecuritiesLedgerEntry[]
+
+  @@map("instruments")
+}
+
+model Holding {
+  id                String     @id
+  accountId         String     @map("account_id")
+  instrumentId      String     @map("instrument_id")
+  totalQuantity     Float      @default(0) @map("total_quantity")
+  availableQuantity Float      @default(0) @map("available_quantity")
+  blockedQuantity   Float      @default(0) @map("blocked_quantity")
+  unsettledQuantity Float      @default(0) @map("unsettled_quantity")
+  averageCost       Float      @default(0) @map("average_cost")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  account           Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  instrument        Instrument @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, instrumentId])
+  @@index([instrumentId])
+  @@map("holdings")
+}
+
+model Order {
+  id                    String                  @id
+  brokerId              String                  @map("broker_id")
+  accountId             String                  @map("account_id")
+  instrumentId          String                  @map("instrument_id")
+  side                  String
+  quantity              Float
+  price                 Float
+  orderType             String                  @default("limit") @map("order_type")
+  validity              String                  @default("day")
+  estimatedGross        Float                   @map("estimated_gross")
+  estimatedFees         Float                   @map("estimated_fees")
+  estimatedNet          Float                   @map("estimated_net")
+  status                String                  @default("draft")
+  source                String                  @default("manual")
+  assignedTraderId      String?                 @map("assigned_trader_id")
+  riskFlag              String                  @default("none") @map("risk_flag")
+  notes                 String?
+  rejectionReason       String?                 @map("rejection_reason")
+  submittedAt           DateTime?               @map("submitted_at")
+  approvedAt            DateTime?               @map("approved_at")
+  approvedBy            String?                 @map("approved_by")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+  broker                Broker                  @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  account               Account                 @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  instrument            Instrument              @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  assignedTrader        User?                   @relation("AssignedTrader", fields: [assignedTraderId], references: [id], onDelete: SetNull)
+  approver              User?                   @relation("OrderApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  validations           OrderValidation[]
+  trades                Trade[]
+  cashLedgerEntries     CashLedgerEntry[]
+  securityLedgerEntries SecuritiesLedgerEntry[]
+
+  @@index([brokerId, status])
+  @@index([accountId])
+  @@index([instrumentId])
+  @@map("orders")
+}
+
+model OrderValidation {
+  id        String   @id
+  orderId   String   @map("order_id")
+  ruleCode  String   @map("rule_code")
+  label     String
+  result    String
+  message   String?
+  checkedAt DateTime @default(now()) @map("checked_at")
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_validations")
+}
+
+model Trade {
+  id                      String                  @id
+  orderId                 String                  @map("order_id")
+  executionPrice          Float                   @map("execution_price")
+  quantityFilled          Float                   @map("quantity_filled")
+  grossAmount             Float                   @map("gross_amount")
+  fees                    Float
+  netAmount               Float                   @map("net_amount")
+  tradeDate               DateTime                @map("trade_date") @db.Date
+  settlementDate          DateTime                @map("settlement_date") @db.Date
+  capturedBy              String                  @map("captured_by")
+  capturedAt              DateTime                @default(now()) @map("captured_at")
+  order                   Order                   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  capturedByUser          User                    @relation("TradeCapturer", fields: [capturedBy], references: [id], onDelete: Restrict)
+  settlement              Settlement?
+  cashLedgerEntries       CashLedgerEntry[]
+  securitiesLedgerEntries SecuritiesLedgerEntry[]
+
+  @@index([orderId])
+  @@map("trades")
+}
+
+model Settlement {
+  id               String    @id
+  tradeId          String    @unique @map("trade_id")
+  status           String    @default("pending")
+  settlementDate   DateTime  @map("settlement_date") @db.Date
+  cashStatus       String    @default("pending") @map("cash_status")
+  securitiesStatus String    @default("pending") @map("securities_status")
+  exceptionNotes   String?   @map("exception_notes")
+  confirmedBy      String?   @map("confirmed_by")
+  confirmedAt      DateTime? @map("confirmed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  trade            Trade     @relation(fields: [tradeId], references: [id], onDelete: Restrict)
+  confirmedByUser  User?     @relation("SettlementConfirmer", fields: [confirmedBy], references: [id], onDelete: SetNull)
+
+  @@map("settlements")
+}
+
+model CashLedgerEntry {
+  id             String   @id
+  accountId      String   @map("account_id")
+  orderId        String?  @map("order_id")
+  tradeId        String?  @map("trade_id")
+  entryType      String   @map("entry_type")
+  amount         Float
+  runningBalance Float    @map("running_balance")
+  description    String
+  valueDate      DateTime @map("value_date") @db.Date
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  trade          Trade?   @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  createdByUser  User     @relation("CashLedgerCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([accountId, valueDate])
+  @@map("cash_ledger_entries")
+}
+
+model SecuritiesLedgerEntry {
+  id              String     @id
+  accountId       String     @map("account_id")
+  instrumentId    String     @map("instrument_id")
+  orderId         String?    @map("order_id")
+  tradeId         String?    @map("trade_id")
+  entryType       String     @map("entry_type")
+  quantity        Float
+  runningQuantity Float      @map("running_quantity")
+  description     String
+  valueDate       DateTime   @map("value_date") @db.Date
+  createdBy       String     @map("created_by")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  account         Account    @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  order           Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  trade           Trade?     @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  createdByUser   User       @relation("SecuritiesLedgerCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([accountId, instrumentId, valueDate])
+  @@map("securities_ledger_entries")
+}
+
+model ReconciliationBatch {
+  id               String                    @id
+  brokerId         String                    @map("broker_id")
+  batchDate        DateTime                  @map("batch_date") @db.Date
+  fileName         String?                   @map("file_name")
+  source           String                    @default("manual_upload")
+  totalRecords     Int                       @default(0) @map("total_records")
+  matchedRecords   Int                       @default(0) @map("matched_records")
+  exceptionRecords Int                       @default(0) @map("exception_records")
+  status           String                    @default("processing")
+  uploadedBy       String                    @map("uploaded_by")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  broker           Broker                    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  uploadedByUser   User                      @relation("BatchUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  exceptions       ReconciliationException[]
+
+  @@index([brokerId, batchDate])
+  @@map("reconciliation_batches")
+}
+
+model ReconciliationException {
+  id              String              @id
+  batchId         String              @map("batch_id")
+  reference       String
+  exceptionType   String              @map("exception_type")
+  expectedValue   String?             @map("expected_value")
+  actualValue     String?             @map("actual_value")
+  status          String              @default("open")
+  resolutionNotes String?             @map("resolution_notes")
+  resolvedBy      String?             @map("resolved_by")
+  resolvedAt      DateTime?           @map("resolved_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  batch           ReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  resolvedByUser  User?               @relation("ExceptionResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([batchId, status])
+  @@map("reconciliation_exceptions")
+}
+
+model AuditLog {
+  id            String   @id
+  brokerId      String?  @map("broker_id")
+  actorId       String?  @map("actor_id")
+  action        String
+  entityType    String   @map("entity_type")
+  entityId      String?  @map("entity_id")
+  summary       String
+  previousValue String?  @map("previous_value")
+  newValue      String?  @map("new_value")
+  ipAddress     String?  @map("ip_address")
+  createdAt     DateTime @default(now()) @map("created_at")
+  broker        Broker?  @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  actor         User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([brokerId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
