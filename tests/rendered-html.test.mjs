@@ -5,11 +5,14 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("ships the FrankBroker product surface and PostgreSQL model", async () => {
-  const [app, investorApp, investorData, investorStyles, layout, styles, clientsApi, reconciliationApi, schema, migration] = await Promise.all([
+  const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, schema, migration] = await Promise.all([
     readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
     readFile(new URL("app/investor/investor-app.tsx", root), "utf8"),
     readFile(new URL("lib/investor-data.ts", root), "utf8"),
     readFile(new URL("app/investor/investor.module.css", root), "utf8"),
+    readFile(new URL("app/admin/admin-console.tsx", root), "utf8"),
+    readFile(new URL("lib/admin-data.ts", root), "utf8"),
+    readFile(new URL("app/admin/admin.module.css", root), "utf8"),
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
     readFile(new URL("app/api/clients/route.ts", root), "utf8"),
@@ -38,6 +41,14 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(investorData, /GB2036/);
   assert.match(investorStyles, /--investor-aqua-400: #35e7d9/);
   assert.match(investorStyles, /@media \(max-width: 900px\)/);
+  assert.match(adminApp, /Platform overview/);
+  assert.match(adminApp, /Instrument master/);
+  assert.match(adminApp, /CAPABILITY FLAGS/);
+  assert.match(adminApp, /Maker-checker approval/);
+  assert.match(adminData, /fractionalOrders/);
+  assert.match(adminData, /Fayda eKYC/);
+  assert.match(adminData, /"ABAYB"/);
+  assert.match(adminStyles, /--admin-aqua-400: #35e7d9/);
   assert.match(layout, /FrankBroker OS/);
   assert.match(layout, /og\.png/);
   assert.match(styles, /--aqua:/);
