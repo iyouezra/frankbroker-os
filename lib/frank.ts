@@ -49,9 +49,22 @@ export const workflowPermissions: Record<Role, string[]> = {
   super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report"],
 };
 
+/**
+ * Broker commission rate applied to gross consideration. Shared by the
+ * display-only {@link calculateOrderAmounts} here and the authoritative
+ * Decimal `computeAmounts` in `lib/money.ts` so estimates never drift from
+ * what is stored. TODO(Tier 2): move to a configurable per-broker FeeSchedule.
+ */
+export const FEE_RATE = 0.005;
+
+/**
+ * Display-only estimate used by the client UI. Uses JS numbers and is safe to
+ * import in the browser. The server recomputes the authoritative figures with
+ * Decimal math (see `lib/money.ts`) before anything is stored.
+ */
 export function calculateOrderAmounts(side: "buy" | "sell", quantity: number, price: number) {
   const gross = quantity * price;
-  const fees = Math.round(gross * 0.005 * 100) / 100;
+  const fees = Math.round(gross * FEE_RATE * 100) / 100;
   const net = side === "buy" ? gross + fees : gross - fees;
   return { gross, fees, net };
 }

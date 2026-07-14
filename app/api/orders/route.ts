@@ -1,6 +1,6 @@
-import { calculateOrderAmounts } from "../../../lib/frank";
 import { prisma } from "../../../lib/prisma";
 import { requirePermission } from "../../../lib/server-auth";
+import { computeAmounts, D, toNum } from "../../../lib/money";
 
 export const runtime = "nodejs";
 
@@ -31,12 +31,12 @@ export async function GET() {
         instrumentId: order.instrumentId,
         symbol: order.instrument.symbol,
         side: order.side,
-        quantity: order.quantity,
-        price: order.price,
+        quantity: toNum(order.quantity),
+        price: toNum(order.price),
         orderType: order.orderType,
-        estimatedGross: order.estimatedGross,
-        estimatedFees: order.estimatedFees,
-        estimatedNet: order.estimatedNet,
+        estimatedGross: toNum(order.estimatedGross),
+        estimatedFees: toNum(order.estimatedFees),
+        estimatedNet: toNum(order.estimatedNet),
         status: order.status,
         source: order.source,
         riskFlag: order.riskFlag,
@@ -61,9 +61,9 @@ export async function POST(request: Request) {
       notes?: string;
     };
 
-    const quantity = Number(payload.quantity);
-    const price = Number(payload.price);
-    if (!payload.accountId || !payload.instrumentId || !payload.side || !quantity || !price) {
+    const quantityInput = Number(payload.quantity);
+    const priceInput = Number(payload.price);
+    if (!payload.accountId || !payload.instrumentId || !payload.side || !quantityInput || !priceInput) {
       return Response.json(
         { error: "Account, instrument, side, quantity, and price are required." },
         { status: 400 },
@@ -85,24 +85,26 @@ export async function POST(request: Request) {
       return Response.json({ error: "The selected client account or instrument does not exist." }, { status: 404 });
     }
 
+    const quantity = D(quantityInput);
+    const price = D(priceInput);
     const holding = account.holdings[0];
-    const amounts = calculateOrderAmounts(payload.side, quantity, price);
+    const amounts = computeAmounts(payload.side, quantity, price);
     const checks = [
       { code: "CLIENT_EXISTS", label: "Client exists", passed: Boolean(account.clientId), message: "Client profile found" },
       { code: "KYC_APPROVED", label: "KYC approved", passed: account.client.kycStatus === "approved", message: account.client.kycStatus === "approved" ? "KYC is current" : "KYC approval is required" },
       { code: "ACCOUNT_ACTIVE", label: "Account active", passed: account.status === "active" && account.client.status === "active", message: account.status === "active" ? "Trading account is active" : "Trading account is not active" },
       { code: "INSTRUMENT_TRADABLE", label: "Instrument tradable", passed: instrument.tradingStatus === "tradable", message: instrument.tradingStatus === "tradable" ? "Instrument is open for manual trading" : "Instrument is not tradable" },
-      { code: "QUANTITY_VALID", label: "Quantity valid", passed: quantity > 0 && quantity % instrument.lotSize === 0, message: `Must be a positive multiple of ${instrument.lotSize}` },
-      { code: "PRICE_VALID", label: "Price valid", passed: price > 0 && Math.abs(price / instrument.tickSize - Math.round(price / instrument.tickSize)) < 0.000001, message: `Must align to the ${instrument.tickSize} tick size` },
+      { code: "QUANTITY_VALID", label: "Quantity valid", passed: quantity.gt(0) && quantity.mod(instrument.lotSize).isZero(), message: `Must be a positive multiple of ${instrument.lotSize}` },
+      { code: "PRICE_VALID", label: "Price valid", passed: price.gt(0) && price.div(instrument.tickSize).isInteger(), message: `Must align to the ${instrument.tickSize.toString()} tick size` },
       payload.side === "buy"
-        ? { code: "SUFFICIENT_CASH", label: "Sufficient available cash", passed: account.availableCash >= amounts.net, message: `${account.availableCash.toLocaleString()} ETB available including estimated fees` }
-        : { code: "SUFFICIENT_HOLDINGS", label: "Sufficient available holdings", passed: Boolean(holding && holding.availableQuantity >= quantity), message: `${holding?.availableQuantity ?? 0} units available and unblocked` },
+        ? { code: "SUFFICIENT_CASH", label: "Sufficient available cash", passed: account.availableCash.gte(amounts.net), message: `${toNum(account.availableCash).toLocaleString()} ETB available including estimated fees` }
+        : { code: "SUFFICIENT_HOLDINGS", label: "Sufficient available holdings", passed: Boolean(holding && holding.availableQuantity.gte(quantity)), message: `${toNum(holding?.availableQuantity).toLocaleString()} units available and unblocked` },
     ];
 
     const valid = checks.every((check) => check.passed);
     const id = `ORD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const now = new Date();
-    const riskFlag = amounts.net >= 2_000_000 ? "review" : "none";
+    const riskFlag = amounts.net.gte(2_000_000) ? "review" : "none";
     const status = valid ? "pending_broker_review" : "validation_failed";
 
     await prisma.$transaction(async (tx) => {
@@ -134,6 +136,15 @@ export async function POST(request: Request) {
               message: check.message,
             })),
           },
+          events: {
+            create: {
+              id: crypto.randomUUID(),
+              toStatus: status,
+              actorId: actor.id,
+              reason: valid ? "Pre-trade validation passed" : "Pre-trade validation failed",
+              detail: JSON.stringify({ checks: checks.map((c) => ({ code: c.code, passed: c.passed })) }),
+            },
+          },
         },
       });
       await tx.auditLog.create({
@@ -144,8 +155,8 @@ export async function POST(request: Request) {
           action: "ORDER_CREATED",
           entityType: "order",
           entityId: id,
-          summary: `${payload.side!.toUpperCase()} order created for ${account.client.fullName}: ${quantity} ${instrument.symbol} at ${price} ETB`,
-          newValue: JSON.stringify({ status, riskFlag, ...amounts }),
+          summary: `${payload.side!.toUpperCase()} order created for ${account.client.fullName}: ${toNum(quantity)} ${instrument.symbol} at ${toNum(price)} ETB`,
+          newValue: JSON.stringify({ status, riskFlag, gross: toNum(amounts.gross), fees: toNum(amounts.fees), net: toNum(amounts.net) }),
         },
       });
     });
@@ -161,12 +172,12 @@ export async function POST(request: Request) {
           instrumentId: payload.instrumentId,
           symbol: instrument.symbol,
           side: payload.side,
-          quantity,
-          price,
+          quantity: toNum(quantity),
+          price: toNum(price),
           orderType: payload.orderType ?? "limit",
-          estimatedGross: amounts.gross,
-          estimatedFees: amounts.fees,
-          estimatedNet: amounts.net,
+          estimatedGross: toNum(amounts.gross),
+          estimatedFees: toNum(amounts.fees),
+          estimatedNet: toNum(amounts.net),
           status,
           source: "manual",
           riskFlag,
