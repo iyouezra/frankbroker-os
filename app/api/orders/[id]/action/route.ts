@@ -67,9 +67,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (order.status !== "pending_broker_review") {
         return Response.json({ error: "Only orders pending review can be approved." }, { status: 409 });
       }
-      const creatorId = order.events.find((event) => event.fromStatus === null)?.actorId;
-      if (creatorId && creatorId === actor.id) {
-        return Response.json({ error: "Four-eyes control: the order creator cannot approve this order. Switch to Compliance or another authorized approver." }, { status: 409 });
+      // Segregation of duties (BRK-010 / SECUR-006): the order creator may not
+      // approve their own order, but only when the tenant has maker-checker
+      // enabled and the order value meets the configured approval threshold.
+      // Defaults (no settings) preserve strict four-eyes on every order.
+      const settings = await prisma.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } });
+      const makerChecker = settings?.makerChecker ?? true;
+      const approvalThreshold = settings?.approvalThreshold ?? D(0);
+      if (makerChecker && order.estimatedNet.gte(approvalThreshold)) {
+        const creatorId = order.events.find((event) => event.fromStatus === null)?.actorId;
+        if (creatorId && creatorId === actor.id) {
+          return Response.json({ error: `Four-eyes control: orders at or above ${toNum(approvalThreshold).toLocaleString()} ETB require a second approver. The order creator cannot approve this one — switch to Compliance or another authorized approver.` }, { status: 409 });
+        }
       }
 
       if (order.side === "buy") {

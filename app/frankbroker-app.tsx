@@ -134,6 +134,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [newOrder, setNewOrder] = useState({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy" as "buy" | "sell", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "" });
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
+  const [controls, setControls] = useState<{ makerChecker: boolean; approvalThreshold: number } | null>(null);
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
 
   useEffect(() => {
@@ -165,12 +166,14 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     void Promise.all([
       fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
-    ]).then(([clientResult, reconResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }]) => {
+      fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
+    ]).then(([clientResult, reconResult, tenantResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, { tenant?: { controls?: { makerChecker: boolean; approvalThreshold: number } } }]) => {
       if (clientResult.clients?.length) {
         setClients(clientResult.clients);
         setSelectedClientId((current) => clientResult.clients!.some((client) => client.id === current) ? current : clientResult.clients![0].id);
       }
       if (reconResult.batches?.[0]) setReconBatch(reconResult.batches[0]);
+      if (tenantResult.tenant?.controls) setControls({ makerChecker: tenantResult.tenant.controls.makerChecker, approvalThreshold: tenantResult.tenant.controls.approvalThreshold });
     }).catch(() => {
       // The synthetic fallback keeps the market-validation demo usable offline.
     });
@@ -290,9 +293,17 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     const price = Number(newOrder.price);
     setBusyAction("create");
     try {
-      const result = await apiRequest<{ order: DemoOrder }>("/api/orders", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ ...newOrder, quantity, price }) });
+      const result = await apiRequest<{ order: DemoOrder; checks?: { code: string; label: string; passed: boolean; message: string }[] }>("/api/orders", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ ...newOrder, quantity, price }) });
+      // Reflect the server's authoritative pre-trade checks (incl. daily limit).
+      if (result.checks) setChecks(result.checks);
+      const failed = result.checks?.filter((item) => !item.passed) ?? [];
       const created = { ...result.order, time: new Date(result.order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), trader: "Unassigned" };
       setOrders((current) => [created, ...current]);
+      if (result.order.status === "validation_failed") {
+        setView("orders");
+        notify(failed[0] ? `${created.id} held — ${failed[0].message}` : `${created.id} held: pre-trade checks failed.`);
+        return;
+      }
       setDrawer(null);
       setChecks(null);
       setView("orders");
@@ -441,7 +452,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
           <button className="drawer-close" onClick={() => setDrawer(null)} aria-label="Close">×</button>
           {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={clients} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
-          {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
+          {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
           {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
           {drawer === "contract" && <ContractNote order={selected} onPrint={() => window.print()} />}
         </aside>
@@ -565,12 +576,16 @@ function NewOrderForm({ value, setValue, clients, checks, busy, onValidate, onSu
   return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL ORDER ENTRY</span><h2>Create client order</h2><p>Capture the instruction, run server-side controls, then submit for approval.</p></div><div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div><div className="form-section"><h3>Client instruction</h3><label>Client account<select value={value.accountId} onChange={(event) => { setValue({ ...value, accountId: event.target.value }); }}>{clients.map((item) => <option key={item.id} value={item.accountId}>{item.code} · {item.name}</option>)}</select><small>{etb(client.availableCash)} available cash · KYC {client.kyc.replaceAll("_", " ")}</small></label><label>Instrument<select value={value.instrumentId} onChange={(event) => { const next = demoInstruments.find((item) => item.id === event.target.value)!; setValue({ ...value, instrumentId: event.target.value, price: String(next.price) }); }} >{demoInstruments.map((item) => <option key={item.id} value={item.id}>{item.symbol} · {item.name}</option>)}</select><small>{instrument.asset} · {instrument.status} · Lot {instrument.lot} · {instrument.cycle}</small></label><div className="segmented"><button type="button" className={value.side === "buy" ? "active buy" : ""} onClick={() => setValue({ ...value, side: "buy" })}>BUY</button><button type="button" className={value.side === "sell" ? "active sell" : ""} onClick={() => setValue({ ...value, side: "sell" })}>SELL</button></div><div className="field-row"><label>Quantity<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /></label><label>Limit price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><div className="field-row"><label>Order type<select value={value.orderType} onChange={(event) => setValue({ ...value, orderType: event.target.value })}><option>Limit</option><option>Market</option></select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div><label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Estimated fees (0.50%)</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div><div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, lot, and tick-size controls before submission.</p>}</div><div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : "Submit for review"} <span>→</span></button></div></form>;
 }
 
-function OrderDetail({ order, role, busy, onApprove, onReject, onCancel, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; onApprove: () => void; onReject: () => void; onCancel: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
+function OrderDetail({ order, role, busy, controls, onApprove, onReject, onCancel, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; controls: { makerChecker: boolean; approvalThreshold: number } | null; onApprove: () => void; onReject: () => void; onCancel: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
   const remaining = order.remainingQuantity ?? order.quantity;
   const events = order.events?.length ? order.events : [
     { id: `${order.id}-created`, fromStatus: null, toStatus: "submitted", reason: "Order created and pre-trade controls recorded", actor: "Mekdes Tadesse", createdAt: order.createdAt },
     { id: `${order.id}-current`, fromStatus: null, toStatus: order.status, reason: statusLabels[order.status], actor: order.trader, createdAt: order.createdAt },
   ];
+  const maker = events.find((event) => event.fromStatus === null)?.actor;
+  // Mirror the server rule: four-eyes applies only when the tenant has maker-checker
+  // on and the order value meets the approval threshold. Default strict when unknown.
+  const requiresFourEyes = controls ? controls.makerChecker && order.estimatedNet >= controls.approvalThreshold : true;
   return <div className="drawer-content">
     <div className="drawer-title"><span className="eyebrow">ORDER CONTROL</span><h2>{order.id}</h2><div className="title-badges"><StatusBadge status={order.status} /><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></div></div>
     <div className="order-hero"><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · {order.accountId.replace("acc_", "TRD-").toUpperCase()}</span></div><strong>{fmt.format(order.quantity)} <small>{order.symbol}</small></strong><p>@ {fmt.format(order.price)} ETB · {order.orderType}</p></div>
@@ -578,7 +593,8 @@ function OrderDetail({ order, role, busy, onApprove, onReject, onCancel, onTrade
     <dl className="detail-grid"><div><dt>Gross consideration</dt><dd>{etb(order.estimatedGross)}</dd></div><div><dt>Estimated fees</dt><dd>{etb(order.estimatedFees)}</dd></div><div className="total"><dt>Estimated net</dt><dd>{etb(order.estimatedNet)}</dd></div><div><dt>Source</dt><dd>{order.source}</dd></div><div><dt>Assigned trader</dt><dd>{order.trader}</dd></div><div><dt>Risk flag</dt><dd>{order.riskFlag === "none" ? "No flags" : "Enhanced review"}</dd></div></dl>
     <div className="workflow-card"><h3>Workflow history</h3><ol>{events.map((event, index) => <li className={index === events.length - 1 ? "current" : "done"} key={event.id}><i>{index === events.length - 1 ? index + 1 : "✓"}</i><div><b>{statusLabels[event.toStatus as OrderStatus] ?? event.toStatus.replaceAll("_", " ")}</b><small>{new Date(event.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {event.actor}{event.reason ? ` · ${event.reason}` : ""}</small></div></li>)}</ol></div>
     {role === "management" && <div className="permission-note">Read-only management mode: workflow actions are disabled.</div>}
-    {order.status === "pending_broker_review" && <div className="permission-note">Four-eyes control is active: the order creator must switch to a different authorized approver.</div>}
+    {order.status === "pending_broker_review" && requiresFourEyes && <div className="permission-note">{controls ? `Four-eyes control: at or above ${etb(controls.approvalThreshold)} the maker${maker ? ` (${maker})` : ""} cannot approve this order — a second authorized approver is required.` : `Four-eyes control: the order maker${maker ? ` (${maker})` : ""} cannot approve this order; a second authorized approver is required.`}</div>}
+    {order.status === "pending_broker_review" && !requiresFourEyes && <div className="permission-note" style={{ background: "#e8f8f2", borderColor: "#bfe6d5", color: "#17765b" }}>Below the four-eyes threshold — a single authorized approver may release this order.</div>}
     <div className="drawer-actions stacked">
       {order.status === "pending_broker_review" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel</button><button className="btn danger" onClick={onReject} disabled={Boolean(busy) || !hasPermission(role, "reject")}>Reject</button><button className="btn primary" onClick={onApprove} disabled={Boolean(busy) || !hasPermission(role, "approve")}>{busy === "approve" ? "Approving…" : "Approve & block assets"}</button></>}
       {order.status === "approved" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel & release</button><button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !hasPermission(role, "trade")}>Capture execution <span>→</span></button></>}

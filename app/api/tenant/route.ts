@@ -30,6 +30,9 @@ export async function GET(request: Request) {
           minimumFee: toNum(broker.settings.minimumFee),
           allowedOrderTypes: broker.settings.allowedOrderTypes,
           settlementCycle: broker.settings.settlementCycle,
+          makerChecker: broker.settings.makerChecker,
+          approvalThreshold: toNum(broker.settings.approvalThreshold),
+          clientDailyLimit: toNum(broker.settings.clientDailyLimit),
         } : null,
       },
       instruments: broker.instrumentAccess.map(({ instrument }) => ({

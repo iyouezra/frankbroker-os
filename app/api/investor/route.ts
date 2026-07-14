@@ -129,6 +129,10 @@ export async function POST(request: Request) {
       const feeRate = settings ? settings.brokerageFeePct.div(100) : undefined;
       const amounts = computeAmounts(side, quantity, price, feeRate, settings?.minimumFee);
       const holding = account.holdings.find((item) => item.instrumentId === instrument.id);
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const dayAgg = await prisma.order.aggregate({ where: { accountId: account.id, submittedAt: { gte: startOfDay }, status: { notIn: ["rejected", "validation_failed", "cancelled"] } }, _sum: { estimatedGross: true } });
+      const projectedToday = (dayAgg._sum.estimatedGross ?? D(0)).plus(amounts.gross);
       const checks = [
         { code: "KYC_APPROVED", passed: client.kycStatus === "approved", message: "Investor KYC must be approved" },
         { code: "ACCOUNT_ACTIVE", passed: account.status === "active" && client.status === "active", message: "Investor account must be active" },
@@ -138,6 +142,7 @@ export async function POST(request: Request) {
         side === "buy"
           ? { code: "SUFFICIENT_CASH", passed: account.availableCash.gte(amounts.net), message: "Sufficient available cash is required" }
           : { code: "SUFFICIENT_HOLDINGS", passed: Boolean(holding?.availableQuantity.gte(quantity)), message: "Sufficient available holdings are required" },
+        { code: "DAILY_LIMIT", passed: !settings?.clientDailyLimit || projectedToday.lte(settings.clientDailyLimit), message: settings?.clientDailyLimit ? `Within the ${toNum(settings.clientDailyLimit).toLocaleString()} ETB daily limit` : "No daily limit configured" },
       ];
       const valid = checks.every((check) => check.passed);
       const id = `ORD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
