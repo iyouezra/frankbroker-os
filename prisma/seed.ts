@@ -12,7 +12,11 @@ const dateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
 async function main() {
   await prisma.broker.createMany({
-    data: [{ id: "brk_abyssinia", name: "Abyssinia Securities S.C.", licenseNumber: "ESCA-BR-004", status: "active", baseCurrency: "ETB" }],
+    data: [
+      { id: "brk_abyssinia", name: "Abyssinia Securities S.C.", licenseNumber: "ESCA-BR-004", status: "active", baseCurrency: "ETB" },
+      { id: "brk_blue_nile", name: "Blue Nile Capital PLC", licenseNumber: "ESCA-BR-011", status: "pilot", baseCurrency: "ETB" },
+      { id: "brk_sheba", name: "Sheba Investment Services S.C.", licenseNumber: "PILOT-023", status: "suspended", baseCurrency: "ETB" },
+    ],
     skipDuplicates: true,
   });
 
@@ -22,6 +26,9 @@ async function main() {
       { id: "usr_trader", brokerId: "brk_abyssinia", email: "dawit@frankbroker.et", fullName: "Dawit Alemu", role: "trader", status: "active" },
       { id: "usr_compliance", brokerId: "brk_abyssinia", email: "liya@frankbroker.et", fullName: "Liya Girma", role: "compliance", status: "active" },
       { id: "usr_settlement", brokerId: "brk_abyssinia", email: "rahel@frankbroker.et", fullName: "Rahel Getachew", role: "settlement", status: "active" },
+      { id: "usr_platform_admin", brokerId: null, email: "platform.admin@frankmoney.et", fullName: "Fikru Yilma", role: "super_admin", status: "active", mfaEnabled: true },
+      { id: "usr_blue_admin", brokerId: "brk_blue_nile", email: "samuel@bluenile.example", fullName: "Samuel Kebede", role: "broker_admin", status: "active", mfaEnabled: true },
+      { id: "usr_sheba_admin", brokerId: "brk_sheba", email: "abel@sheba.example", fullName: "Abel Yohannes", role: "broker_admin", status: "suspended", mfaEnabled: true },
     ],
     skipDuplicates: true,
   });
@@ -32,6 +39,7 @@ async function main() {
       { id: "cli_wegagen", brokerId: "brk_abyssinia", clientCode: "CL-10008", fullName: "Wegagen Pension Fund", clientType: "institution", phone: "+251115000008", email: "ops@wegagen-pension.example", kycStatus: "approved", riskRating: "enhanced", status: "active" },
       { id: "cli_selam", brokerId: "brk_abyssinia", clientCode: "CL-10052", fullName: "Selamawit Tesfaye", clientType: "individual", phone: "+251911000052", email: "selam@example.et", kycStatus: "review_due", riskRating: "review", status: "restricted" },
       { id: "cli_blue", brokerId: "brk_abyssinia", clientCode: "CL-10017", fullName: "Blue Nile Trading PLC", clientType: "corporate", phone: "+251115000017", email: "finance@bluenile.example", kycStatus: "approved", riskRating: "standard", status: "active" },
+      { id: "cli_investor_demo", brokerId: "brk_abyssinia", clientCode: "CL-INV-001", fullName: "Selam Mekonnen", clientType: "individual", phone: "+251911000041", email: "selam.mekonnen@example.et", identityReference: "demo_seed_reference", faydaLast4: "9012", taxIdLast4: "4908", kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date("2026-07-14T08:00:00Z") },
     ],
     skipDuplicates: true,
   });
@@ -42,6 +50,7 @@ async function main() {
       { id: "acc_wegagen", clientId: "cli_wegagen", accountNumber: "TRD-10008-01", totalCash: 12_400_000, availableCash: 10_172_500, blockedCash: 2_227_500, unsettledCash: 0, status: "active" },
       { id: "acc_selam", clientId: "cli_selam", accountNumber: "TRD-10052-01", totalCash: 428_900, availableCash: 428_900, blockedCash: 0, unsettledCash: 0, status: "restricted" },
       { id: "acc_blue", clientId: "cli_blue", accountNumber: "TRD-10017-01", totalCash: 4_705_300, availableCash: 4_120_300, blockedCash: 585_000, unsettledCash: 0, status: "active" },
+      { id: "acc_investor_demo", clientId: "cli_investor_demo", accountNumber: "INV-00001-01", totalCash: 75_000, availableCash: 75_000, blockedCash: 0, unsettledCash: 0, status: "active" },
     ],
     skipDuplicates: true,
   });
@@ -60,12 +69,49 @@ async function main() {
     skipDuplicates: true,
   });
 
+  const tenantSettings = [
+    { id: "set_brk_abyssinia", brokerId: "brk_abyssinia", tradingName: "Abyssinia Securities", plan: "Enterprise", domain: "invest.abyssinia.et", supportEmail: "support@abyssinia.example", primaryColor: "#0C8189", welcomeMessage: "Invest in Ethiopia’s growth with clear guidance at every step.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, roboPlans: true, bonds: true, fractionalOrders: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"] },
+    { id: "set_brk_blue_nile", brokerId: "brk_blue_nile", tradingName: "Blue Nile Capital", plan: "Growth", domain: "invest.bluenile.example", supportEmail: "care@bluenile.example", primaryColor: "#2277C8", welcomeMessage: "A simpler way to own ESX companies and government bonds.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, roboPlans: false, bonds: true, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"] },
+    { id: "set_brk_sheba", brokerId: "brk_sheba", tradingName: "Sheba Invest", plan: "Pilot", domain: "sheba.frankbroker.demo", supportEmail: "operations@sheba.example", primaryColor: "#0E9F5B", welcomeMessage: "Start small, understand every step, and build from there.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: false, selfDirected: true, roboPlans: false, bonds: false, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"] },
+  ];
+  for (const settings of tenantSettings) {
+    await prisma.brokerSettings.upsert({ where: { brokerId: settings.brokerId }, update: settings, create: settings });
+  }
+
+  const tenantInstrumentIds: Record<string, string[]> = {
+    brk_abyssinia: ["ins_tele", "ins_awab", "ins_wgbx", "ins_gdab", "ins_abayb", "ins_goeb_2029", "ins_goeb_2031"],
+    brk_blue_nile: ["ins_tele", "ins_awab", "ins_wgbx", "ins_gdab", "ins_goeb_2029"],
+    brk_sheba: ["ins_tele", "ins_wgbx"],
+  };
+  await prisma.brokerInstrument.createMany({
+    data: Object.entries(tenantInstrumentIds).flatMap(([brokerId, instrumentIds]) => instrumentIds.map((instrumentId) => ({ id: `bri_${brokerId}_${instrumentId}`, brokerId, instrumentId, enabled: true }))),
+    skipDuplicates: true,
+  });
+
+  const integrationDefinitions = [
+    ["fayda", "Fayda eKYC", "Identity and consent verification"],
+    ["esx", "ESX order gateway", "Order routing and execution reports"],
+    ["csd", "CSD settlement", "Holdings and settlement instructions"],
+    ["bank", "Cash settlement bank", "Funding and cash confirmations"],
+    ["notify", "SMS and email", "Investor alerts and confirmations"],
+  ];
+  await prisma.tenantIntegration.createMany({
+    data: Object.keys(tenantInstrumentIds).flatMap((brokerId) => integrationDefinitions.map(([key, name, description]) => ({
+      id: `${brokerId}-${key}`, brokerId, key, name, description,
+      status: brokerId === "brk_abyssinia" && ["fayda", "bank"].includes(key) ? "sandbox" : key === "notify" && brokerId !== "brk_sheba" ? "connected" : "not_connected",
+      mode: brokerId === "brk_abyssinia" && ["fayda", "bank"].includes(key) ? "sandbox" : key === "notify" && brokerId !== "brk_sheba" ? "live" : "manual",
+    }))),
+    skipDuplicates: true,
+  });
+
   await prisma.holding.createMany({
     data: [
       { id: "hld_meron_wgbx", accountId: "acc_meron", instrumentId: "ins_wgbx", totalQuantity: 3_200, availableQuantity: 2_000, blockedQuantity: 1_200, averageCost: 1_685 },
       { id: "hld_meron_gb2031", accountId: "acc_meron", instrumentId: "ins_goeb_2031", totalQuantity: 3_000, availableQuantity: 3_000, averageCost: 100.6 },
       { id: "hld_blue_wgbx", accountId: "acc_blue", instrumentId: "ins_wgbx", totalQuantity: 8_200, availableQuantity: 5_200, blockedQuantity: 3_000, averageCost: 1_710 },
       { id: "hld_wegagen_tele", accountId: "acc_wegagen", instrumentId: "ins_tele", totalQuantity: 18_000, availableQuantity: 18_000, averageCost: 294.1 },
+      { id: "hld_investor_tele", accountId: "acc_investor_demo", instrumentId: "ins_tele", totalQuantity: 120, availableQuantity: 120, averageCost: 294.1 },
+      { id: "hld_investor_wgbx", accountId: "acc_investor_demo", instrumentId: "ins_wgbx", totalQuantity: 15, availableQuantity: 15, averageCost: 1_685 },
     ],
     skipDuplicates: true,
   });

@@ -8,8 +8,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const actor = requirePermission(request, "adjust");
     const { id } = await context.params;
     const payload = (await request.json()) as { notes?: string };
-    const exception = await prisma.reconciliationException.findUnique({ where: { id } });
+    const exception = await prisma.reconciliationException.findUnique({ where: { id }, include: { batch: true } });
     if (!exception) return Response.json({ error: "Reconciliation exception not found." }, { status: 404 });
+    if (exception.batch.brokerId !== actor.brokerId) return Response.json({ error: "Reconciliation exception not found for this tenant." }, { status: 404 });
     if (exception.status === "resolved") return Response.json({ ok: true, status: "resolved" });
 
     await prisma.$transaction([

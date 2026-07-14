@@ -20,6 +20,9 @@ model Broker {
   orders                Order[]
   reconciliationBatches ReconciliationBatch[]
   auditLogs             AuditLog[]
+  settings              BrokerSettings?
+  instrumentAccess      BrokerInstrument[]
+  integrations          TenantIntegration[]
 
   @@map("brokers")
 }
@@ -32,6 +35,7 @@ model User {
   role                          String
   status                        String                    @default("active")
   lastLoginAt                   DateTime?                 @map("last_login_at")
+  mfaEnabled                    Boolean                   @default(false) @map("mfa_enabled")
   createdAt                     DateTime                  @default(now()) @map("created_at")
   updatedAt                     DateTime                  @updatedAt @map("updated_at")
   broker                        Broker?                   @relation(fields: [brokerId], references: [id], onDelete: SetNull)
@@ -51,21 +55,25 @@ model User {
 }
 
 model Client {
-  id         String    @id
-  brokerId   String    @map("broker_id")
-  clientCode String    @unique @map("client_code")
-  fullName   String    @map("full_name")
-  clientType String    @default("individual") @map("client_type")
-  phone      String?
-  email      String?
-  taxId      String?   @map("tax_id")
-  kycStatus  String    @default("pending") @map("kyc_status")
-  riskRating String    @default("standard") @map("risk_rating")
-  status     String    @default("active")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  broker     Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  accounts   Account[]
+  id                String    @id
+  brokerId          String    @map("broker_id")
+  clientCode        String    @unique @map("client_code")
+  fullName          String    @map("full_name")
+  clientType        String    @default("individual") @map("client_type")
+  phone             String?
+  email             String?
+  taxId             String?   @map("tax_id")
+  identityReference String?   @map("identity_reference")
+  faydaLast4        String?   @map("fayda_last4")
+  taxIdLast4        String?   @map("tax_id_last4")
+  kycConsentAt      DateTime? @map("kyc_consent_at")
+  kycStatus         String    @default("pending") @map("kyc_status")
+  riskRating        String    @default("standard") @map("risk_rating")
+  status            String    @default("active")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  broker            Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  accounts          Account[]
 
   @@index([brokerId])
   @@map("clients")
@@ -115,8 +123,68 @@ model Instrument {
   holdings                Holding[]
   orders                  Order[]
   securitiesLedgerEntries SecuritiesLedgerEntry[]
+  brokerAccess            BrokerInstrument[]
 
   @@map("instruments")
+}
+
+model BrokerSettings {
+  id                String   @id
+  brokerId          String   @unique @map("broker_id")
+  tradingName       String   @map("trading_name")
+  plan              String   @default("Pilot")
+  domain            String?
+  supportEmail      String?  @map("support_email")
+  primaryColor      String   @default("#0C8189") @map("primary_color")
+  welcomeMessage    String?  @map("welcome_message")
+  timezone          String   @default("Africa/Addis_Ababa")
+  businessDate      DateTime @map("business_date") @db.Date
+  features          Json
+  makerChecker      Boolean  @default(true) @map("maker_checker")
+  approvalThreshold Decimal  @default(250000) @map("approval_threshold") @db.Decimal(20, 4)
+  clientDailyLimit  Decimal  @default(2500000) @map("client_daily_limit") @db.Decimal(20, 4)
+  brokerageFeePct   Decimal  @default(0.5) @map("brokerage_fee_pct") @db.Decimal(8, 4)
+  minimumFee        Decimal  @default(25) @map("minimum_fee") @db.Decimal(20, 4)
+  settlementCycle   String   @default("T+2") @map("settlement_cycle")
+  allowedOrderTypes Json     @map("allowed_order_types")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  broker            Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+
+  @@map("broker_settings")
+}
+
+model BrokerInstrument {
+  id           String     @id
+  brokerId     String     @map("broker_id")
+  instrumentId String     @map("instrument_id")
+  enabled      Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  broker       Broker     @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@unique([brokerId, instrumentId])
+  @@index([instrumentId])
+  @@map("broker_instruments")
+}
+
+model TenantIntegration {
+  id          String   @id
+  brokerId    String   @map("broker_id")
+  key         String
+  name        String
+  description String
+  status      String   @default("not_connected")
+  mode        String   @default("manual")
+  settings    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  broker      Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+
+  @@unique([brokerId, key])
+  @@index([brokerId])
+  @@map("tenant_integrations")
 }
 
 model Holding {

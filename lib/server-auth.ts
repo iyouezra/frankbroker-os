@@ -15,8 +15,20 @@ const demoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
   compliance: { id: "usr_compliance", email: "liya@frankbroker.et" },
   settlement: { id: "usr_settlement", email: "rahel@frankbroker.et" },
   management: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et" },
-  super_admin: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et" },
+  super_admin: { id: "usr_platform_admin", email: "platform.admin@frankmoney.et" },
 };
+
+const tenantAliases: Record<string, string> = {
+  abyssinia: "brk_abyssinia",
+  "blue-nile": "brk_blue_nile",
+  sheba: "brk_sheba",
+};
+
+export function resolveBrokerId(request: Request) {
+  const requested = request.headers.get("x-frank-tenant-id")?.trim();
+  if (!requested) return "brk_abyssinia";
+  return tenantAliases[requested] ?? requested;
+}
 
 // This role header supports the MVP role selector. Replace it with a verified
 // server-side session before allowing real users or live brokerage data.
@@ -27,7 +39,7 @@ export function resolveActor(request: Request): Actor {
   return {
     ...demoActors[role],
     role,
-    brokerId: "brk_abyssinia",
+    brokerId: resolveBrokerId(request),
   };
 }
 
@@ -37,4 +49,19 @@ export function requirePermission(request: Request, permission: string) {
     throw new Response("This role is not permitted to perform that action.", { status: 403 });
   }
   return actor;
+}
+
+export function requirePlatformAdmin(request: Request) {
+  const actor = resolveActor(request);
+  if (actor.role !== "super_admin") {
+    throw new Response("Platform administrator access is required.", { status: 403 });
+  }
+  return actor;
+}
+
+export function resolveInvestorContext(request: Request) {
+  return {
+    brokerId: resolveBrokerId(request),
+    clientId: request.headers.get("x-frank-client-id")?.trim() || "cli_investor_demo",
+  };
 }

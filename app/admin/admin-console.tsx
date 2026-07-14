@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   adminAudit,
   formatAdminEtb,
@@ -10,6 +10,7 @@ import {
   initialIntegrations,
   initialTenants,
   type AdminInstrument,
+  type AdminAuditEvent,
   type AdminUser,
   type FeatureKey,
   type TenantConfig,
@@ -66,12 +67,12 @@ function Metric({ label, value, detail, tone = "teal" }: { label: string; value:
   return <Card className={`${styles.metric} ${styles[`metric-${tone}`]}`}><span>{label}<i /></span><strong>{value}</strong><small>{detail}</small></Card>;
 }
 
-function Overview({ tenants, onTenant, onConfigure }: { tenants: TenantConfig[]; onTenant: (id: string) => void; onConfigure: () => void }) {
+function Overview({ tenants, activity, onTenant, onConfigure }: { tenants: TenantConfig[]; activity: AdminAuditEvent[]; onTenant: (id: string) => void; onConfigure: () => void }) {
   const active = tenants.filter((tenant) => tenant.status === "active").length;
   const clients = tenants.reduce((sum, tenant) => sum + tenant.clients, 0);
   const assets = tenants.reduce((sum, tenant) => sum + tenant.assetsUnderAdministration, 0);
   const orders = tenants.reduce((sum, tenant) => sum + tenant.ordersToday, 0);
-  return <><PageHeader eyebrow="PLATFORM CONTROL" title="Everything running on FrankBroker" description="See every tenant, surface issues early, and move into configuration without leaving the control plane." actions={<Button onClick={onConfigure}>Configure a tenant</Button>} /><div className={styles.demoBanner}><b>DEMO MODE</b><span>Changes are saved in this browser session only. Tenant configuration will become persistent when the shared database is connected.</span></div><div className={styles.metricGrid}><Metric label="Active tenants" value={`${active}`} detail={`${tenants.length} total organizations`} /><Metric label="Investor accounts" value={clients.toLocaleString()} detail="Across all tenants" tone="blue" /><Metric label="Assets administered" value={formatAdminEtb(assets)} detail="Synthetic demo balances" tone="green" /><Metric label="Orders today" value={orders.toLocaleString()} detail="Across broker portals" tone="amber" /></div><div className={styles.overviewGrid}><Card className={styles.tenantHealth}><div className={styles.cardHead}><div><span>TENANT HEALTH</span><h2>Organizations</h2></div><button onClick={onConfigure}>Manage tenants</button></div><div className={styles.tenantTable}><div className={styles.tableHead}><span>Tenant</span><span>Status</span><span>Users</span><span>Clients</span><span>Orders</span><span /></div>{tenants.map((tenant) => <button key={tenant.id} onClick={() => { onTenant(tenant.id); onConfigure(); }}><span className={styles.tenantIdentity}><i style={{ background: tenant.primaryColor }}>{tenant.initials}</i><span><b>{tenant.tradingName}</b><small>{tenant.licenseNumber}</small></span></span><Status value={tenant.status} /><span>{tenant.users}</span><span>{tenant.clients}</span><span>{tenant.ordersToday}</span><em>→</em></button>)}</div></Card><Card className={styles.recentActivity}><div className={styles.cardHead}><div><span>PLATFORM ACTIVITY</span><h2>Latest changes</h2></div></div>{adminAudit.slice(0, 4).map((event) => <div className={styles.activityRow} key={event.id}><i /><span><b>{event.action}</b><small>{event.detail}</small></span><time>{event.time}</time></div>)}</Card></div></>;
+  return <><PageHeader eyebrow="PLATFORM CONTROL" title="Everything running on FrankBroker" description="See every tenant, surface issues early, and move into configuration without leaving the control plane." actions={<Button onClick={onConfigure}>Configure a tenant</Button>} /><div className={styles.demoBanner}><b>DEMO MODE</b><span>Configuration persists to the shared database when DATABASE_URL is connected. Synthetic fallbacks keep this preview usable offline.</span></div><div className={styles.metricGrid}><Metric label="Active tenants" value={`${active}`} detail={`${tenants.length} total organizations`} /><Metric label="Investor accounts" value={clients.toLocaleString()} detail="Across all tenants" tone="blue" /><Metric label="Assets administered" value={formatAdminEtb(assets)} detail="Synthetic demo balances" tone="green" /><Metric label="Orders today" value={orders.toLocaleString()} detail="Across broker portals" tone="amber" /></div><div className={styles.overviewGrid}><Card className={styles.tenantHealth}><div className={styles.cardHead}><div><span>TENANT HEALTH</span><h2>Organizations</h2></div><button onClick={onConfigure}>Manage tenants</button></div><div className={styles.tenantTable}><div className={styles.tableHead}><span>Tenant</span><span>Status</span><span>Users</span><span>Clients</span><span>Orders</span><span /></div>{tenants.map((tenant) => <button key={tenant.id} onClick={() => { onTenant(tenant.id); onConfigure(); }}><span className={styles.tenantIdentity}><i style={{ background: tenant.primaryColor }}>{tenant.initials}</i><span><b>{tenant.tradingName}</b><small>{tenant.licenseNumber}</small></span></span><Status value={tenant.status} /><span>{tenant.users}</span><span>{tenant.clients}</span><span>{tenant.ordersToday}</span><em>→</em></button>)}</div></Card><Card className={styles.recentActivity}><div className={styles.cardHead}><div><span>PLATFORM ACTIVITY</span><h2>Latest changes</h2></div></div>{activity.slice(0, 4).map((event) => <div className={styles.activityRow} key={event.id}><i /><span><b>{event.action}</b><small>{event.detail}</small></span><time>{event.time}</time></div>)}</Card></div></>;
 }
 
 function Field({ label, value, onChange, hint, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; hint?: string; type?: "text" | "number" | "email" }) {
@@ -110,9 +111,9 @@ function Integrations({ tenant, integrations, onChange }: { tenant: TenantConfig
   return <><PageHeader eyebrow="TENANT CONNECTIONS" title="Integrations" description={`Control data exchange modes for ${tenant.tradingName}. Manual mode stays available while external connections are prepared.`} /><div className={styles.integrationGrid}>{rows.map((integration) => <Card className={styles.integrationCard} key={integration.id}><div className={styles.integrationHead}><span>{integration.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><Status value={integration.status} /></div><h2>{integration.name}</h2><p>{integration.description}</p><label><span>Operating mode</span><select value={integration.mode} onChange={(event) => { const mode = event.target.value as TenantIntegration["mode"]; onChange({ ...integration, mode, status: mode === "Live" ? "Connected" : mode === "Sandbox" ? "Sandbox" : "Not connected" }); }}><option>Manual</option><option>Sandbox</option><option>Live</option></select></label></Card>)}</div></>;
 }
 
-function Audit({ tenantId }: { tenantId: string }) {
+function Audit({ tenantId, events }: { tenantId: string; events: AdminAuditEvent[] }) {
   const [scope, setScope] = useState<"tenant" | "all">("all");
-  const rows = adminAudit.filter((event) => scope === "all" || event.tenantId === tenantId);
+  const rows = events.filter((event) => scope === "all" || event.tenantId === tenantId);
   const exportAudit = () => {
     const csv = ["time,tenant,actor,action,detail", ...rows.map((event) => [event.time, event.tenantId, event.actor, event.action, event.detail].map((value) => `"${value.replaceAll('"', '""')}"`).join(","))].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -140,13 +141,60 @@ export default function AdminConsole() {
   const [instruments, setInstruments] = useState(initialAdminInstruments);
   const [users, setUsers] = useState(initialAdminUsers);
   const [integrations, setIntegrations] = useState(initialIntegrations);
+  const [auditEvents, setAuditEvents] = useState(adminAudit);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [toast, setToast] = useState("");
   const tenant = tenants.find((item) => item.id === tenantId) ?? tenants[0];
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
   const updateTenant = (next: TenantConfig) => setTenants((current) => current.map((item) => item.id === next.id ? next : item));
-  const save = () => notify(`${tenant.tradingName} configuration saved for this demo session.`);
+  const request = async (method: "POST" | "PATCH", body: unknown) => {
+    const response = await fetch("/api/admin/configuration", {
+      method,
+      headers: { "content-type": "application/json", "x-frank-demo-role": "super_admin" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Unable to persist change");
+    return response.json();
+  };
+  const persist = (method: "POST" | "PATCH", body: unknown, message: string) => {
+    void request(method, body).then(() => notify(message)).catch(() => notify("Saved in the offline demo; connect DATABASE_URL to persist it."));
+  };
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/admin/configuration", { headers: { "x-frank-demo-role": "super_admin" }, signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data: { tenants: TenantConfig[]; instruments: AdminInstrument[]; users: AdminUser[]; integrations: TenantIntegration[]; audit: AdminAuditEvent[] }) => {
+        if (data.tenants.length) { setTenants(data.tenants); setTenantId((current) => data.tenants.some((item) => item.id === current) ? current : data.tenants[0].id); }
+        setInstruments(data.instruments); setUsers(data.users); setIntegrations(data.integrations); setAuditEvents(data.audit);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  const save = () => persist("PATCH", { entity: "tenant", id: tenant.id, data: tenant }, `${tenant.tradingName} configuration saved to the shared platform.`);
+  const toggleTenantInstrument = (instrument: AdminInstrument) => {
+    const enabled = !instrument.enabledTenantIds.includes(tenant.id);
+    setInstruments((current) => current.map((item) => item.id === instrument.id ? { ...item, enabledTenantIds: enabled ? [...item.enabledTenantIds, tenant.id] : item.enabledTenantIds.filter((id) => id !== tenant.id) } : item));
+    persist("PATCH", { entity: "instrument", id: instrument.id, tenantId: tenant.id, data: { enabled } }, `${instrument.symbol} access updated for ${tenant.tradingName}.`);
+  };
+  const toggleInstrumentStatus = (instrument: AdminInstrument) => {
+    const status = instrument.status === "Tradable" ? "Halted" : "Tradable";
+    setInstruments((current) => current.map((item) => item.id === instrument.id ? { ...item, status } : item));
+    persist("PATCH", { entity: "instrument", id: instrument.id, data: { status } }, `${instrument.symbol} is now ${status.toLowerCase()}.`);
+  };
+  const toggleUser = (user: AdminUser) => {
+    const status = user.status === "Suspended" ? "Active" : "Suspended";
+    setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status } : item));
+    persist("PATCH", { entity: "user", id: user.id, data: { status } }, `${user.name} access updated.`);
+  };
+  const changeIntegration = (integration: TenantIntegration) => {
+    setIntegrations((current) => current.map((item) => item.id === integration.id ? integration : item));
+    persist("PATCH", { entity: "integration", id: integration.id, data: { mode: integration.mode, status: integration.status } }, `${integration.name} mode saved.`);
+  };
+  const inviteUser = (user: AdminUser) => {
+    setUsers((current) => [...current, user]); setInviteOpen(false);
+    persist("POST", { entity: "user", data: user }, `Invitation recorded for ${user.email}.`);
+  };
   const enabledFeatures = useMemo(() => Object.values(tenant.features).filter(Boolean).length, [tenant.features]);
 
-  return <main className={styles.adminShell}><aside className={styles.sidebar}><div className={styles.brand}><span><Image src="/frankscore-icon.png" width={32} height={32} alt="" /></span><div><b>FrankBroker</b><small>PLATFORM ADMIN</small></div></div><div className={styles.platformBadge}><span>FC</span><div><b>Frank Core</b><small>Platform control plane</small></div></div><nav aria-label="Admin navigation">{navItems.map((item) => <button key={item.id} className={view === item.id ? styles.navActive : ""} onClick={() => setView(item.id)}><i>{item.short}</i><span>{item.label}</span>{item.id === "tenants" && <em>{tenants.length}</em>}</button>)}</nav><div className={styles.sidebarFoot}><span><i /><b>Demo environment</b></span><small>Configuration is not persisted</small></div></aside><section className={styles.workspace}><header className={styles.topbar}><div className={styles.mobileBrand}><Image src="/frankscore-icon.png" width={27} height={27} alt="" /><b>FrankBroker Admin</b></div><label className={styles.contextSelect}><small>TENANT CONTEXT</small><select value={tenantId} onChange={(event) => setTenantId(event.target.value)}>{tenants.map((item) => <option key={item.id} value={item.id}>{item.tradingName}</option>)}</select></label><span className={styles.contextMeta}><Status value={tenant.status} /><b>{enabledFeatures}/8 features</b></span><div className={styles.adminUser}><span>FY</span><div><b>Fikru Yilma</b><small>Platform administrator</small></div></div></header><div className={styles.content}>{view === "overview" ? <Overview tenants={tenants} onTenant={setTenantId} onConfigure={() => setView("tenants")} /> : view === "tenants" ? <TenantSettings tenant={tenant} tenants={tenants} tab={configTab} setTab={setConfigTab} onSelect={setTenantId} onUpdate={updateTenant} onSave={save} /> : view === "instruments" ? <Instruments tenant={tenant} instruments={instruments} onToggleTenant={(instrument) => setInstruments((current) => current.map((item) => item.id === instrument.id ? { ...item, enabledTenantIds: item.enabledTenantIds.includes(tenant.id) ? item.enabledTenantIds.filter((id) => id !== tenant.id) : [...item.enabledTenantIds, tenant.id] } : item))} onToggleStatus={(instrument) => setInstruments((current) => current.map((item) => item.id === instrument.id ? { ...item, status: item.status === "Tradable" ? "Halted" : "Tradable" } : item))} /> : view === "users" ? <Users tenant={tenant} users={users} onInvite={() => setInviteOpen(true)} onToggle={(user) => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status: item.status === "Suspended" ? "Active" : "Suspended" } : item))} /> : view === "controls" ? <Controls tenant={tenant} onUpdate={updateTenant} onSave={save} /> : view === "integrations" ? <Integrations tenant={tenant} integrations={integrations} onChange={(integration) => setIntegrations((current) => current.map((item) => item.id === integration.id ? integration : item))} /> : <Audit tenantId={tenant.id} />}</div></section>{inviteOpen && <InviteDialog tenant={tenant} onClose={() => setInviteOpen(false)} onInvite={(user) => { setUsers((current) => [...current, user]); setInviteOpen(false); notify(`Invitation sent to ${user.email}.`); }} />}{toast && <div className={styles.toast} role="status"><i>✓</i><span><b>Change recorded</b><small>{toast}</small></span></div>}</main>;
+  return <main className={styles.adminShell}><aside className={styles.sidebar}><div className={styles.brand}><span><Image src="/frankscore-icon.png" width={32} height={32} alt="" /></span><div><b>FrankBroker</b><small>PLATFORM ADMIN</small></div></div><div className={styles.platformBadge}><span>FC</span><div><b>Frank Core</b><small>Platform control plane</small></div></div><nav aria-label="Admin navigation">{navItems.map((item) => <button key={item.id} className={view === item.id ? styles.navActive : ""} onClick={() => setView(item.id)}><i>{item.short}</i><span>{item.label}</span>{item.id === "tenants" && <em>{tenants.length}</em>}</button>)}</nav><div className={styles.sidebarFoot}><span><i /><b>Shared platform</b></span><small>Database-backed when connected</small></div></aside><section className={styles.workspace}><header className={styles.topbar}><div className={styles.mobileBrand}><Image src="/frankscore-icon.png" width={27} height={27} alt="" /><b>FrankBroker Admin</b></div><label className={styles.contextSelect}><small>TENANT CONTEXT</small><select value={tenantId} onChange={(event) => setTenantId(event.target.value)}>{tenants.map((item) => <option key={item.id} value={item.id}>{item.tradingName}</option>)}</select></label><span className={styles.contextMeta}><Status value={tenant.status} /><b>{enabledFeatures}/8 features</b></span><div className={styles.adminUser}><span>FY</span><div><b>Fikru Yilma</b><small>Platform administrator</small></div></div></header><div className={styles.content}>{view === "overview" ? <Overview tenants={tenants} activity={auditEvents} onTenant={setTenantId} onConfigure={() => setView("tenants")} /> : view === "tenants" ? <TenantSettings tenant={tenant} tenants={tenants} tab={configTab} setTab={setConfigTab} onSelect={setTenantId} onUpdate={updateTenant} onSave={save} /> : view === "instruments" ? <Instruments tenant={tenant} instruments={instruments} onToggleTenant={toggleTenantInstrument} onToggleStatus={toggleInstrumentStatus} /> : view === "users" ? <Users tenant={tenant} users={users} onInvite={() => setInviteOpen(true)} onToggle={toggleUser} /> : view === "controls" ? <Controls tenant={tenant} onUpdate={updateTenant} onSave={save} /> : view === "integrations" ? <Integrations tenant={tenant} integrations={integrations} onChange={changeIntegration} /> : <Audit tenantId={tenant.id} events={auditEvents} />}</div></section>{inviteOpen && <InviteDialog tenant={tenant} onClose={() => setInviteOpen(false)} onInvite={inviteUser} />}{toast && <div className={styles.toast} role="status"><i>✓</i><span><b>Change recorded</b><small>{toast}</small></span></div>}</main>;
 }

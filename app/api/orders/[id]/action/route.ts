@@ -57,6 +57,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       },
     });
     if (!order) return Response.json({ error: "Order not found." }, { status: 404 });
+    if (order.brokerId !== actor.brokerId) {
+      return Response.json({ error: "Order not found for this tenant." }, { status: 404 });
+    }
 
     const now = new Date();
 
@@ -243,7 +246,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
       const tradeDate = payload.tradeDate ?? now.toISOString().slice(0, 10);
       const settlementDate = settlementDateFrom(tradeDate, order.instrument.settlementCycle);
-      const amounts = computeAmounts(order.side as "buy" | "sell", quantityFilled, executionPrice);
+      const effectiveFeeRate = order.estimatedGross.gt(0) ? order.estimatedFees.div(order.estimatedGross) : undefined;
+      const amounts = computeAmounts(order.side as "buy" | "sell", quantityFilled, executionPrice, effectiveFeeRate);
       if (order.side === "buy") {
         const reservedForFill = money(order.estimatedNet.times(quantityFilled).div(order.quantity));
         const additionalCashRequired = amounts.net.minus(reservedForFill);

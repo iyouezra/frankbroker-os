@@ -33,9 +33,11 @@ export function money(value: DecimalValue): Prisma.Decimal {
  * {@link import("./frank").calculateOrderAmounts} but returns exact Decimals and
  * shares the same {@link FEE_RATE} so the two never drift.
  */
-export function computeAmounts(side: "buy" | "sell", quantity: DecimalValue, price: DecimalValue) {
+export function computeAmounts(side: "buy" | "sell", quantity: DecimalValue, price: DecimalValue, feeRate: DecimalValue = FEE_RATE, minimumFee: DecimalValue = 0) {
   const gross = money(D(quantity).times(price));
-  const fees = money(gross.times(FEE_RATE));
+  const percentageFee = money(gross.times(feeRate));
+  const floor = money(minimumFee);
+  const fees = percentageFee.gte(floor) ? percentageFee : floor;
   const net = side === "buy" ? money(gross.plus(fees)) : money(gross.minus(fees));
   return { gross, fees, net };
 }

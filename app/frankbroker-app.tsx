@@ -118,6 +118,8 @@ function EmptyState({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-state"><span>✓</span><strong>{title}</strong><p>{copy}</p></div>;
 }
 
+const BROKER_TENANT_ID = "brk_abyssinia";
+
 export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [view, setView] = useState<View>("dashboard");
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -137,7 +139,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   useEffect(() => {
     const controller = new AbortController();
 
-    void fetch("/api/orders", { signal: controller.signal })
+    void fetch("/api/orders", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Order API unavailable")))
       .then((result: { orders?: Array<Omit<DemoOrder, "time">> }) => {
         if (!result.orders) return;
@@ -161,8 +163,8 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([
-      fetch("/api/clients", { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject()),
-      fetch("/api/reconciliation", { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
     ]).then(([clientResult, reconResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }]) => {
       if (clientResult.clients?.length) {
         setClients(clientResult.clients);
@@ -197,7 +199,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   };
 
   const apiRequest = async <T,>(url: string, init?: RequestInit): Promise<T> => {
-    const response = await fetch(url, init);
+    const response = await fetch(url, { ...init, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, ...(init?.headers as Record<string, string> | undefined) } });
     const result = await response.json().catch(() => ({})) as T & { error?: string };
     if (!response.ok) throw new Error(result.error || "The operation could not be completed.");
     return result;

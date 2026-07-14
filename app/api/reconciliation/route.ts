@@ -67,7 +67,7 @@ export async function POST(request: Request) {
 
     const references = [...new Set(rows.map((row) => row.reference!))];
     const trades = await prisma.trade.findMany({
-      where: { id: { in: references } },
+      where: { id: { in: references }, order: { brokerId: actor.brokerId } },
       include: { order: { include: { instrument: true } } },
     });
     const tradeById = new Map(trades.map((trade) => [trade.id, trade]));

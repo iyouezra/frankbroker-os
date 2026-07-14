@@ -1,5 +1,5 @@
 import { prisma } from "../../../lib/prisma";
-import { requirePermission } from "../../../lib/server-auth";
+import { requirePermission, resolveActor } from "../../../lib/server-auth";
 import { computeAmounts, D, toNum } from "../../../lib/money";
 
 export const runtime = "nodejs";
@@ -10,9 +10,11 @@ function routeError(error: unknown) {
   return Response.json({ error: message }, { status: 500 });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const actor = resolveActor(request);
     const rows = await prisma.order.findMany({
+      where: { brokerId: actor.brokerId },
       include: {
         account: { include: { client: true } },
         instrument: true,
@@ -90,7 +92,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const [account, instrument] = await Promise.all([
+    const [account, instrument, entitlement, settings] = await Promise.all([
       prisma.account.findUnique({
         where: { id: payload.accountId },
         include: {
@@ -99,21 +101,29 @@ export async function POST(request: Request) {
         },
       }),
       prisma.instrument.findUnique({ where: { id: payload.instrumentId } }),
+      prisma.brokerInstrument.findUnique({
+        where: { brokerId_instrumentId: { brokerId: actor.brokerId, instrumentId: payload.instrumentId } },
+      }),
+      prisma.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } }),
     ]);
 
     if (!account || !instrument) {
       return Response.json({ error: "The selected client account or instrument does not exist." }, { status: 404 });
     }
+    if (account.client.brokerId !== actor.brokerId) {
+      return Response.json({ error: "The selected account does not belong to this tenant." }, { status: 403 });
+    }
 
     const quantity = D(quantityInput);
     const price = D(priceInput);
     const holding = account.holdings[0];
-    const amounts = computeAmounts(payload.side, quantity, price);
+    const feeRate = settings ? settings.brokerageFeePct.div(100) : undefined;
+    const amounts = computeAmounts(payload.side, quantity, price, feeRate, settings?.minimumFee);
     const checks = [
       { code: "CLIENT_EXISTS", label: "Client exists", passed: Boolean(account.clientId), message: "Client profile found" },
       { code: "KYC_APPROVED", label: "KYC approved", passed: account.client.kycStatus === "approved", message: account.client.kycStatus === "approved" ? "KYC is current" : "KYC approval is required" },
       { code: "ACCOUNT_ACTIVE", label: "Account active", passed: account.status === "active" && account.client.status === "active", message: account.status === "active" ? "Trading account is active" : "Trading account is not active" },
-      { code: "INSTRUMENT_TRADABLE", label: "Instrument tradable", passed: instrument.tradingStatus === "tradable", message: instrument.tradingStatus === "tradable" ? "Instrument is open for manual trading" : "Instrument is not tradable" },
+      { code: "INSTRUMENT_TRADABLE", label: "Instrument tradable", passed: instrument.tradingStatus === "tradable" && entitlement?.enabled === true, message: instrument.tradingStatus === "tradable" && entitlement?.enabled === true ? "Instrument is enabled for this tenant" : "Instrument is not available to this tenant" },
       { code: "QUANTITY_VALID", label: "Quantity valid", passed: quantity.gt(0) && quantity.mod(instrument.lotSize).isZero(), message: `Must be a positive multiple of ${instrument.lotSize}` },
       { code: "PRICE_VALID", label: "Price valid", passed: price.gt(0) && price.div(instrument.tickSize).isInteger(), message: `Must align to the ${instrument.tickSize.toString()} tick size` },
       payload.side === "buy"
