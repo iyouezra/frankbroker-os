@@ -22,6 +22,34 @@ export type DemoOrder = {
   riskFlag: "none" | "review" | "high";
   settlementDate?: string;
   tradeId?: string;
+  filledQuantity?: number;
+  remainingQuantity?: number;
+  events?: Array<{
+    id: string;
+    fromStatus: string | null;
+    toStatus: string;
+    reason: string | null;
+    actor: string;
+    createdAt: string;
+  }>;
+};
+
+export type BrokerClient = {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  kyc: string;
+  status: string;
+  risk: string;
+  totalCash: number;
+  availableCash: number;
+  blockedCash: number;
+  accountId: string;
+  accountNumber: string;
+  holdings: Array<{ symbol: string; name: string; total: number; available: number; blocked: number; averageCost: number }>;
+  ledger: Array<{ id: string; valueDate: string; reference: string; type: string; amount: number; runningBalance: number }>;
+  orderCount: number;
 };
 
 export const demoClients = [

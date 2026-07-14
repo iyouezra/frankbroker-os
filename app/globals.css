@@ -186,11 +186,45 @@ td b { display: block; color: #263f41; font-size: 9px; } td small { display: blo
 .manual-callout { display: flex; gap: 9px; align-items: center; padding: 10px 12px; margin-bottom: 12px; border-radius: 9px; background: #fff5e5; border: 1px solid #eed6ad; }.manual-callout span { padding: 4px 6px; color: #975d13; background: #f7dfba; border-radius: 4px; font-size: 7px; font-weight: 850; }.manual-callout p { margin: 0; color: #7e633e; font-size: 8px; }.order-reference { display: flex; gap: 10px; align-items: center; padding: 13px; border: 1px solid var(--line); background: white; border-radius: 10px; margin-bottom: 12px; }.order-reference > span { padding: 6px 8px; color: var(--green); background: #e7f8f1; border-radius: 5px; font-size: 7px; font-weight: 900; }.order-reference div { display: flex; flex-direction: column; }.order-reference b { font-size: 10px; }.order-reference small { margin-top: 4px; color: #7b8f91; font-size: 8px; }
 
 .contract-toolbar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }.contract-toolbar h2 { margin: 5px 0 0; font-size: 18px; }.contract-note { background: white; border: 1px solid var(--line); box-shadow: var(--shadow); padding: 30px; }.contract-note > header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 22px; border-bottom: 2px solid var(--deep); }.contract-brand { display: flex; align-items: center; gap: 10px; }.contract-brand img { width: 35px; height: 35px; object-fit: contain; }.contract-brand span, .contract-note header > div:last-child { display: flex; flex-direction: column; }.contract-brand b { font-size: 11px; }.contract-brand small, .contract-note header > div:last-child small { color: #7a8d8f; font-size: 7px; margin-top: 4px; }.contract-note header > div:last-child { text-align: right; }.contract-note header > div:last-child b { color: var(--deep); font-size: 13px; letter-spacing: 1px; }.contract-note > section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px 0; }.contract-note > section > div { display: flex; flex-direction: column; }.contract-note > section > div:last-child { text-align: right; }.contract-note section small { color: #7c8e90; font-size: 7px; letter-spacing: .9px; }.contract-note section b { margin-top: 5px; font-size: 10px; }.contract-note section span { margin-top: 4px; color: #6e8183; font-size: 8px; }.contract-note table { min-width: 0; border: 1px solid var(--line); }.contract-note th { background: #f3f8f7; }.contract-note td { height: 52px; }.contract-totals { margin-left: auto; width: 48%; padding: 15px 0; }.contract-totals span { display: flex; justify-content: space-between; padding: 6px 0; }.contract-totals small { color: #75898b; font-size: 8px; }.contract-totals b { font-size: 9px; }.contract-totals span:last-child { border-top: 1px solid var(--ink); margin-top: 5px; padding-top: 10px; }.contract-totals strong { font-size: 12px; }.contract-meta { display: grid; grid-template-columns: repeat(4,1fr); background: #f3f8f7; border: 1px solid var(--line); }.contract-meta span { display: flex; flex-direction: column; padding: 11px; border-right: 1px solid var(--line); }.contract-meta span:last-child { border-right: 0; }.contract-meta small { color: #7d9092; font-size: 6px; }.contract-meta b { margin-top: 4px; font-size: 8px; }.contract-note footer { display: flex; justify-content: space-between; gap: 25px; align-items: flex-end; padding-top: 25px; }.contract-note footer p { color: #829496; font-size: 7px; line-height: 1.6; max-width: 58%; }.contract-note footer div { min-width: 145px; border-top: 1px solid var(--ink); padding-top: 7px; display: flex; flex-direction: column; }.contract-note footer div span, .contract-note footer div small { color: #809294; font-size: 6px; }.contract-note footer div b { margin: 4px 0; font-size: 8px; }
+/* OMS workflow extensions — composed from the Frank Money design tokens above. */
+.blotter-controls { display: flex; align-items: flex-end; gap: 9px; margin: -4px 0 13px; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius-control); background: rgba(255,255,255,.72); }
+.blotter-controls label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 7px; font-weight: 750; text-transform: uppercase; letter-spacing: .6px; }
+.blotter-controls select { min-width: 125px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); color: var(--ink); padding: 8px 28px 8px 9px; font-size: 9px; text-transform: none; letter-spacing: 0; }
+.blotter-controls > span { margin-left: auto; align-self: center; color: var(--muted); font-size: 8px; }
+.pagination { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding-top: 12px; color: var(--muted); font-size: 8px; }
+.pagination button { border: 1px solid var(--line); border-radius: 9px; background: var(--white); padding: 7px 10px; color: var(--deep); font-size: 8px; cursor: pointer; }
+.pagination button:disabled { opacity: .4; cursor: not-allowed; }
+.demo-control-badge, .exception-count, .account-number { display: inline-flex; align-items: center; width: fit-content; border: 1px solid #b9e4df; border-radius: 999px; background: var(--mint); color: var(--deep); padding: 7px 10px; font-size: 7px; font-weight: 850; letter-spacing: .7px; }
+.client-card { transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.client-card.selected { border-color: #7ccfc8; box-shadow: 0 0 0 3px rgba(53,231,217,.12), var(--shadow); transform: translateY(-1px); }
+.account-workspace { display: grid; grid-template-columns: .8fr 1.2fr; gap: 15px; }
+.account-summary { overflow: hidden; }
+.account-number { background: #eef9f7; font-family: var(--font-mono); letter-spacing: 0; }
+.account-balance-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.account-balance-grid span { display: flex; flex-direction: column; padding: 17px 19px; border-right: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
+.account-balance-grid span:nth-child(2n) { border-right: 0; }
+.account-balance-grid span:nth-last-child(-n+2) { border-bottom: 0; }
+.account-balance-grid small { color: var(--muted); font-size: 7px; }
+.account-balance-grid b { margin-top: 6px; font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.holdings-panel, .client-orders { overflow: hidden; }
+.holdings-panel table { min-width: 620px; }
+.client-orders, .ledger-panel { grid-column: 1 / -1; }
+.upload-card.processing { cursor: wait; border-style: solid; background: linear-gradient(135deg, var(--mint), #f8fffe); }
+.upload-card.processing > span { animation: pulse 1s ease-in-out infinite alternate; }
+.recon-summary > small { display: block; color: var(--muted); font-size: 7px; margin: -14px 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exception-count { align-self: center; padding: 5px 8px; letter-spacing: 0; }
+.fill-progress { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 14px; margin: -2px 0 12px; border: 1px solid #bfe4e0; border-radius: 11px; background: #f2fbfa; }
+.fill-progress span { display: flex; justify-content: space-between; color: var(--muted); font-size: 8px; }
+.fill-progress span:nth-child(2) { justify-content: flex-end; }
+.fill-progress b { color: var(--deep); font-family: var(--font-mono); margin-right: 4px; }
+.fill-progress > i { grid-column: 1 / -1; height: 6px; overflow: hidden; border-radius: 999px; background: #dcebea; }
+.fill-progress > i em { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--teal), var(--cyan)); }
 .toast { position: fixed; right: 25px; bottom: 25px; z-index: 80; display: flex; align-items: center; gap: 9px; color: white; background: #0a454b; border: 1px solid #1a666d; padding: 12px 15px; border-radius: 10px; box-shadow: 0 15px 40px rgba(4,39,42,.25); font-size: 9px; animation: toast .25s ease; }.toast span { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--cyan); color: var(--deep); font-weight: 900; }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide { from { transform: translateX(35px); opacity: .5; } to { transform: translateX(0); opacity: 1; } }
 @keyframes toast { from { transform: translateY(10px); opacity: 0; } }
+@keyframes pulse { from { transform: scale(.96); opacity: .6; } to { transform: scale(1.04); opacity: 1; } }
 
 @media (max-width: 1180px) {
   .metric-grid { grid-template-columns: repeat(3,1fr); }.dashboard-grid { grid-template-columns: 1fr; }.queue-panel { grid-row: auto; }.client-grid, .report-grid { grid-template-columns: repeat(2,1fr); }.top-actions .business-date { display: none; }
@@ -200,6 +234,21 @@ td b { display: block; color: #263f41; font-size: 9px; } td small { display: blo
 }
 @media (max-width: 540px) {
   .search { display: none; }.topbar { justify-content: space-between; }.metric-grid { grid-template-columns: 1fr 1fr; }.metric { min-height: 104px; padding: 13px; }.metric strong { font-size: 21px; }.client-grid, .report-grid { grid-template-columns: 1fr; }.field-row { grid-template-columns: 1fr; }.drawer-content { padding: 27px 17px 20px; }.contract-note > section { grid-template-columns: 1fr; }.contract-note > section > div:last-child { text-align: left; }.contract-totals { width: 100%; }.contract-meta { grid-template-columns: 1fr 1fr; }.contract-toolbar { align-items: flex-start; flex-direction: column; gap: 12px; }.contract-note footer { flex-direction: column; align-items: stretch; }.contract-note footer p { max-width: none; }.manual-banner button { display: none; }.queue-list button { grid-template-columns: auto minmax(0,1fr) auto; }.queue-list .status { display: none; }.section-header h1 { font-size: 24px; }
+}
+
+@media (max-width: 1180px) {
+  .account-workspace { grid-template-columns: 1fr; }
+}
+@media (max-width: 820px) {
+  .blotter-controls { align-items: stretch; flex-wrap: wrap; }
+  .blotter-controls label { flex: 1; min-width: 120px; }
+  .blotter-controls select { width: 100%; }
+  .blotter-controls > span { width: 100%; margin-left: 0; }
+}
+@media (max-width: 540px) {
+  .account-balance-grid { grid-template-columns: 1fr; }
+  .account-balance-grid span { border-right: 0; border-bottom: 1px solid var(--soft-line) !important; }
+  .account-balance-grid span:last-child { border-bottom: 0 !important; }
 }
 
 @media print {

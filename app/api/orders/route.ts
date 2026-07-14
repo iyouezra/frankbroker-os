@@ -16,15 +16,21 @@ export async function GET() {
       include: {
         account: { include: { client: true } },
         instrument: true,
+        assignedTrader: true,
+        trades: { include: { settlement: true }, orderBy: { capturedAt: "asc" } },
+        events: { include: { actor: true }, orderBy: { createdAt: "asc" } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { submittedAt: "desc" },
       take: 100,
     });
 
     return Response.json({
-      orders: rows.map((order) => ({
+      orders: rows.map((order) => {
+        const filledQuantity = order.trades.reduce((total, trade) => total.plus(trade.quantityFilled), D(0));
+        const latestTrade = order.trades.at(-1);
+        return {
         id: order.id,
-        createdAt: order.createdAt.toISOString(),
+        createdAt: (order.submittedAt ?? order.createdAt).toISOString(),
         client: order.account.client.fullName,
         clientCode: order.account.client.clientCode,
         accountId: order.accountId,
@@ -40,7 +46,21 @@ export async function GET() {
         status: order.status,
         source: order.source,
         riskFlag: order.riskFlag,
-      })),
+        trader: order.assignedTrader?.fullName ?? "Unassigned",
+        filledQuantity: toNum(filledQuantity),
+        remainingQuantity: toNum(order.quantity.minus(filledQuantity)),
+        tradeId: latestTrade?.id,
+        settlementDate: latestTrade?.settlementDate.toISOString().slice(0, 10),
+        events: order.events.map((event) => ({
+          id: event.id,
+          fromStatus: event.fromStatus,
+          toStatus: event.toStatus,
+          reason: event.reason,
+          actor: event.actor?.fullName ?? "System",
+          createdAt: event.createdAt.toISOString(),
+        })),
+        };
+      }),
     });
   } catch (error) {
     return routeError(error);

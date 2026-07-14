@@ -1,24 +1,66 @@
 "use client";
 
+/* The logo dimensions are controlled by the portal and printable-note styles. */
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { demoAudit, demoClients, demoInstruments, initialOrders, type DemoOrder } from "../lib/demo-data";
+import { demoAudit, demoClients, demoInstruments, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
 import { calculateOrderAmounts, hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
 
-type View = "dashboard" | "orders" | "clients" | "instruments" | "settlement" | "reconciliation" | "reports" | "audit";
+type View = "dashboard" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
 type Drawer = "new" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string };
 type TradeValue = { quantity: string; price: string; tradeDate: string };
+type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
+type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
 
 const navItems: { id: View; label: string; short: string }[] = [
   { id: "dashboard", label: "Dashboard", short: "DB" },
   { id: "orders", label: "Order blotter", short: "OR" },
   { id: "clients", label: "Clients & accounts", short: "CL" },
-  { id: "instruments", label: "Instrument master", short: "IM" },
   { id: "settlement", label: "Settlement", short: "ST" },
   { id: "reconciliation", label: "Reconciliation", short: "RC" },
   { id: "reports", label: "Reports", short: "RP" },
   { id: "audit", label: "Audit trail", short: "AU" },
 ];
+
+const fallbackClients: BrokerClient[] = demoClients.map((client) => ({
+  id: client.id,
+  code: client.code,
+  name: client.name,
+  type: client.type,
+  kyc: client.kyc.toLowerCase().replaceAll(" ", "_"),
+  status: client.status.toLowerCase(),
+  risk: client.risk.toLowerCase(),
+  totalCash: client.cash,
+  availableCash: client.available,
+  blockedCash: client.blocked,
+  accountId: client.accountId,
+  accountNumber: client.accountId.replace("acc_", "TRD-").toUpperCase(),
+  holdings: client.accountId === "acc_meron"
+    ? [{ symbol: "WGBX", name: "Wegagen Bank", total: 3_200, available: 2_000, blocked: 1_200, averageCost: 1_685 }]
+    : client.accountId === "acc_blue"
+      ? [{ symbol: "WGBX", name: "Wegagen Bank", total: 8_200, available: 5_200, blocked: 3_000, averageCost: 1_710 }]
+      : client.accountId === "acc_wegagen"
+        ? [{ symbol: "TELE", name: "Ethio Telecom", total: 18_000, available: 18_000, blocked: 0, averageCost: 294.1 }]
+        : [],
+  ledger: [],
+  orderCount: initialOrders.filter((order) => order.accountId === client.accountId).length,
+}));
+
+const fallbackReconBatch: ReconBatch = {
+  id: "REC-2026-0714-A",
+  batchDate: "2026-07-14",
+  fileName: "cash-confirmations-2026-07-14.csv",
+  totalRecords: 248,
+  matchedRecords: 246,
+  exceptionRecords: 2,
+  status: "exceptions",
+  exceptions: [
+    { id: "rec_exc_1", reference: "TRD-2026-0759", exceptionType: "cash_variance", expectedValue: "418250.00", actualValue: "400000.00", status: "open", resolutionNotes: null },
+    { id: "rec_exc_2", reference: "TELE", exceptionType: "quantity_mismatch", expectedValue: "12500", actualValue: "12495", status: "open", resolutionNotes: null },
+  ],
+};
 
 const statusLabels: Record<OrderStatus, string> = {
   draft: "Draft",
@@ -84,7 +126,10 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<Role>("broker_admin");
   const [toast, setToast] = useState<string | null>(null);
-  const [reconFile, setReconFile] = useState<string | null>(null);
+  const [clients, setClients] = useState<BrokerClient[]>(fallbackClients);
+  const [selectedClientId, setSelectedClientId] = useState(fallbackClients[0].id);
+  const [reconBatch, setReconBatch] = useState<ReconBatch>(fallbackReconBatch);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const [newOrder, setNewOrder] = useState({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy" as "buy" | "sell", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "" });
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
@@ -94,14 +139,14 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
 
     void fetch("/api/orders", { signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Order API unavailable")))
-      .then((result: { orders?: Array<Omit<DemoOrder, "time" | "trader">> }) => {
+      .then((result: { orders?: Array<Omit<DemoOrder, "time">> }) => {
         if (!result.orders) return;
         const persisted = result.orders.map((order) => ({
           ...order,
           time: new Date(order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
           orderType: order.orderType.charAt(0).toUpperCase() + order.orderType.slice(1),
           source: order.source.charAt(0).toUpperCase() + order.source.slice(1),
-          trader: "Assigned",
+          trader: order.trader ?? "Unassigned",
         })) as DemoOrder[];
         const persistedIds = new Set(persisted.map((order) => order.id));
         setOrders([...persisted, ...initialOrders.filter((order) => !persistedIds.has(order.id))]);
@@ -110,6 +155,23 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         // Keep the static demonstration surface available before a database is connected.
       });
 
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void Promise.all([
+      fetch("/api/clients", { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/reconciliation", { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject()),
+    ]).then(([clientResult, reconResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }]) => {
+      if (clientResult.clients?.length) {
+        setClients(clientResult.clients);
+        setSelectedClientId((current) => clientResult.clients!.some((client) => client.id === current) ? current : clientResult.clients![0].id);
+      }
+      if (reconResult.batches?.[0]) setReconBatch(reconResult.batches[0]);
+    }).catch(() => {
+      // The synthetic fallback keeps the market-validation demo usable offline.
+    });
     return () => controller.abort();
   }, []);
 
@@ -134,96 +196,110 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     setOrders((current) => current.map((order) => order.id === id ? { ...order, status, ...extra } : order));
   };
 
+  const apiRequest = async <T,>(url: string, init?: RequestInit): Promise<T> => {
+    const response = await fetch(url, init);
+    const result = await response.json().catch(() => ({})) as T & { error?: string };
+    if (!response.ok) throw new Error(result.error || "The operation could not be completed.");
+    return result;
+  };
+
   const persistAction = async (id: string, payload: Record<string, unknown>) => {
-    try {
-      await fetch(`/api/orders/${encodeURIComponent(id)}/action`, {
+      return apiRequest<{ status: OrderStatus; trade?: { id: string; settlementDate: string }; filledQuantity?: number; remainingQuantity?: number }>(`/api/orders/${encodeURIComponent(id)}/action`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-frank-demo-role": role },
         body: JSON.stringify(payload),
       });
-    } catch {
-      // The in-product demo remains interactive when PostgreSQL is unavailable.
-    }
   };
 
-  const actionOrder = (action: "approve" | "reject" | "settle") => {
-    const permission = action === "settle" ? "settle" : action;
+  const actionOrder = async (action: "approve" | "reject" | "cancel" | "settle") => {
+    const permission = action === "settle" ? "settle" : action === "cancel" ? "create" : action;
     if (!hasPermission(role, permission)) return notify(`${roleLabels[role]} cannot ${action} orders.`);
-    const nextStatus: OrderStatus = action === "approve" ? "approved" : action === "reject" ? "rejected" : "settled";
-    updateStatus(selected.id, nextStatus);
-    void persistAction(selected.id, { action, reason: action === "reject" ? "Rejected after compliance review" : undefined });
-    notify(`${selected.id} marked ${statusLabels[nextStatus].toLowerCase()}. Audit event recorded.`);
-    setDrawer(null);
+    setBusyAction(action);
+    try {
+      const result = await persistAction(selected.id, { action, reason: action === "reject" ? "Rejected after compliance review" : action === "cancel" ? "Cancelled by broker" : undefined });
+      updateStatus(selected.id, result.status);
+      notify(`${selected.id} marked ${statusLabels[result.status].toLowerCase()}. Audit event recorded.`);
+      setDrawer(null);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The workflow action failed.");
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const openTrade = (order: DemoOrder) => {
     if (!hasPermission(role, "trade")) return notify(`${roleLabels[role]} cannot capture trades.`);
     setSelectedId(order.id);
-    setTradeForm({ quantity: String(order.quantity), price: String(order.price), tradeDate: "2026-07-14" });
+    setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: "2026-07-14" });
     setDrawer("trade");
   };
 
-  const captureTrade = (event: FormEvent) => {
+  const captureTrade = async (event: FormEvent) => {
     event.preventDefault();
     const quantity = Number(tradeForm.quantity);
     const price = Number(tradeForm.price);
-    if (!quantity || !price || quantity > selected.quantity) return notify("Enter a valid execution quantity and price.");
-    const partial = quantity < selected.quantity;
-    const tradeId = `TRD-2026-${String(780 + orders.filter((order) => order.tradeId).length)}`;
-    const settlementDate = selected.symbol.startsWith("TB") ? "2026-07-15" : "2026-07-16";
-    updateStatus(selected.id, partial ? "partially_filled" : "settlement_pending", { price, tradeId, settlementDate });
-    void persistAction(selected.id, { action: "execute", executionPrice: price, quantityFilled: quantity, tradeDate: tradeForm.tradeDate });
-    setDrawer(null);
-    notify(`${tradeId} captured. Settlement is due ${settlementDate}.`);
+    const remaining = selected.remainingQuantity ?? selected.quantity;
+    if (!quantity || !price || quantity > remaining) return notify(`Enter a quantity up to the remaining ${fmt.format(remaining)} units.`);
+    setBusyAction("execute");
+    try {
+      const result = await persistAction(selected.id, { action: "execute", executionPrice: price, quantityFilled: quantity, tradeDate: tradeForm.tradeDate });
+      updateStatus(selected.id, result.status, {
+        price,
+        tradeId: result.trade?.id,
+        settlementDate: result.trade?.settlementDate,
+        filledQuantity: result.filledQuantity,
+        remainingQuantity: result.remainingQuantity,
+      });
+      setDrawer(null);
+      notify(`${result.trade?.id ?? "Trade"} captured. Settlement is due ${result.trade?.settlementDate}.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Trade capture failed.");
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const runValidation = () => {
-    const client = demoClients.find((item) => item.accountId === newOrder.accountId)!;
+    const client = clients.find((item) => item.accountId === newOrder.accountId)!;
     const instrument = demoInstruments.find((item) => item.id === newOrder.instrumentId)!;
     const quantity = Number(newOrder.quantity);
     const price = Number(newOrder.price);
     const amounts = calculateOrderAmounts(newOrder.side, quantity, price);
-    const owned = client.accountId === "acc_meron" && instrument.symbol === "WGBX" ? 2000 : client.accountId === "acc_blue" && instrument.symbol === "WGBX" ? 5200 : 0;
+    const owned = client.holdings.find((holding) => holding.symbol === instrument.symbol)?.available ?? 0;
     const results = [
       { label: "Client and account", passed: Boolean(client), message: `${client.code} · ${client.status}` },
-      { label: "KYC approved", passed: client.kyc === "Approved", message: client.kyc },
-      { label: "Account active", passed: client.status === "Active", message: client.status },
+      { label: "KYC approved", passed: client.kyc === "approved", message: client.kyc.replaceAll("_", " ") },
+      { label: "Account active", passed: client.status === "active", message: client.status },
       { label: "Instrument tradable", passed: instrument.status === "Tradable", message: `${instrument.symbol} · ${instrument.status}` },
       { label: "Quantity valid", passed: quantity > 0 && quantity % instrument.lot === 0, message: `Lot size ${instrument.lot}` },
       { label: "Price valid", passed: price > 0 && Math.abs(price / instrument.tick - Math.round(price / instrument.tick)) < 0.001, message: `Tick size ${instrument.tick} ETB` },
       newOrder.side === "buy"
-        ? { label: "Cash including fees", passed: client.available >= amounts.net, message: `${etb(client.available)} available` }
+        ? { label: "Cash including fees", passed: client.availableCash >= amounts.net, message: `${etb(client.availableCash)} available` }
         : { label: "Available, unblocked holdings", passed: owned >= quantity, message: `${fmt.format(owned)} ${instrument.symbol} available` },
     ];
     setChecks(results);
     notify(results.every((item) => item.passed) ? "All pre-trade checks passed." : "Validation found checks that need attention.");
   };
 
-  const submitOrder = (event: FormEvent) => {
+  const submitOrder = async (event: FormEvent) => {
     event.preventDefault();
     if (!checks?.every((item) => item.passed)) return notify("Run validation and resolve failed checks before submission.");
-    const client = demoClients.find((item) => item.accountId === newOrder.accountId)!;
-    const instrument = demoInstruments.find((item) => item.id === newOrder.instrumentId)!;
     const quantity = Number(newOrder.quantity);
     const price = Number(newOrder.price);
-    const amounts = calculateOrderAmounts(newOrder.side, quantity, price);
-    const id = `ORD-2026-${1049 + orders.length - initialOrders.length}`;
-    const optimistic: DemoOrder = {
-      id, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), createdAt: new Date().toISOString(), client: client.name, clientCode: client.code,
-      accountId: client.accountId, instrumentId: instrument.id, symbol: instrument.symbol, side: newOrder.side, quantity, price, orderType: newOrder.orderType,
-      estimatedGross: amounts.gross, estimatedFees: amounts.fees, estimatedNet: amounts.net, status: "pending_broker_review", source: "Manual", trader: "Unassigned", riskFlag: amounts.net >= 2_000_000 ? "review" : "none",
-    };
-    setOrders((current) => [optimistic, ...current]);
-    setDrawer(null);
-    setChecks(null);
-    setView("orders");
-    notify(`${id} submitted for broker review.`);
-    void fetch("/api/orders", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ ...newOrder, quantity, price }) })
-      .then(async (response) => response.ok ? response.json() : null)
-      .then((result) => {
-        if (result?.order) setOrders((current) => current.map((order) => order.id === id ? { ...order, ...result.order, time: order.time, trader: order.trader } : order));
-      })
-      .catch(() => undefined);
+    setBusyAction("create");
+    try {
+      const result = await apiRequest<{ order: DemoOrder }>("/api/orders", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ ...newOrder, quantity, price }) });
+      const created = { ...result.order, time: new Date(result.order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), trader: "Unassigned" };
+      setOrders((current) => [created, ...current]);
+      setDrawer(null);
+      setChecks(null);
+      setView("orders");
+      notify(`${created.id} submitted for broker review.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Order submission failed.");
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const exportOrders = () => {
@@ -244,6 +320,89 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     setDrawer("new");
   };
 
+  const downloadReconTemplate = () => {
+    const csv = [
+      "reference,type,actual_value",
+      "TRD-2026-0772,cash,2508731.25",
+      "TRD-2026-0772,securities,25000",
+      "TRD-2026-0768,cash,303309.00",
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "frankbroker-reconciliation-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const parseCsv = (text: string) => {
+    const parseLine = (line: string) => {
+      const values: string[] = [];
+      let value = "";
+      let quoted = false;
+      for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (character === '"' && line[index + 1] === '"') { value += '"'; index += 1; }
+        else if (character === '"') quoted = !quoted;
+        else if (character === "," && !quoted) { values.push(value.trim()); value = ""; }
+        else value += character;
+      }
+      values.push(value.trim());
+      return values;
+    };
+    const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 2) throw new Error("The CSV is empty.");
+    const headers = parseLine(lines[0]).map((header) => header.toLowerCase().replaceAll(" ", "_"));
+    const referenceIndex = headers.indexOf("reference");
+    const typeIndex = headers.indexOf("type");
+    const valueIndex = headers.indexOf("actual_value");
+    if ([referenceIndex, typeIndex, valueIndex].includes(-1)) throw new Error("CSV columns must be reference, type, and actual_value.");
+    return lines.slice(1).map(parseLine).map((row) => ({
+      reference: row[referenceIndex],
+      type: row[typeIndex]?.toLowerCase(),
+      actualValue: Number(row[valueIndex]),
+    })).filter((row) => row.reference && ["cash", "securities"].includes(row.type) && Number.isFinite(row.actualValue));
+  };
+
+  const processReconFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".csv")) return notify("Use the CSV template for this demonstration importer.");
+    setBusyAction("reconcile");
+    try {
+      const rows = parseCsv(await file.text());
+      const result = await apiRequest<{ batch: ReconBatch; matchRate: number }>("/api/reconciliation", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-demo-role": role },
+        body: JSON.stringify({ fileName: file.name, rows }),
+      });
+      setReconBatch(result.batch);
+      notify(`${result.batch.matchedRecords}/${result.batch.totalRecords} records matched (${result.matchRate}%).`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Reconciliation processing failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const resolveReconException = async (id: string) => {
+    setBusyAction(id);
+    try {
+      await apiRequest(`/api/reconciliation/${encodeURIComponent(id)}/resolve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-demo-role": role },
+        body: JSON.stringify({ notes: "Reviewed and accepted during end-of-day control" }),
+      });
+      setReconBatch((current) => ({
+        ...current,
+        exceptions: current.exceptions.map((item) => item.id === id ? { ...item, status: "resolved", resolutionNotes: "Reviewed and accepted during end-of-day control" } : item),
+      }));
+      notify("Exception resolved and audit event recorded.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Exception resolution failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -259,19 +418,18 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       <div className="workspace">
         <header className="topbar">
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
-          <label className="search"><span>⌕</span><input aria-label="Search orders, clients, or instruments" placeholder="Search orders, clients, instruments…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
+          <label className="search"><span>⌕</span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
           <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label="Notifications">◌<em>3</em></button><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
         </header>
 
         <main>
           {view === "dashboard" && <Dashboard orders={orders} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
           {view === "orders" && <OrdersPage orders={filteredOrders} onOpen={openDetail} onNewOrder={openNewOrder} onExport={exportOrders} />}
-          {view === "clients" && <ClientsPage />}
-          {view === "instruments" && <InstrumentsPage />}
-          {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} />}
-          {view === "reconciliation" && <ReconciliationPage file={reconFile} onFile={(name) => { setReconFile(name); notify(`${name} staged for reconciliation.`); }} />}
+          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} onOpenOrder={openDetail} />}
+          {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
+          {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage onExport={exportOrders} />}
-          {view === "audit" && <AuditPage />}
+          {view === "audit" && <AuditPage onExport={exportOrders} />}
         </main>
 
         <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i>{item.short}</i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
@@ -280,9 +438,9 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
         <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
           <button className="drawer-close" onClick={() => setDrawer(null)} aria-label="Close">×</button>
-          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} checks={checks} onValidate={runValidation} onSubmit={submitOrder} />}
-          {drawer === "detail" && <OrderDetail order={selected} role={role} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
-          {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} onSubmit={captureTrade} />}
+          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={clients} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
+          {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
+          {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
           {drawer === "contract" && <ContractNote order={selected} onPrint={() => window.print()} />}
         </aside>
       </div>}
@@ -296,7 +454,7 @@ function Dashboard({ orders, onViewOrders, onOpen, onNewOrder, onSettle }: { ord
   const settlement = orders.filter((order) => order.status === "settlement_pending" || order.status === "partially_filled");
   return <>
     <SectionHeader eyebrow="TUESDAY · 14 JULY 2026" title="Good morning, Mekdes" copy="Here’s the control picture for today’s brokerage operations." action={<><button className="btn secondary" onClick={onViewOrders}>View blotter</button><button className="btn primary" onClick={onNewOrder}><span>＋</span> New order</button></>} />
-    <div className="manual-banner"><span>MANUAL MARKET MODE</span><p>Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations.</p><button>Integration readiness <b>View</b></button></div>
+    <div className="manual-banner"><span>MANUAL MARKET MODE</span><p>Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations.</p></div>
     <section className="metric-grid"><Metric label="Today’s orders" value={String(orders.length + 16)} note="ETB 8.42M estimated value" /><Metric label="Pending approvals" value={String(pending.length + 2)} note="1 requires enhanced review" tone="warning" /><Metric label="Filled today" value="11" note="ETB 4.18M executed" tone="success" /><Metric label="Settlement pending" value={String(settlement.length + 3)} note="ETB 3.06M due by T+2" tone="purple" /><Metric label="Recon exceptions" value="2" note="ETB 18,750 variance" tone="danger" /></section>
     <div className="dashboard-grid">
       <section className="panel queue-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL QUEUE</span><h2>Needs your attention</h2></div><button className="text-button" onClick={onViewOrders}>View all <span>→</span></button></div>
@@ -309,7 +467,41 @@ function Dashboard({ orders, onViewOrders, onOpen, onNewOrder, onSettle }: { ord
 }
 
 function OrdersPage({ orders, onOpen, onNewOrder, onExport }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onExport: () => void }) {
-  return <><SectionHeader eyebrow="ORDER MANAGEMENT" title="Order blotter" copy="Capture, review, execute, and trace every client instruction." action={<><button className="btn secondary" onClick={onExport}>Export CSV</button><button className="btn primary" onClick={onNewOrder}>＋ New order</button></>} /><div className="filter-row"><button className="filter active">All orders <b>{orders.length}</b></button><button className="filter">Pending review <b>{orders.filter((o) => o.status === "pending_broker_review").length}</b></button><button className="filter">Approved</button><button className="filter">Executed</button><button className="filter">Exceptions</button><span /><button className="filter-control">☷ Filters</button></div><section className="panel table-panel"><OrderTable orders={orders} onOpen={onOpen} /></section></>;
+  const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions">("all");
+  const [sideFilter, setSideFilter] = useState<"all" | "buy" | "sell">("all");
+  const [riskFilter, setRiskFilter] = useState<"all" | "flagged">("all");
+  const [sort, setSort] = useState<"newest" | "oldest" | "value">("newest");
+  const [page, setPage] = useState(1);
+  const statusMatches = (order: DemoOrder) => statusFilter === "all"
+    || (statusFilter === "review" && order.status === "pending_broker_review")
+    || (statusFilter === "approved" && order.status === "approved")
+    || (statusFilter === "executed" && ["partially_filled", "filled", "settlement_pending", "settled"].includes(order.status))
+    || (statusFilter === "exceptions" && ["validation_failed", "rejected"].includes(order.status));
+  const filtered = orders
+    .filter((order) => statusMatches(order) && (sideFilter === "all" || order.side === sideFilter) && (riskFilter === "all" || order.riskFlag !== "none"))
+    .sort((left, right) => sort === "value" ? right.estimatedNet - left.estimatedNet : sort === "oldest" ? left.createdAt.localeCompare(right.createdAt) : right.createdAt.localeCompare(left.createdAt));
+  const pageSize = 6;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visible = filtered.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize);
+  const chooseStatus = (value: typeof statusFilter) => { setStatusFilter(value); setPage(1); };
+  return <>
+    <SectionHeader eyebrow="ORDER MANAGEMENT" title="Order blotter" copy="Capture, review, execute, and trace every client instruction." action={<><button className="btn secondary" onClick={onExport}>Export CSV</button><button className="btn primary" onClick={onNewOrder}>＋ New order</button></>} />
+    <div className="filter-row">
+      <button className={`filter ${statusFilter === "all" ? "active" : ""}`} onClick={() => chooseStatus("all")}>All orders <b>{orders.length}</b></button>
+      <button className={`filter ${statusFilter === "review" ? "active" : ""}`} onClick={() => chooseStatus("review")}>Pending review <b>{orders.filter((order) => order.status === "pending_broker_review").length}</b></button>
+      <button className={`filter ${statusFilter === "approved" ? "active" : ""}`} onClick={() => chooseStatus("approved")}>Approved</button>
+      <button className={`filter ${statusFilter === "executed" ? "active" : ""}`} onClick={() => chooseStatus("executed")}>Executed</button>
+      <button className={`filter ${statusFilter === "exceptions" ? "active" : ""}`} onClick={() => chooseStatus("exceptions")}>Exceptions</button>
+    </div>
+    <div className="blotter-controls">
+      <label>Side<select value={sideFilter} onChange={(event) => { setSideFilter(event.target.value as typeof sideFilter); setPage(1); }}><option value="all">All sides</option><option value="buy">Buy</option><option value="sell">Sell</option></select></label>
+      <label>Risk<select value={riskFilter} onChange={(event) => { setRiskFilter(event.target.value as typeof riskFilter); setPage(1); }}><option value="all">All risk levels</option><option value="flagged">Flagged only</option></select></label>
+      <label>Sort<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="value">Highest value</option></select></label>
+      <span>{filtered.length} matching orders</span>
+    </div>
+    <section className="panel table-panel"><OrderTable orders={visible} onOpen={onOpen} /></section>
+    {pageCount > 1 && <div className="pagination"><button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {Math.min(page, pageCount)} of {pageCount}</span><button disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></div>}
+  </>;
 }
 
 function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void }) {
@@ -317,21 +509,42 @@ function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: D
   return <div className="table-scroll"><table><thead><tr><th>Order / time</th><th>Client</th><th>Instrument</th><th>Side</th><th className="num">Quantity</th><th className="num">Limit price</th><th className="num">Est. value</th><th>Status</th><th>Trader</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.id}</b><small>{order.time} · {order.source}</small></td><td><b>{order.client}</b><small>{order.clientCode}</small></td><td><b>{order.symbol}</b><small>{demoInstruments.find((item) => item.id === order.instrumentId)?.asset}</small></td><td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td><td className="num"><b>{fmt.format(order.quantity)}</b></td><td className="num">{fmt.format(order.price)}</td><td className="num"><b>{fmt.format(order.estimatedNet)}</b><small>ETB incl. fees</small></td><td><StatusBadge status={order.status} />{order.riskFlag !== "none" && <small className="risk-note">◇ Risk review</small>}</td><td><b>{order.trader}</b></td><td><button className="row-action" onClick={(event) => { event.stopPropagation(); onOpen(order); }}>•••</button></td></tr>)}</tbody></table></div>;
 }
 
-function ClientsPage() {
-  return <><SectionHeader eyebrow="CLIENT & ACCOUNT MANAGEMENT" title="Client accounts" copy="KYC, cash, holdings, and trading history in one controlled record." action={<button className="btn primary">＋ Add client</button>} /><div className="client-grid">{demoClients.map((client) => <article className="panel client-card" key={client.id}><div className="client-head"><span>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{client.name}</h3><p>{client.code} · {client.type}</p></div><span className={`status ${client.status === "Active" ? "status-success" : "status-warning"}`}><i />{client.status}</span></div><div className="client-money"><span><small>Total cash</small><b>{etb(client.cash)}</b></span><span><small>Available</small><b>{etb(client.available)}</b></span></div><div className="client-meta"><span>KYC <b>{client.kyc}</b></span><span>Risk <b>{client.risk}</b></span><span>Holdings <b>{client.holdings}</b></span></div><button>Open account <span>→</span></button></article>)}</div><section className="panel ledger-panel"><div className="panel-head"><div><span className="eyebrow">CASH LEDGER</span><h2>Recent account movements</h2></div><button className="text-button">Full ledger →</button></div><div className="table-scroll"><table><thead><tr><th>Value date</th><th>Client</th><th>Reference</th><th>Type</th><th className="num">Amount</th><th className="num">Running balance</th></tr></thead><tbody><tr><td>14 Jul 2026</td><td><b>Meron Bekele</b></td><td>TRD-2026-0768</td><td>Trade debit</td><td className="num negative">−305,118.00</td><td className="num"><b>1,840,500.00</b></td></tr><tr><td>14 Jul 2026</td><td><b>Blue Nile Trading PLC</b></td><td>ADJ-2026-0081</td><td>Bank receipt</td><td className="num positive">+750,000.00</td><td className="num"><b>4,705,300.00</b></td></tr></tbody></table></div></section></>;
+function ClientsPage({ clients, selectedId, onSelect, orders, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; onOpenOrder: (order: DemoOrder) => void }) {
+  const selected = clients.find((client) => client.id === selectedId) ?? clients[0];
+  const clientOrders = orders.filter((order) => order.accountId === selected?.accountId).slice(0, 6);
+  return <>
+    <SectionHeader eyebrow="CLIENT & ACCOUNT MANAGEMENT" title="Client accounts" copy="KYC, cash, holdings, and trading history in one controlled record." action={<span className="demo-control-badge">SYNTHETIC DEMO DATA</span>} />
+    <div className="client-grid">{clients.map((client) => <article className={`panel client-card ${selected?.id === client.id ? "selected" : ""}`} key={client.id}><div className="client-head"><span>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{client.name}</h3><p>{client.code} · {client.type.replaceAll("_", " ")}</p></div><span className={`status ${client.status === "active" ? "status-success" : "status-warning"}`}><i />{client.status}</span></div><div className="client-money"><span><small>Total cash</small><b>{etb(client.totalCash)}</b></span><span><small>Available</small><b>{etb(client.availableCash)}</b></span></div><div className="client-meta"><span>KYC <b>{client.kyc.replaceAll("_", " ")}</b></span><span>Risk <b>{client.risk}</b></span><span>Orders <b>{client.orderCount}</b></span></div><button onClick={() => onSelect(client.id)}>Open account <span>→</span></button></article>)}</div>
+    {selected && <div className="account-workspace">
+      <section className="panel account-summary"><div className="panel-head"><div><span className="eyebrow">TRADING ACCOUNT</span><h2>{selected.name}</h2></div><span className="account-number">{selected.accountNumber}</span></div><div className="account-balance-grid"><span><small>Total cash</small><b>{etb(selected.totalCash)}</b></span><span><small>Available</small><b className="positive">{etb(selected.availableCash)}</b></span><span><small>Blocked</small><b>{etb(selected.blockedCash)}</b></span><span><small>Open orders</small><b>{clientOrders.filter((order) => !["settled", "cancelled", "rejected"].includes(order.status)).length}</b></span></div></section>
+      <section className="panel holdings-panel"><div className="panel-head"><div><span className="eyebrow">CUSTODY POSITION</span><h2>Holdings</h2></div></div>{selected.holdings.length ? <div className="table-scroll"><table><thead><tr><th>Instrument</th><th className="num">Total</th><th className="num">Available</th><th className="num">Blocked</th><th className="num">Average cost</th></tr></thead><tbody>{selected.holdings.map((holding) => <tr key={holding.symbol}><td><b>{holding.symbol}</b><small>{holding.name}</small></td><td className="num">{fmt.format(holding.total)}</td><td className="num positive">{fmt.format(holding.available)}</td><td className="num">{fmt.format(holding.blocked)}</td><td className="num">{fmt.format(holding.averageCost)} ETB</td></tr>)}</tbody></table></div> : <EmptyState title="No securities positions" copy="This account currently holds cash only." />}</section>
+      <section className="panel client-orders"><div className="panel-head"><div><span className="eyebrow">ORDER HISTORY</span><h2>Recent instructions</h2></div></div><OrderTable orders={clientOrders} onOpen={onOpenOrder} /></section>
+      <section className="panel ledger-panel"><div className="panel-head"><div><span className="eyebrow">CASH LEDGER</span><h2>Recent account movements</h2></div></div>{selected.ledger.length ? <div className="table-scroll"><table><thead><tr><th>Value date</th><th>Reference</th><th>Type</th><th className="num">Amount</th><th className="num">Running balance</th></tr></thead><tbody>{selected.ledger.map((entry) => <tr key={entry.id}><td>{entry.valueDate}</td><td><b>{entry.reference}</b></td><td>{entry.type.replaceAll("_", " ")}</td><td className={`num ${entry.amount >= 0 ? "positive" : "negative"}`}>{fmt.format(entry.amount)}</td><td className="num"><b>{fmt.format(entry.runningBalance)}</b></td></tr>)}</tbody></table></div> : <EmptyState title="No posted cash movements" copy="Ledger entries appear after settlement is confirmed." />}</section>
+    </div>}
+  </>;
 }
 
-function InstrumentsPage() {
-  return <><SectionHeader eyebrow="REFERENCE DATA" title="Instrument master" copy="Tradability, settlement rules, and pricing controls for supported securities." action={<button className="btn primary">＋ Add instrument</button>} /><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Symbol / name</th><th>Asset class</th><th>Issuer</th><th>Trading</th><th className="num">Last price</th><th className="num">Lot / tick</th><th>Settlement</th><th>Bond terms</th></tr></thead><tbody>{demoInstruments.map((instrument) => <tr key={instrument.id}><td><b>{instrument.symbol}</b><small>{instrument.name}</small></td><td><span className="asset-chip">{instrument.asset}</span></td><td>{instrument.issuer}</td><td><span className={`status ${instrument.status === "Tradable" ? "status-success" : "status-danger"}`}><i />{instrument.status}</span></td><td className="num"><b>{fmt.format(instrument.price)}</b><small>ETB</small></td><td className="num">{instrument.lot} / {instrument.tick}</td><td><b>{instrument.cycle}</b></td><td>{instrument.coupon ? <><b>{instrument.coupon}</b><small>{instrument.maturity}</small></> : <span className="muted">—</span>}</td></tr>)}</tbody></table></div></section></>;
-}
-
-function SettlementPage({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void }) {
+function SettlementPage({ orders, onOpen, onExport }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void; onExport: () => void }) {
   const queue = orders.filter((order) => ["settlement_pending", "partially_filled", "settled"].includes(order.status));
-  return <><SectionHeader eyebrow="POST-TRADE CONTROL" title="Settlement tracking" copy="Confirm cash and securities legs, value dates, and operational exceptions." action={<button className="btn secondary">Export queue</button>} /><section className="metric-grid settlement-metrics"><Metric label="Due today" value="3" note="ETB 1.84M net" tone="warning" /><Metric label="Cash confirmed" value="7 / 10" note="3 awaiting confirmation" tone="success" /><Metric label="Securities confirmed" value="6 / 10" note="4 awaiting confirmation" tone="purple" /><Metric label="Exceptions" value="1" note="Age: 2h 14m" tone="danger" /></section><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Client</th><th>Instrument</th><th>Value date</th><th className="num">Net amount</th><th>Cash</th><th>Securities</th><th>Overall</th></tr></thead><tbody>{queue.map((order) => <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.tradeId ?? "Trade pending"}</b><small>{order.id}</small></td><td><b>{order.client}</b></td><td><b>{order.symbol}</b><small>{order.side.toUpperCase()} {fmt.format(order.quantity)}</small></td><td><b>{order.settlementDate ?? "Pending"}</b></td><td className="num"><b>{fmt.format(order.estimatedNet)}</b><small>ETB</small></td><td><span className={`leg ${order.status === "settled" ? "done" : "pending"}`}>{order.status === "settled" ? "Confirmed" : "Pending"}</span></td><td><span className={`leg ${order.status === "settled" ? "done" : "pending"}`}>{order.status === "settled" ? "Confirmed" : "Pending"}</span></td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div></section></>;
+  return <><SectionHeader eyebrow="POST-TRADE CONTROL" title="Settlement tracking" copy="Confirm cash and securities legs, value dates, and operational exceptions." action={<button className="btn secondary" onClick={onExport}>Export queue</button>} /><section className="metric-grid settlement-metrics"><Metric label="Due today" value="3" note="ETB 1.84M net" tone="warning" /><Metric label="Cash confirmed" value="7 / 10" note="3 awaiting confirmation" tone="success" /><Metric label="Securities confirmed" value="6 / 10" note="4 awaiting confirmation" tone="purple" /><Metric label="Exceptions" value="1" note="Age: 2h 14m" tone="danger" /></section><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Client</th><th>Instrument</th><th>Value date</th><th className="num">Net amount</th><th>Cash</th><th>Securities</th><th>Overall</th></tr></thead><tbody>{queue.map((order) => <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.tradeId ?? "Trade pending"}</b><small>{order.id}</small></td><td><b>{order.client}</b></td><td><b>{order.symbol}</b><small>{order.side.toUpperCase()} {fmt.format(order.quantity)}</small></td><td><b>{order.settlementDate ?? "Pending"}</b></td><td className="num"><b>{fmt.format(order.estimatedNet)}</b><small>ETB</small></td><td><span className={`leg ${order.status === "settled" ? "done" : "pending"}`}>{order.status === "settled" ? "Confirmed" : "Pending"}</span></td><td><span className={`leg ${order.status === "settled" ? "done" : "pending"}`}>{order.status === "settled" ? "Confirmed" : "Pending"}</span></td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div></section></>;
 }
 
-function ReconciliationPage({ file, onFile }: { file: string | null; onFile: (name: string) => void }) {
-  return <><SectionHeader eyebrow="END-OF-DAY CONTROL" title="Reconciliation" copy="Import external files, match records, and resolve cash or securities breaks." action={<button className="btn secondary">Download template</button>} /><div className="recon-grid"><label className="upload-card"><input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => event.target.files?.[0] && onFile(event.target.files[0].name)} /><span>⇧</span><h3>{file ?? "Drop a reconciliation file here"}</h3><p>CSV or Excel · cash, securities, or trade confirmations</p><b>{file ? "Ready to process" : "Choose file"}</b></label><section className="panel recon-summary"><span className="eyebrow">TODAY’S BATCH</span><h2>REC-2026-0714-A</h2><div><span><small>Records</small><b>248</b></span><span><small>Matched</small><b className="positive">246</b></span><span><small>Exceptions</small><b className="negative">2</b></span></div><i><em /></i><p>99.2% automatically matched</p></section></div><section className="panel exception-panel"><div className="panel-head"><div><span className="eyebrow">OPEN EXCEPTIONS</span><h2>Items requiring resolution</h2></div></div><div className="exception-row"><span className="queue-icon danger">!</span><div><b>Cash variance · TRD-2026-0759</b><small>Expected ETB 418,250.00 · Actual ETB 400,000.00</small></div><strong>ETB 18,250.00</strong><button className="btn secondary small">Resolve</button></div><div className="exception-row"><span className="queue-icon warning">!</span><div><b>Quantity mismatch · TELE</b><small>Internal 12,500 units · File 12,495 units</small></div><strong>5 units</strong><button className="btn secondary small">Resolve</button></div></section></>;
+function ReconciliationPage({ batch, busy, onFile, onDownload, onResolve, resolvingId }: { batch: ReconBatch; busy: boolean; onFile: (file: File) => void; onDownload: () => void; onResolve: (id: string) => void; resolvingId: string | null }) {
+  const openExceptions = batch.exceptions.filter((exception) => exception.status !== "resolved");
+  const matchRate = batch.totalRecords ? (batch.matchedRecords / batch.totalRecords) * 100 : 0;
+  return <>
+    <SectionHeader eyebrow="END-OF-DAY CONTROL" title="Reconciliation" copy="Import external confirmations, match them to captured trades, and resolve cash or securities breaks." action={<button className="btn secondary" onClick={onDownload}>Download CSV template</button>} />
+    <div className="recon-grid">
+      <label className={`upload-card ${busy ? "processing" : ""}`}><input type="file" accept=".csv,text/csv" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) onFile(file); event.target.value = ""; }} /><span>{busy ? "···" : "⇧"}</span><h3>{busy ? "Matching records…" : "Upload trade confirmations"}</h3><p>CSV · reference, type, actual_value · up to 1,000 rows</p><b>{busy ? "Processing safely" : "Choose CSV file"}</b></label>
+      <section className="panel recon-summary"><span className="eyebrow">LATEST BATCH</span><h2>{batch.id}</h2><small>{batch.fileName ?? "Demonstration seed"}</small><div><span><small>Records</small><b>{batch.totalRecords}</b></span><span><small>Matched</small><b className="positive">{batch.matchedRecords}</b></span><span><small>Exceptions</small><b className={batch.exceptionRecords ? "negative" : "positive"}>{batch.exceptionRecords}</b></span></div><i><em style={{ width: `${matchRate}%` }} /></i><p>{matchRate.toFixed(1)}% automatically matched</p></section>
+    </div>
+    <section className="panel exception-panel"><div className="panel-head"><div><span className="eyebrow">OPEN EXCEPTIONS</span><h2>Items requiring resolution</h2></div><span className="exception-count">{openExceptions.length} open</span></div>{openExceptions.length ? openExceptions.map((exception) => {
+      const expected = Number(exception.expectedValue ?? 0);
+      const actual = Number(exception.actualValue ?? 0);
+      const difference = Math.abs(expected - actual);
+      return <div className="exception-row" key={exception.id}><span className={`queue-icon ${exception.exceptionType === "cash_variance" ? "danger" : "warning"}`}>!</span><div><b>{exception.exceptionType.replaceAll("_", " ")} · {exception.reference}</b><small>{exception.expectedValue === null ? "No internal trade matched this reference" : `Expected ${fmt.format(expected)} · File ${fmt.format(actual)}`}</small></div><strong>{exception.expectedValue === null ? "Unmatched" : exception.exceptionType === "cash_variance" ? `${etb(difference)}` : `${fmt.format(difference)} units`}</strong><button className="btn secondary small" disabled={resolvingId === exception.id} onClick={() => onResolve(exception.id)}>{resolvingId === exception.id ? "Resolving…" : "Resolve"}</button></div>;
+    }) : <EmptyState title="Reconciliation is clear" copy="Every uploaded record matched the internal trade book." />}</section>
+  </>;
 }
 
 function ReportsPage({ onExport }: { onExport: () => void }) {
@@ -339,24 +552,45 @@ function ReportsPage({ onExport }: { onExport: () => void }) {
   return <><SectionHeader eyebrow="CONTROL REPORTING" title="Reports" copy="Operational, client asset, fee, and audit exports for management and oversight." /><div className="report-grid">{reports.map((report, index) => <button className="panel report-card" key={report} onClick={onExport}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{report}</h3><p>{index < 2 ? "Business date · 14 Jul 2026" : index < 4 ? "Open items as of now" : "All active accounts"}</p></div><em>CSV <b>↓</b></em></button>)}</div><section className="panel fee-summary"><div><span className="eyebrow">MONTH TO DATE</span><h2>Brokerage fee summary</h2><p>Indicative demo calculation; fee rules remain configurable.</p></div><strong>ETB 184,620.50<small>+12.4% vs previous period</small></strong></section></>;
 }
 
-function AuditPage() {
-  return <><SectionHeader eyebrow="IMMUTABLE CONTROL RECORD" title="Audit trail" copy="Sensitive actions, actors, timestamps, and before-and-after state for every workflow." action={<button className="btn secondary">Export audit log</button>} /><section className="panel audit-timeline">{demoAudit.map((item) => <div key={item.time}><span className="audit-dot" /><time>14 Jul 2026<br /><b>{item.time}</b></time><div><span className="asset-chip">{item.entity}</span><h3>{item.action.replaceAll("_", " ")}</h3><p>{item.detail}</p></div><strong>{item.actor}<small>Addis Ababa · Workspace</small></strong></div>)}</section></>;
+function AuditPage({ onExport }: { onExport: () => void }) {
+  return <><SectionHeader eyebrow="IMMUTABLE CONTROL RECORD" title="Audit trail" copy="Sensitive actions, actors, timestamps, and before-and-after state for every workflow." action={<button className="btn secondary" onClick={onExport}>Export audit log</button>} /><section className="panel audit-timeline">{demoAudit.map((item) => <div key={item.time}><span className="audit-dot" /><time>14 Jul 2026<br /><b>{item.time}</b></time><div><span className="asset-chip">{item.entity}</span><h3>{item.action.replaceAll("_", " ")}</h3><p>{item.detail}</p></div><strong>{item.actor}<small>Addis Ababa · Workspace</small></strong></div>)}</section></>;
 }
 
-function NewOrderForm({ value, setValue, checks, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; checks: { label: string; passed: boolean; message: string }[] | null; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {
-  const client = demoClients.find((item) => item.accountId === value.accountId)!;
+function NewOrderForm({ value, setValue, clients, checks, busy, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; clients: BrokerClient[]; checks: { label: string; passed: boolean; message: string }[] | null; busy: boolean; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {
+  const client = clients.find((item) => item.accountId === value.accountId) ?? clients[0];
   const instrument = demoInstruments.find((item) => item.id === value.instrumentId)!;
   const amounts = calculateOrderAmounts(value.side, Number(value.quantity) || 0, Number(value.price) || 0);
-  return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL ORDER ENTRY</span><h2>Create client order</h2><p>Capture the instruction, run server-side controls, then submit for approval.</p></div><div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div><div className="form-section"><h3>Client instruction</h3><label>Client account<select value={value.accountId} onChange={(event) => { setValue({ ...value, accountId: event.target.value }); }}><option value="acc_meron">CL-10041 · Meron Bekele</option><option value="acc_wegagen">CL-10008 · Wegagen Pension Fund</option><option value="acc_selam">CL-10052 · Selamawit Tesfaye</option><option value="acc_blue">CL-10017 · Blue Nile Trading PLC</option></select><small>{etb(client.available)} available cash · KYC {client.kyc}</small></label><label>Instrument<select value={value.instrumentId} onChange={(event) => { const next = demoInstruments.find((item) => item.id === event.target.value)!; setValue({ ...value, instrumentId: event.target.value, price: String(next.price) }); }} >{demoInstruments.map((item) => <option key={item.id} value={item.id}>{item.symbol} · {item.name}</option>)}</select><small>{instrument.asset} · {instrument.status} · Lot {instrument.lot} · {instrument.cycle}</small></label><div className="segmented"><button type="button" className={value.side === "buy" ? "active buy" : ""} onClick={() => setValue({ ...value, side: "buy" })}>BUY</button><button type="button" className={value.side === "sell" ? "active sell" : ""} onClick={() => setValue({ ...value, side: "sell" })}>SELL</button></div><div className="field-row"><label>Quantity<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /></label><label>Limit price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><div className="field-row"><label>Order type<select value={value.orderType} onChange={(event) => setValue({ ...value, orderType: event.target.value })}><option>Limit</option><option>Market</option></select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div><label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Estimated fees (0.50%)</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div><div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, lot, and tick-size controls before submission.</p>}</div><div className="drawer-actions"><button type="button" className="btn secondary">Save draft</button><button type="submit" className="btn primary" disabled={!checks?.every((item) => item.passed)}>Submit for review <span>→</span></button></div></form>;
+  return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL ORDER ENTRY</span><h2>Create client order</h2><p>Capture the instruction, run server-side controls, then submit for approval.</p></div><div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div><div className="form-section"><h3>Client instruction</h3><label>Client account<select value={value.accountId} onChange={(event) => { setValue({ ...value, accountId: event.target.value }); }}>{clients.map((item) => <option key={item.id} value={item.accountId}>{item.code} · {item.name}</option>)}</select><small>{etb(client.availableCash)} available cash · KYC {client.kyc.replaceAll("_", " ")}</small></label><label>Instrument<select value={value.instrumentId} onChange={(event) => { const next = demoInstruments.find((item) => item.id === event.target.value)!; setValue({ ...value, instrumentId: event.target.value, price: String(next.price) }); }} >{demoInstruments.map((item) => <option key={item.id} value={item.id}>{item.symbol} · {item.name}</option>)}</select><small>{instrument.asset} · {instrument.status} · Lot {instrument.lot} · {instrument.cycle}</small></label><div className="segmented"><button type="button" className={value.side === "buy" ? "active buy" : ""} onClick={() => setValue({ ...value, side: "buy" })}>BUY</button><button type="button" className={value.side === "sell" ? "active sell" : ""} onClick={() => setValue({ ...value, side: "sell" })}>SELL</button></div><div className="field-row"><label>Quantity<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /></label><label>Limit price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><div className="field-row"><label>Order type<select value={value.orderType} onChange={(event) => setValue({ ...value, orderType: event.target.value })}><option>Limit</option><option>Market</option></select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div><label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Estimated fees (0.50%)</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div><div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, lot, and tick-size controls before submission.</p>}</div><div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : "Submit for review"} <span>→</span></button></div></form>;
 }
 
-function OrderDetail({ order, role, onApprove, onReject, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; onApprove: () => void; onReject: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
-  return <div className="drawer-content"><div className="drawer-title"><span className="eyebrow">ORDER CONTROL</span><h2>{order.id}</h2><div className="title-badges"><StatusBadge status={order.status} /><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></div></div><div className="order-hero"><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · {order.accountId.replace("acc_", "TRD-").toUpperCase()}</span></div><strong>{fmt.format(order.quantity)} <small>{order.symbol}</small></strong><p>@ {fmt.format(order.price)} ETB · {order.orderType}</p></div><dl className="detail-grid"><div><dt>Gross consideration</dt><dd>{etb(order.estimatedGross)}</dd></div><div><dt>Estimated fees</dt><dd>{etb(order.estimatedFees)}</dd></div><div className="total"><dt>Estimated net</dt><dd>{etb(order.estimatedNet)}</dd></div><div><dt>Source</dt><dd>{order.source}</dd></div><div><dt>Assigned trader</dt><dd>{order.trader}</dd></div><div><dt>Risk flag</dt><dd>{order.riskFlag === "none" ? "No flags" : "Enhanced review"}</dd></div></dl><div className="workflow-card"><h3>Workflow history</h3><ol><li className="done"><i>✓</i><div><b>Order created</b><small>14 Jul 2026 · {order.time} · Mekdes T.</small></div></li><li className="done"><i>✓</i><div><b>Pre-trade validation</b><small>All required controls recorded</small></div></li><li className={order.status === "pending_broker_review" ? "current" : "done"}><i>{order.status === "pending_broker_review" ? "3" : "✓"}</i><div><b>Broker review</b><small>{order.status === "pending_broker_review" ? "Awaiting authorized approver" : statusLabels[order.status]}</small></div></li><li><i>4</i><div><b>Trade & settlement</b><small>{order.tradeId ? `${order.tradeId} · ${order.settlementDate}` : "Pending execution"}</small></div></li></ol></div>{role === "management" && <div className="permission-note">Read-only management mode: workflow actions are disabled.</div>}<div className="drawer-actions stacked">{order.status === "pending_broker_review" && <><button className="btn danger" onClick={onReject} disabled={!hasPermission(role, "reject")}>Reject</button><button className="btn primary" onClick={onApprove} disabled={!hasPermission(role, "approve")}>Approve & block assets</button></>}{order.status === "approved" && <button className="btn primary full" onClick={onTrade} disabled={!hasPermission(role, "trade")}>Capture execution <span>→</span></button>}{order.status === "settlement_pending" && <><button className="btn secondary" onClick={onContract}>Contract note</button><button className="btn primary" onClick={onSettle} disabled={!hasPermission(role, "settle")}>Confirm settlement</button></>}{["settled", "partially_filled"].includes(order.status) && <button className="btn secondary full" onClick={onContract}>View contract note</button>}</div></div>;
+function OrderDetail({ order, role, busy, onApprove, onReject, onCancel, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; onApprove: () => void; onReject: () => void; onCancel: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
+  const remaining = order.remainingQuantity ?? order.quantity;
+  const events = order.events?.length ? order.events : [
+    { id: `${order.id}-created`, fromStatus: null, toStatus: "submitted", reason: "Order created and pre-trade controls recorded", actor: "Mekdes Tadesse", createdAt: order.createdAt },
+    { id: `${order.id}-current`, fromStatus: null, toStatus: order.status, reason: statusLabels[order.status], actor: order.trader, createdAt: order.createdAt },
+  ];
+  return <div className="drawer-content">
+    <div className="drawer-title"><span className="eyebrow">ORDER CONTROL</span><h2>{order.id}</h2><div className="title-badges"><StatusBadge status={order.status} /><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></div></div>
+    <div className="order-hero"><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · {order.accountId.replace("acc_", "TRD-").toUpperCase()}</span></div><strong>{fmt.format(order.quantity)} <small>{order.symbol}</small></strong><p>@ {fmt.format(order.price)} ETB · {order.orderType}</p></div>
+    {(order.filledQuantity ?? 0) > 0 && <div className="fill-progress"><span><b>{fmt.format(order.filledQuantity ?? 0)}</b> filled</span><span><b>{fmt.format(remaining)}</b> remaining</span><i><em style={{ width: `${Math.min(100, ((order.filledQuantity ?? 0) / order.quantity) * 100)}%` }} /></i></div>}
+    <dl className="detail-grid"><div><dt>Gross consideration</dt><dd>{etb(order.estimatedGross)}</dd></div><div><dt>Estimated fees</dt><dd>{etb(order.estimatedFees)}</dd></div><div className="total"><dt>Estimated net</dt><dd>{etb(order.estimatedNet)}</dd></div><div><dt>Source</dt><dd>{order.source}</dd></div><div><dt>Assigned trader</dt><dd>{order.trader}</dd></div><div><dt>Risk flag</dt><dd>{order.riskFlag === "none" ? "No flags" : "Enhanced review"}</dd></div></dl>
+    <div className="workflow-card"><h3>Workflow history</h3><ol>{events.map((event, index) => <li className={index === events.length - 1 ? "current" : "done"} key={event.id}><i>{index === events.length - 1 ? index + 1 : "✓"}</i><div><b>{statusLabels[event.toStatus as OrderStatus] ?? event.toStatus.replaceAll("_", " ")}</b><small>{new Date(event.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {event.actor}{event.reason ? ` · ${event.reason}` : ""}</small></div></li>)}</ol></div>
+    {role === "management" && <div className="permission-note">Read-only management mode: workflow actions are disabled.</div>}
+    {order.status === "pending_broker_review" && <div className="permission-note">Four-eyes control is active: the order creator must switch to a different authorized approver.</div>}
+    <div className="drawer-actions stacked">
+      {order.status === "pending_broker_review" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel</button><button className="btn danger" onClick={onReject} disabled={Boolean(busy) || !hasPermission(role, "reject")}>Reject</button><button className="btn primary" onClick={onApprove} disabled={Boolean(busy) || !hasPermission(role, "approve")}>{busy === "approve" ? "Approving…" : "Approve & block assets"}</button></>}
+      {order.status === "approved" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel & release</button><button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !hasPermission(role, "trade")}>Capture execution <span>→</span></button></>}
+      {order.status === "partially_filled" && <><button className="btn secondary" onClick={onContract}>Contract note</button>{remaining > 0 && <button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !hasPermission(role, "trade")}>Capture remaining fill</button>}{order.tradeId && <button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>Settle next fill</button>}</>}
+      {order.status === "settlement_pending" && <><button className="btn secondary" onClick={onContract}>Contract note</button><button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>{busy === "settle" ? "Settling…" : "Confirm next settlement"}</button></>}
+      {order.status === "settled" && <button className="btn secondary full" onClick={onContract}>View contract note</button>}
+    </div>
+  </div>;
 }
 
-function TradeForm({ order, value, setValue, onSubmit }: { order: DemoOrder; value: TradeValue; setValue: (value: TradeValue) => void; onSubmit: (event: FormEvent) => void }) {
+function TradeForm({ order, value, setValue, busy, onSubmit, onCancel }: { order: DemoOrder; value: TradeValue; setValue: (value: TradeValue) => void; busy: boolean; onSubmit: (event: FormEvent) => void; onCancel: () => void }) {
   const amount = calculateOrderAmounts(order.side, Number(value.quantity) || 0, Number(value.price) || 0);
-  return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL TRADE CAPTURE</span><h2>Record execution</h2><p>Link a full or partial fill to {order.id}. No ESX message will be sent.</p></div><div className="manual-callout"><span>MANUAL</span><p>Confirm these details against the official external execution record before capture.</p></div><div className="order-reference"><span>{order.side.toUpperCase()}</span><div><b>{fmt.format(order.quantity)} {order.symbol}</b><small>{order.client} · Limit {fmt.format(order.price)} ETB</small></div></div><div className="form-section"><div className="field-row"><label>Quantity filled<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /><small>Maximum {fmt.format(order.quantity)}</small></label><label>Execution price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><label>Trade date<input type="date" value={value.tradeDate} onChange={(event) => setValue({ ...value, tradeDate: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross amount</small><b>{etb(amount.gross)}</b></span><span><small>Fees</small><b>{etb(amount.fees)}</b></span><span><small>Net amount</small><strong>{etb(amount.net)}</strong></span></div><div className="drawer-actions"><button type="button" className="btn secondary">Cancel</button><button type="submit" className="btn primary">Capture trade & open settlement</button></div></form>;
+  const remaining = order.remainingQuantity ?? order.quantity;
+  return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL TRADE CAPTURE</span><h2>Record execution</h2><p>Link a full or partial fill to {order.id}. No ESX message will be sent.</p></div><div className="manual-callout"><span>MANUAL</span><p>Confirm these details against the official external execution record before capture.</p></div><div className="order-reference"><span>{order.side.toUpperCase()}</span><div><b>{fmt.format(remaining)} {order.symbol} remaining</b><small>{order.client} · Limit {fmt.format(order.price)} ETB</small></div></div><div className="form-section"><div className="field-row"><label>Quantity filled<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /><small>Maximum remaining {fmt.format(remaining)}</small></label><label>Execution price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><label>Trade date<input type="date" value={value.tradeDate} onChange={(event) => setValue({ ...value, tradeDate: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross amount</small><b>{etb(amount.gross)}</b></span><span><small>Fees</small><b>{etb(amount.fees)}</b></span><span><small>Net amount</small><strong>{etb(amount.net)}</strong></span></div><div className="drawer-actions"><button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>Cancel</button><button type="submit" className="btn primary" disabled={busy}>{busy ? "Capturing…" : "Capture trade & open settlement"}</button></div></form>;
 }
 
 function ContractNote({ order, onPrint }: { order: DemoOrder; onPrint: () => void }) {

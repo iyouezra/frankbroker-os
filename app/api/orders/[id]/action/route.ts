@@ -1,7 +1,7 @@
 import { settlementDateFrom } from "../../../../../lib/frank";
 import { prisma } from "../../../../../lib/prisma";
 import { requirePermission } from "../../../../../lib/server-auth";
-import { computeAmounts, D, ZERO, toNum } from "../../../../../lib/money";
+import { computeAmounts, D, money, ZERO, toNum } from "../../../../../lib/money";
 
 export const runtime = "nodejs";
 
@@ -50,7 +50,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const actor = requirePermission(request, permission);
     const order = await prisma.order.findUnique({
       where: { id },
-      include: { instrument: true },
+      include: {
+        instrument: true,
+        events: { orderBy: { createdAt: "asc" } },
+        trades: { include: { settlement: true }, orderBy: { capturedAt: "asc" } },
+      },
     });
     if (!order) return Response.json({ error: "Order not found." }, { status: 404 });
 
@@ -59,6 +63,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (payload.action === "approve") {
       if (order.status !== "pending_broker_review") {
         return Response.json({ error: "Only orders pending review can be approved." }, { status: 409 });
+      }
+      const creatorId = order.events.find((event) => event.fromStatus === null)?.actorId;
+      if (creatorId && creatorId === actor.id) {
+        return Response.json({ error: "Four-eyes control: the order creator cannot approve this order. Switch to Compliance or another authorized approver." }, { status: 409 });
       }
 
       if (order.side === "buy") {
@@ -225,18 +233,31 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (!["approved", "partially_filled", "sent_to_esx_manually"].includes(order.status)) {
         return Response.json({ error: "This order is not ready for trade capture." }, { status: 409 });
       }
-      const quantityFilled = D(payload.quantityFilled ?? order.quantity);
+      const alreadyFilled = order.trades.reduce((total, trade) => total.plus(trade.quantityFilled), ZERO);
+      const remainingQuantity = order.quantity.minus(alreadyFilled);
+      const quantityFilled = D(payload.quantityFilled ?? remainingQuantity);
       const executionPrice = D(payload.executionPrice ?? order.price);
-      if (quantityFilled.lte(0) || quantityFilled.gt(order.quantity) || executionPrice.lte(0)) {
-        return Response.json({ error: "Execution quantity or price is invalid." }, { status: 400 });
+      if (quantityFilled.lte(0) || quantityFilled.gt(remainingQuantity) || executionPrice.lte(0)) {
+        return Response.json({ error: `Execution quantity must be between 0 and the remaining ${toNum(remainingQuantity)} units.` }, { status: 400 });
       }
 
       const tradeDate = payload.tradeDate ?? now.toISOString().slice(0, 10);
       const settlementDate = settlementDateFrom(tradeDate, order.instrument.settlementCycle);
       const amounts = computeAmounts(order.side as "buy" | "sell", quantityFilled, executionPrice);
+      if (order.side === "buy") {
+        const reservedForFill = money(order.estimatedNet.times(quantityFilled).div(order.quantity));
+        const additionalCashRequired = amounts.net.minus(reservedForFill);
+        if (additionalCashRequired.gt(0)) {
+          const account = await prisma.account.findUnique({ where: { id: order.accountId } });
+          if (!account || account.availableCash.lt(additionalCashRequired)) {
+            return Response.json({ error: "Execution price exceeds reserved cash and the account has insufficient available cash." }, { status: 409 });
+          }
+        }
+      }
       const tradeId = `TRD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
       const settlementId = `STL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-      const status = quantityFilled.lt(order.quantity) ? "partially_filled" : "settlement_pending";
+      const cumulativeFilled = alreadyFilled.plus(quantityFilled);
+      const status = cumulativeFilled.lt(order.quantity) ? "partially_filled" : "settlement_pending";
 
       await prisma.$transaction([
         prisma.trade.create({
@@ -266,6 +287,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         orderEvent(id, order.status, status, actor.id, `Trade ${tradeId} captured`, {
           tradeId,
           quantityFilled: toNum(quantityFilled),
+          cumulativeFilled: toNum(cumulativeFilled),
+          remainingQuantity: toNum(order.quantity.minus(cumulativeFilled)),
           executionPrice: toNum(executionPrice),
           net: toNum(amounts.net),
         }),
@@ -286,34 +309,34 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return Response.json({
         ok: true,
         status,
+        filledQuantity: toNum(cumulativeFilled),
+        remainingQuantity: toNum(order.quantity.minus(cumulativeFilled)),
         trade: { id: tradeId, settlementId, settlementDate, gross: toNum(amounts.gross), fees: toNum(amounts.fees), net: toNum(amounts.net) },
       });
     }
 
     if (payload.action === "settle") {
-      const [trade, account, holding] = await Promise.all([
-        prisma.trade.findFirst({ where: { orderId: id }, include: { settlement: true } }),
+      const trade = order.trades.find((item) => item.settlement && item.settlement.status !== "settled");
+      const [account, holding] = await Promise.all([
         prisma.account.findUnique({ where: { id: order.accountId } }),
         prisma.holding.findUnique({
           where: { accountId_instrumentId: { accountId: order.accountId, instrumentId: order.instrumentId } },
         }),
       ]);
-      if (!trade) return Response.json({ error: "No captured trade exists for this order." }, { status: 409 });
+      if (!trade) return Response.json({ error: "No unsettled captured trade exists for this order." }, { status: 409 });
       if (!trade.settlement) return Response.json({ error: "Settlement record not found." }, { status: 404 });
       if (!account) return Response.json({ error: "Account not found." }, { status: 404 });
 
-      // Cash reconciliation. On a buy the full estimated net was reserved from
-      // available cash and moved to blocked at approval; settlement debits the
-      // ACTUAL executed net, releases the estimate from blocked, and returns any
-      // over-reservation (price improvement or unfilled quantity) to available.
-      // Invariant preserved: total = available + blocked + unsettled.
+      const reservedForFill = money(order.estimatedNet.times(trade.quantityFilled).div(order.quantity));
+      // Release only this fill's proportional reservation so subsequent partial
+      // fills remain fully covered until they settle or the remainder is cancelled.
       const accountUpdate = order.side === "buy"
         ? prisma.account.update({
           where: { id: account.id },
           data: {
             totalCash: { decrement: trade.netAmount },
-            blockedCash: { decrement: order.estimatedNet },
-            availableCash: { increment: order.estimatedNet.minus(trade.netAmount) },
+            blockedCash: { decrement: reservedForFill },
+            availableCash: { increment: reservedForFill.minus(trade.netAmount) },
           },
         })
         : prisma.account.update({
@@ -324,9 +347,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           },
         });
 
-      // Securities reconciliation. On a sell, release the FULL blocked quantity
-      // (the whole order was blocked at approval), remove only the filled
-      // quantity from the total, and return the unfilled remainder to available.
+      // A sell releases only the delivered fill. Any remaining quantity stays
+      // blocked for subsequent fills.
       const holdingUpdate = order.side === "buy"
         ? prisma.holding.upsert({
           where: { accountId_instrumentId: { accountId: order.accountId, instrumentId: order.instrumentId } },
@@ -348,8 +370,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             where: { id: holding.id },
             data: {
               totalQuantity: { decrement: trade.quantityFilled },
-              blockedQuantity: { decrement: order.quantity },
-              availableQuantity: { increment: order.quantity.minus(trade.quantityFilled) },
+              blockedQuantity: { decrement: trade.quantityFilled },
             },
           })
           : null;
@@ -360,6 +381,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const runningQuantity = order.side === "buy"
         ? (holding?.totalQuantity ?? ZERO).plus(trade.quantityFilled)
         : (holding?.totalQuantity ?? ZERO).minus(trade.quantityFilled);
+
+      const totalFilled = order.trades.reduce((total, item) => total.plus(item.quantityFilled), ZERO);
+      const pendingSettlementsAfterThis = order.trades.filter((item) => item.id !== trade.id && item.settlement?.status !== "settled");
+      const nextStatus = totalFilled.lt(order.quantity)
+        ? "partially_filled"
+        : pendingSettlementsAfterThis.length
+          ? "settlement_pending"
+          : "settled";
 
       await prisma.$transaction([
         accountUpdate,
@@ -374,8 +403,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             confirmedAt: now,
           },
         }),
-        prisma.order.update({ where: { id }, data: { status: "settled" } }),
-        orderEvent(id, order.status, "settled", actor.id, `Settlement confirmed for ${trade.id}`, { net: toNum(trade.netAmount) }),
+        prisma.order.update({ where: { id }, data: { status: nextStatus } }),
+        orderEvent(id, order.status, nextStatus, actor.id, `Settlement confirmed for ${trade.id}`, { net: toNum(trade.netAmount) }),
         prisma.cashLedgerEntry.create({
           data: {
             id: crypto.randomUUID(),
@@ -418,7 +447,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           },
         }),
       ]);
-      return Response.json({ ok: true, status: "settled" });
+      return Response.json({ ok: true, status: nextStatus, tradeId: trade.id });
     }
 
     return Response.json({ error: "Unsupported workflow action." }, { status: 400 });

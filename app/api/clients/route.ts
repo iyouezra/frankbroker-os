@@ -1,0 +1,67 @@
+import { prisma } from "../../../lib/prisma";
+import { resolveActor } from "../../../lib/server-auth";
+import { toNum } from "../../../lib/money";
+
+export const runtime = "nodejs";
+
+export async function GET(request: Request) {
+  try {
+    const actor = resolveActor(request);
+    const rows = await prisma.client.findMany({
+      where: { brokerId: actor.brokerId },
+      include: {
+        accounts: {
+          include: {
+            holdings: { include: { instrument: true }, orderBy: { instrument: { symbol: "asc" } } },
+            cashLedgerEntries: { orderBy: { createdAt: "desc" }, take: 8 },
+            _count: { select: { orders: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { fullName: "asc" },
+    });
+
+    return Response.json({
+      clients: rows.map((client) => {
+        const account = client.accounts[0];
+        return {
+          id: client.id,
+          code: client.clientCode,
+          name: client.fullName,
+          type: client.clientType,
+          kyc: client.kycStatus,
+          status: client.status,
+          risk: client.riskRating,
+          totalCash: toNum(account?.totalCash),
+          availableCash: toNum(account?.availableCash),
+          blockedCash: toNum(account?.blockedCash),
+          accountId: account?.id ?? "",
+          accountNumber: account?.accountNumber ?? "No trading account",
+          orderCount: account?._count.orders ?? 0,
+          holdings: (account?.holdings ?? []).map((holding) => ({
+            symbol: holding.instrument.symbol,
+            name: holding.instrument.name,
+            total: toNum(holding.totalQuantity),
+            available: toNum(holding.availableQuantity),
+            blocked: toNum(holding.blockedQuantity),
+            averageCost: toNum(holding.averageCost),
+          })),
+          ledger: (account?.cashLedgerEntries ?? []).map((entry) => ({
+            id: entry.id,
+            valueDate: entry.valueDate.toISOString().slice(0, 10),
+            reference: entry.tradeId ?? entry.orderId ?? entry.id,
+            type: entry.entryType,
+            amount: toNum(entry.amount),
+            runningBalance: toNum(entry.runningBalance),
+          })),
+        };
+      }),
+    });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Unable to load client accounts." },
+      { status: 500 },
+    );
+  }
+}
