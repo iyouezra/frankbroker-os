@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       tenant: {
         id: broker.id,
         name: broker.name,
+        licenseNumber: broker.licenseNumber,
         tradingName: broker.settings?.tradingName ?? broker.name,
         primaryColor: broker.settings?.primaryColor ?? "#0C8189",
         welcomeMessage: broker.settings?.welcomeMessage ?? "Invest in Ethiopia with confidence.",

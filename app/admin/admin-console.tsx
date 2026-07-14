@@ -21,15 +21,32 @@ import styles from "./admin.module.css";
 type View = "overview" | "tenants" | "instruments" | "users" | "controls" | "integrations" | "audit";
 type ConfigTab = "identity" | "features" | "branding";
 
-const navItems: Array<{ id: View; label: string; short: string }> = [
-  { id: "overview", label: "Platform overview", short: "OV" },
-  { id: "tenants", label: "Tenants", short: "TN" },
-  { id: "instruments", label: "Instrument master", short: "IM" },
-  { id: "users", label: "Users & roles", short: "UR" },
-  { id: "controls", label: "Controls & fees", short: "CF" },
-  { id: "integrations", label: "Integrations", short: "IN" },
-  { id: "audit", label: "Platform audit", short: "AU" },
+const navItems: Array<{ id: View; label: string; icon: string }> = [
+  { id: "overview", label: "Platform overview", icon: "dashboard" },
+  { id: "tenants", label: "Tenants", icon: "building" },
+  { id: "instruments", label: "Instrument master", icon: "list" },
+  { id: "users", label: "Users & roles", icon: "users" },
+  { id: "controls", label: "Controls & fees", icon: "sliders" },
+  { id: "integrations", label: "Integrations", icon: "plug" },
+  { id: "audit", label: "Platform audit", icon: "history" },
 ];
+
+// Lucide-style line icons (24×24, stroke 1.8) — matches the Frank design system.
+const ICON_PATHS: Record<string, string> = {
+  dashboard: "M4 13h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 21h6a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 9h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z M4 21h6a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z",
+  building: "M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2 M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2 M10 6h4 M10 10h4 M10 14h4 M10 18h4",
+  list: "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01",
+  users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+  sliders: "M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M2 14h4 M10 8h4 M18 16h4",
+  plug: "M12 22v-5 M9 8V2 M15 8V2 M18 8v3a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z",
+  history: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2",
+  collapse: "M9 3v18 M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
+};
+
+function Icon({ name, size = 19 }: { name: string; size?: number }) {
+  const d = ICON_PATHS[name] ?? "";
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d.split(" M").map((segment, index) => <path key={index} d={(index ? "M" : "") + segment.trim()} />)}</svg>;
+}
 
 const featureLabels: Record<FeatureKey, { title: string; description: string }> = {
   investorPortal: { title: "Investor portal", description: "Give investors access to portfolio, markets, orders, and statements." },
@@ -143,6 +160,7 @@ export default function AdminConsole() {
   const [integrations, setIntegrations] = useState(initialIntegrations);
   const [auditEvents, setAuditEvents] = useState(adminAudit);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [toast, setToast] = useState("");
   const tenant = tenants.find((item) => item.id === tenantId) ?? tenants[0];
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
@@ -196,5 +214,5 @@ export default function AdminConsole() {
   };
   const enabledFeatures = useMemo(() => Object.values(tenant.features).filter(Boolean).length, [tenant.features]);
 
-  return <main className={styles.adminShell}><aside className={styles.sidebar}><div className={styles.brand}><span><Image src="/frankscore-icon.png" width={32} height={32} alt="" /></span><div><b>FrankBroker</b><small>PLATFORM ADMIN</small></div></div><div className={styles.platformBadge}><span>FC</span><div><b>Frank Core</b><small>Platform control plane</small></div></div><nav aria-label="Admin navigation">{navItems.map((item) => <button key={item.id} className={view === item.id ? styles.navActive : ""} onClick={() => setView(item.id)}><i>{item.short}</i><span>{item.label}</span>{item.id === "tenants" && <em>{tenants.length}</em>}</button>)}</nav><div className={styles.sidebarFoot}><span><i /><b>Shared platform</b></span><small>Database-backed when connected</small></div></aside><section className={styles.workspace}><header className={styles.topbar}><div className={styles.mobileBrand}><Image src="/frankscore-icon.png" width={27} height={27} alt="" /><b>FrankBroker Admin</b></div><label className={styles.contextSelect}><small>TENANT CONTEXT</small><select value={tenantId} onChange={(event) => setTenantId(event.target.value)}>{tenants.map((item) => <option key={item.id} value={item.id}>{item.tradingName}</option>)}</select></label><span className={styles.contextMeta}><Status value={tenant.status} /><b>{enabledFeatures}/8 features</b></span><div className={styles.adminUser}><span>FY</span><div><b>Fikru Yilma</b><small>Platform administrator</small></div></div></header><div className={styles.content}>{view === "overview" ? <Overview tenants={tenants} activity={auditEvents} onTenant={setTenantId} onConfigure={() => setView("tenants")} /> : view === "tenants" ? <TenantSettings tenant={tenant} tenants={tenants} tab={configTab} setTab={setConfigTab} onSelect={setTenantId} onUpdate={updateTenant} onSave={save} /> : view === "instruments" ? <Instruments tenant={tenant} instruments={instruments} onToggleTenant={toggleTenantInstrument} onToggleStatus={toggleInstrumentStatus} /> : view === "users" ? <Users tenant={tenant} users={users} onInvite={() => setInviteOpen(true)} onToggle={toggleUser} /> : view === "controls" ? <Controls tenant={tenant} onUpdate={updateTenant} onSave={save} /> : view === "integrations" ? <Integrations tenant={tenant} integrations={integrations} onChange={changeIntegration} /> : <Audit tenantId={tenant.id} events={auditEvents} />}</div></section>{inviteOpen && <InviteDialog tenant={tenant} onClose={() => setInviteOpen(false)} onInvite={inviteUser} />}{toast && <div className={styles.toast} role="status"><i>✓</i><span><b>Change recorded</b><small>{toast}</small></span></div>}</main>;
+  return <main className={styles.adminShell}><aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ""}`}><div className={styles.brand}><span><Image src="/frankscore-icon.png" width={32} height={32} alt="" /></span><div><b>FrankBroker</b><small>PLATFORM ADMIN</small></div><button className={styles.sidebarToggle} onClick={() => setCollapsed((current) => !current)} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand" : "Collapse"}><Icon name="collapse" size={18} /></button></div><div className={styles.platformBadge}><span>FC</span><div><b>Frank Core</b><small>Platform control plane</small></div></div><nav aria-label="Admin navigation">{navItems.map((item) => <button key={item.id} className={view === item.id ? styles.navActive : ""} onClick={() => setView(item.id)} title={item.label}><i><Icon name={item.icon} size={19} /></i><span>{item.label}</span>{item.id === "tenants" && <em>{tenants.length}</em>}</button>)}</nav><div className={styles.sidebarFoot}><span><i /><b>Shared platform</b></span><small>Database-backed when connected</small></div></aside><section className={styles.workspace}><header className={styles.topbar}><div className={styles.mobileBrand}><Image src="/frankscore-icon.png" width={27} height={27} alt="" /><b>FrankBroker Admin</b></div><label className={styles.contextSelect}><small>TENANT CONTEXT</small><select value={tenantId} onChange={(event) => setTenantId(event.target.value)}>{tenants.map((item) => <option key={item.id} value={item.id}>{item.tradingName}</option>)}</select></label><span className={styles.contextMeta}><Status value={tenant.status} /><b>{enabledFeatures}/8 features</b></span><div className={styles.adminUser}><span>FY</span><div><b>Fikru Yilma</b><small>Platform administrator</small></div></div></header><div className={styles.content}>{view === "overview" ? <Overview tenants={tenants} activity={auditEvents} onTenant={setTenantId} onConfigure={() => setView("tenants")} /> : view === "tenants" ? <TenantSettings tenant={tenant} tenants={tenants} tab={configTab} setTab={setConfigTab} onSelect={setTenantId} onUpdate={updateTenant} onSave={save} /> : view === "instruments" ? <Instruments tenant={tenant} instruments={instruments} onToggleTenant={toggleTenantInstrument} onToggleStatus={toggleInstrumentStatus} /> : view === "users" ? <Users tenant={tenant} users={users} onInvite={() => setInviteOpen(true)} onToggle={toggleUser} /> : view === "controls" ? <Controls tenant={tenant} onUpdate={updateTenant} onSave={save} /> : view === "integrations" ? <Integrations tenant={tenant} integrations={integrations} onChange={changeIntegration} /> : <Audit tenantId={tenant.id} events={auditEvents} />}</div></section>{inviteOpen && <InviteDialog tenant={tenant} onClose={() => setInviteOpen(false)} onInvite={inviteUser} />}{toast && <div className={styles.toast} role="status"><i>✓</i><span><b>Change recorded</b><small>{toast}</small></span></div>}</main>;
 }

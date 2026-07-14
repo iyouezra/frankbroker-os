@@ -14,15 +14,34 @@ type TradeValue = { quantity: string; price: string; tradeDate: string };
 type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
 type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
 
-const navItems: { id: View; label: string; short: string }[] = [
-  { id: "dashboard", label: "Dashboard", short: "DB" },
-  { id: "orders", label: "Order blotter", short: "OR" },
-  { id: "clients", label: "Clients & accounts", short: "CL" },
-  { id: "settlement", label: "Settlement", short: "ST" },
-  { id: "reconciliation", label: "Reconciliation", short: "RC" },
-  { id: "reports", label: "Reports", short: "RP" },
-  { id: "audit", label: "Audit trail", short: "AU" },
+const navItems: { id: View; label: string; icon: string }[] = [
+  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+  { id: "orders", label: "Order log", icon: "orders" },
+  { id: "clients", label: "Clients & accounts", icon: "clients" },
+  { id: "settlement", label: "Settlement", icon: "settlement" },
+  { id: "reconciliation", label: "Reconciliation", icon: "reconciliation" },
+  { id: "reports", label: "Reports", icon: "reports" },
+  { id: "audit", label: "Audit trail", icon: "audit" },
 ];
+
+// Lucide-style line icons (24×24, stroke 1.8) — matches the Frank design system.
+const ICON_PATHS: Record<string, string> = {
+  dashboard: "M4 13h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 21h6a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 9h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z M4 21h6a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z",
+  orders: "M8 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1 M9 3h6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M8 11h8 M8 15h5",
+  clients: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+  settlement: "M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01l-3-3",
+  reconciliation: "M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M13 6h3a2 2 0 0 1 2 2v7 M11 18H8a2 2 0 0 1-2-2V9",
+  reports: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z M14 2v4a2 2 0 0 0 2 2h4 M16 13H8 M16 17H8 M10 9H8",
+  audit: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M21 21l-4.3-4.3",
+  bell: "M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
+  collapse: "M9 3v18 M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
+};
+
+function Icon({ name, size = 20 }: { name: string; size?: number }) {
+  const d = ICON_PATHS[name] ?? "";
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d.split(" M").map((segment, index) => <path key={index} d={(index ? "M" : "") + segment.trim()} />)}</svg>;
+}
 
 const fallbackClients: BrokerClient[] = demoClients.map((client) => ({
   id: client.id,
@@ -135,6 +154,8 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [newOrder, setNewOrder] = useState({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy" as "buy" | "sell", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "" });
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [controls, setControls] = useState<{ makerChecker: boolean; approvalThreshold: number } | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [tenantInfo, setTenantInfo] = useState<{ name: string; license: string }>({ name: "Abyssinia Securities", license: "ESCA-BR-004" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
 
   useEffect(() => {
@@ -167,13 +188,14 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
-    ]).then(([clientResult, reconResult, tenantResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, { tenant?: { controls?: { makerChecker: boolean; approvalThreshold: number } } }]) => {
+    ]).then(([clientResult, reconResult, tenantResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, { tenant?: { tradingName?: string; licenseNumber?: string; controls?: { makerChecker: boolean; approvalThreshold: number } } }]) => {
       if (clientResult.clients?.length) {
         setClients(clientResult.clients);
         setSelectedClientId((current) => clientResult.clients!.some((client) => client.id === current) ? current : clientResult.clients![0].id);
       }
       if (reconResult.batches?.[0]) setReconBatch(reconResult.batches[0]);
       if (tenantResult.tenant?.controls) setControls({ makerChecker: tenantResult.tenant.controls.makerChecker, approvalThreshold: tenantResult.tenant.controls.approvalThreshold });
+      if (tenantResult.tenant?.tradingName) setTenantInfo({ name: tenantResult.tenant.tradingName, license: tenantResult.tenant.licenseNumber ?? "" });
     }).catch(() => {
       // The synthetic fallback keeps the market-validation demo usable offline.
     });
@@ -418,12 +440,15 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-lockup"><span className="brand-mark"><img src="/frankscore-icon.png" alt="FrankScore" /></span><span><b>FrankBroker</b><small>OPERATING SYSTEM</small></span></div>
-        <div className="broker-chip"><span>AB</span><div><b>Abyssinia Securities</b><small>License: ESCA-BR-004</small></div><i>⌄</i></div>
+      <aside className={`sidebar${collapsed ? " collapsed" : ""}`}>
+        <div className="brand-lockup">
+          <span className="brand-mark"><img src="/frankscore-icon.png" alt="FrankBroker" /></span>
+          <span className="brand-words"><b>FrankBroker</b><small>OPERATING SYSTEM</small></span>
+          <button className="sidebar-toggle" onClick={() => setCollapsed((current) => !current)} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand" : "Collapse"}><Icon name="collapse" size={18} /></button>
+        </div>
         <nav aria-label="Main navigation">
           <span className="nav-label">OPERATIONS</span>
-          {navItems.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }}><i>{item.short}</i><span>{item.label}</span>{item.id === "orders" && <em>3</em>}{item.id === "reconciliation" && <em className="warn">2</em>}</button>)}
+          {navItems.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && <em>3</em>}{item.id === "reconciliation" && <em className="warn">2</em>}</button>)}
         </nav>
         <div className="sidebar-foot"><div className="system-state"><i /><span><b>Manual market mode</b><small>ESX / CSD disconnected by design</small></span></div><p>FrankBroker OS <b>MVP 0.1</b></p></div>
       </aside>
@@ -431,8 +456,9 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       <div className="workspace">
         <header className="topbar">
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
-          <label className="search"><span>⌕</span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
-          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label="Notifications">◌<em>3</em></button><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
+          <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
+          <label className="search"><span><Icon name="search" size={17} /></span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
+          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label="Notifications"><Icon name="bell" size={18} /><em>3</em></button><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
         </header>
 
         <main>
@@ -445,7 +471,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           {view === "audit" && <AuditPage onExport={exportOrders} />}
         </main>
 
-        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i>{item.short}</i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
+        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
       </div>
 
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
@@ -466,7 +492,7 @@ function Dashboard({ orders, onViewOrders, onOpen, onNewOrder, onSettle }: { ord
   const pending = orders.filter((order) => order.status === "pending_broker_review");
   const settlement = orders.filter((order) => order.status === "settlement_pending" || order.status === "partially_filled");
   return <>
-    <SectionHeader eyebrow="TUESDAY · 14 JULY 2026" title="Good morning, Mekdes" copy="Here’s the control picture for today’s brokerage operations." action={<><button className="btn secondary" onClick={onViewOrders}>View blotter</button><button className="btn primary" onClick={onNewOrder}><span>＋</span> New order</button></>} />
+    <SectionHeader eyebrow="TUESDAY · 14 JULY 2026" title="Good morning, Mekdes" copy="Here’s the control picture for today’s brokerage operations." action={<><button className="btn secondary" onClick={onViewOrders}>View order log</button><button className="btn primary" onClick={onNewOrder}><span>＋</span> New order</button></>} />
     <div className="manual-banner"><span>MANUAL MARKET MODE</span><p>Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations.</p></div>
     <section className="metric-grid"><Metric label="Today’s orders" value={String(orders.length + 16)} note="ETB 8.42M estimated value" /><Metric label="Pending approvals" value={String(pending.length + 2)} note="1 requires enhanced review" tone="warning" /><Metric label="Filled today" value="11" note="ETB 4.18M executed" tone="success" /><Metric label="Settlement pending" value={String(settlement.length + 3)} note="ETB 3.06M due by T+2" tone="purple" /><Metric label="Recon exceptions" value="2" note="ETB 18,750 variance" tone="danger" /></section>
     <div className="dashboard-grid">
@@ -498,7 +524,7 @@ function OrdersPage({ orders, onOpen, onNewOrder, onExport }: { orders: DemoOrde
   const visible = filtered.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize);
   const chooseStatus = (value: typeof statusFilter) => { setStatusFilter(value); setPage(1); };
   return <>
-    <SectionHeader eyebrow="ORDER MANAGEMENT" title="Order blotter" copy="Capture, review, execute, and trace every client instruction." action={<><button className="btn secondary" onClick={onExport}>Export CSV</button><button className="btn primary" onClick={onNewOrder}>＋ New order</button></>} />
+    <SectionHeader eyebrow="ORDER MANAGEMENT" title="Order log" copy="Capture, review, execute, and trace every client instruction." action={<><button className="btn secondary" onClick={onExport}>Export CSV</button><button className="btn primary" onClick={onNewOrder}>＋ New order</button></>} />
     <div className="filter-row">
       <button className={`filter ${statusFilter === "all" ? "active" : ""}`} onClick={() => chooseStatus("all")}>All orders <b>{orders.length}</b></button>
       <button className={`filter ${statusFilter === "review" ? "active" : ""}`} onClick={() => chooseStatus("review")}>Pending review <b>{orders.filter((order) => order.status === "pending_broker_review").length}</b></button>
