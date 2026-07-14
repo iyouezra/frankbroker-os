@@ -6,8 +6,9 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { demoAudit, demoClients, demoInstruments, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
 import { calculateOrderAmounts, hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
+import { computeBrokerAnalytics, PERIODS, type Period } from "../lib/broker-analytics";
 
-type View = "dashboard" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
+type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
 type Drawer = "new" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string };
 type TradeValue = { quantity: string; price: string; tradeDate: string };
@@ -16,6 +17,7 @@ type ReconBatch = { id: string; batchDate: string; fileName: string | null; tota
 
 const navItems: { id: View; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+  { id: "performance", label: "Performance", icon: "performance" },
   { id: "orders", label: "Order log", icon: "orders" },
   { id: "clients", label: "Clients & accounts", icon: "clients" },
   { id: "settlement", label: "Settlement", icon: "settlement" },
@@ -33,6 +35,7 @@ const ICON_PATHS: Record<string, string> = {
   reconciliation: "M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M13 6h3a2 2 0 0 1 2 2v7 M11 18H8a2 2 0 0 1-2-2V9",
   reports: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z M14 2v4a2 2 0 0 0 2 2h4 M16 13H8 M16 17H8 M10 9H8",
   audit: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2",
+  performance: "M3 3v16a2 2 0 0 0 2 2h16 M18 17V9 M13 17V5 M8 17v-3",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M21 21l-4.3-4.3",
   bell: "M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
   collapse: "M9 3v18 M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
@@ -115,6 +118,11 @@ const statusTone: Record<OrderStatus, string> = {
 
 const fmt = new Intl.NumberFormat("en-ET", { maximumFractionDigits: 2 });
 const etb = (value: number) => `${fmt.format(value)} ETB`;
+const compactEtb = (value: number) => {
+  if (value >= 1_000_000) return `ETB ${(value / 1_000_000).toFixed(value >= 10_000_000 ? 1 : 2)}M`;
+  if (value >= 1_000) return `ETB ${Math.round(value / 1_000)}K`;
+  return `ETB ${Math.round(value)}`;
+};
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className={`status status-${statusTone[status]}`}><i />{statusLabels[status]}</span>;
@@ -155,6 +163,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [controls, setControls] = useState<{ makerChecker: boolean; approvalThreshold: number } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<{ name: string; license: string }>({ name: "Abyssinia Securities", license: "ESCA-BR-004" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
 
@@ -463,6 +472,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
 
         <main>
           {view === "dashboard" && <Dashboard orders={orders} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
+          {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "orders" && <OrdersPage orders={filteredOrders} onOpen={openDetail} onNewOrder={openNewOrder} onExport={exportOrders} />}
           {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} onOpenOrder={openDetail} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
@@ -600,6 +610,106 @@ function NewOrderForm({ value, setValue, clients, checks, busy, onValidate, onSu
   const instrument = demoInstruments.find((item) => item.id === value.instrumentId)!;
   const amounts = calculateOrderAmounts(value.side, Number(value.quantity) || 0, Number(value.price) || 0);
   return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL ORDER ENTRY</span><h2>Create client order</h2><p>Capture the instruction, run server-side controls, then submit for approval.</p></div><div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div><div className="form-section"><h3>Client instruction</h3><label>Client account<select value={value.accountId} onChange={(event) => { setValue({ ...value, accountId: event.target.value }); }}>{clients.map((item) => <option key={item.id} value={item.accountId}>{item.code} · {item.name}</option>)}</select><small>{etb(client.availableCash)} available cash · KYC {client.kyc.replaceAll("_", " ")}</small></label><label>Instrument<select value={value.instrumentId} onChange={(event) => { const next = demoInstruments.find((item) => item.id === event.target.value)!; setValue({ ...value, instrumentId: event.target.value, price: String(next.price) }); }} >{demoInstruments.map((item) => <option key={item.id} value={item.id}>{item.symbol} · {item.name}</option>)}</select><small>{instrument.asset} · {instrument.status} · Lot {instrument.lot} · {instrument.cycle}</small></label><div className="segmented"><button type="button" className={value.side === "buy" ? "active buy" : ""} onClick={() => setValue({ ...value, side: "buy" })}>BUY</button><button type="button" className={value.side === "sell" ? "active sell" : ""} onClick={() => setValue({ ...value, side: "sell" })}>SELL</button></div><div className="field-row"><label>Quantity<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /></label><label>Limit price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><div className="field-row"><label>Order type<select value={value.orderType} onChange={(event) => setValue({ ...value, orderType: event.target.value })}><option>Limit</option><option>Market</option></select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div><label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Estimated fees (0.50%)</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div><div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, lot, and tick-size controls before submission.</p>}</div><div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : "Submit for review"} <span>→</span></button></div></form>;
+}
+
+function TrendChart({ data, metric }: { data: { label: string; volume: number; revenue: number }[]; metric: "revenue" | "volume" }) {
+  // Downsample long windows into buckets so bars stay legible (quarter/YTD).
+  let display = data;
+  if (data.length > 32) {
+    const size = Math.ceil(data.length / 26);
+    display = [];
+    for (let i = 0; i < data.length; i += size) {
+      const slice = data.slice(i, i + size);
+      display.push({ label: slice[slice.length - 1].label, volume: slice.reduce((t, p) => t + p.volume, 0), revenue: slice.reduce((t, p) => t + p.revenue, 0) });
+    }
+  }
+  const values = display.map((point) => (metric === "revenue" ? point.revenue : point.volume));
+  const max = Math.max(1, ...values);
+  const step = Math.max(1, Math.ceil(display.length / 6));
+  return <div className="bar-chart" role="img" aria-label={`${metric} trend`}>
+    {display.map((point, index) => <div className="bar-col" key={point.label + index} title={`${point.label} · ${compactEtb(values[index])}`}>
+      <i style={{ height: `${Math.max(3, (values[index] / max) * 100)}%` }} />
+      <span>{index === display.length - 1 || index % step === 0 ? point.label : ""}</span>
+    </div>)}
+  </div>;
+}
+
+function PerformancePage({ orders, clients, period, setPeriod, onOpen }: { orders: DemoOrder[]; clients: BrokerClient[]; period: Period; setPeriod: (period: Period) => void; onOpen: (order: DemoOrder) => void }) {
+  const [metric, setMetric] = useState<"revenue" | "volume">("revenue");
+  const a = useMemo(() => computeBrokerAnalytics(orders, clients, period), [orders, clients, period]);
+  const riskTotal = Math.max(1, a.risk.bands.reduce((total, band) => total + band.cash, 0));
+  const flowTotal = Math.max(1, a.buySell.buy + a.buySell.sell);
+  const topInstrumentMax = Math.max(1, ...a.topInstruments.map((item) => item.volume));
+  const topClientMax = Math.max(1, ...a.topClients.map((item) => item.commission));
+
+  return <>
+    <SectionHeader eyebrow="BUSINESS INTELLIGENCE" title="Performance" copy="Turnover facilitated, commissions earned, and the risk profile of your client book."
+      action={<div className="period-toggle">{PERIODS.map((item) => <button key={item.id} className={period === item.id ? "active" : ""} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div>} />
+
+    <section className="metric-grid perf-kpis">
+      <Metric label="Volume facilitated" value={compactEtb(a.volume)} note={`${a.ordersFilled} filled orders`} tone="brand" />
+      <Metric label="Commissions earned" value={compactEtb(a.revenue)} note={`${a.effectiveRate.toFixed(2)}% effective rate`} tone="success" />
+      <Metric label="Fill rate" value={`${Math.round(a.fillRate * 100)}%`} note={`${a.ordersRejected} rejected or cancelled`} tone="purple" />
+      <Metric label="Active clients" value={`${a.activeClients}`} note={`${a.newClients} new this period`} tone="warning" />
+      <Metric label="Avg order size" value={compactEtb(a.avgOrderSize)} note="per filled order" tone="brand" />
+    </section>
+
+    <div className="perf-grid">
+      <section className="panel">
+        <div className="panel-head"><div><span className="eyebrow">OVER TIME</span><h2>{metric === "revenue" ? "Commissions earned" : "Volume facilitated"}</h2></div>
+          <div className="chart-toggle"><button className={metric === "revenue" ? "active" : ""} onClick={() => setMetric("revenue")}>Revenue</button><button className={metric === "volume" ? "active" : ""} onClick={() => setMetric("volume")}>Volume</button></div>
+        </div>
+        <div className="panel-body"><TrendChart data={a.trend} metric={metric} /></div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><div><span className="eyebrow">FLOW & CONCENTRATION</span><h2>Where volume comes from</h2></div></div>
+        <div className="panel-body">
+          <div className="split-block">
+            <div className="split-labels"><span><i className="dot dot-buy" />Buys <b>{Math.round((a.buySell.buy / flowTotal) * 100)}%</b></span><span><i className="dot dot-sell" />Sells <b>{Math.round((a.buySell.sell / flowTotal) * 100)}%</b></span></div>
+            <div className="stack-bar"><i className="seg seg-buy" style={{ flexGrow: Math.max(0.001, a.buySell.buy) }} title={`Buys · ${compactEtb(a.buySell.buy)}`} /><i className="seg seg-sell" style={{ flexGrow: Math.max(0.001, a.buySell.sell) }} title={`Sells · ${compactEtb(a.buySell.sell)}`} /></div>
+          </div>
+          <ul className="rank-list">{a.topInstruments.map((item) => <li key={item.symbol}><span className="rank-label">{item.symbol}</span><i className="rank-track"><em style={{ width: `${Math.max(4, (item.volume / topInstrumentMax) * 100)}%` }} /></i><b>{compactEtb(item.volume)}</b></li>)}</ul>
+        </div>
+      </section>
+    </div>
+
+    <SectionHeader eyebrow="RISK & SUITABILITY" title="Client book risk profile" copy="The composition of who you trade for, and where exposure concentrates." />
+
+    <section className="metric-grid perf-risk-kpis">
+      <Metric label="Assets under administration" value={compactEtb(a.risk.totalAum)} note={`${clients.length} client accounts`} tone="brand" />
+      <Metric label="Orders under enhanced review" value={`${a.risk.flaggedOrders.count}`} note={`${compactEtb(a.risk.flaggedOrders.value)} flagged`} tone={a.risk.flaggedOrders.count ? "warning" : "success"} />
+      <Metric label="Largest client concentration" value={`${Math.round(a.risk.concentration.share * 100)}%`} note={`of AUM · ${a.risk.concentration.client}`} tone={a.risk.concentration.share > 0.4 ? "danger" : "purple"} />
+      <Metric label="Restricted accounts" value={`${a.risk.restrictedClients}`} note={`${Math.round(a.risk.blockedRatio * 100)}% of cash blocked`} tone={a.risk.restrictedClients ? "danger" : "success"} />
+    </section>
+
+    <div className="perf-grid">
+      <section className="panel">
+        <div className="panel-head"><div><span className="eyebrow">SUITABILITY MIX</span><h2>Clients by risk rating</h2></div></div>
+        <div className="panel-body">
+          <div className="stack-bar">{a.risk.bands.map((band) => <i key={band.key} className={`seg tone-${band.tone}`} style={{ flexGrow: Math.max(0.001, band.cash) }} title={`${band.label} · ${band.count} clients · ${compactEtb(band.cash)}`} />)}</div>
+          <ul className="legend-list">{a.risk.bands.map((band) => <li key={band.key}><i className={`dot tone-${band.tone}`} /><span><b>{band.label}</b><small>{band.count} {band.count === 1 ? "client" : "clients"}</small></span><em>{Math.round((band.cash / riskTotal) * 100)}%</em><b className="num">{compactEtb(band.cash)}</b></li>)}</ul>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><div><span className="eyebrow">ONBOARDING</span><h2>KYC status</h2></div></div>
+        <div className="panel-body"><ul className="legend-list">{a.risk.kyc.map((item) => <li key={item.key}><i className={`dot tone-${item.tone}`} /><span><b>{item.label}</b></span><b className="num">{item.count}</b></li>)}</ul></div>
+      </section>
+    </div>
+
+    <div className="perf-grid">
+      <section className="panel">
+        <div className="panel-head"><div><span className="eyebrow">DRILL DOWN</span><h2>Top clients by commission</h2></div></div>
+        <div className="panel-body"><ul className="rank-list">{a.topClients.map((item) => <li key={item.code}><span className="rank-label rank-label-wide">{item.name}<small>{item.code}</small></span><i className="rank-track"><em style={{ width: `${Math.max(4, (item.commission / topClientMax) * 100)}%` }} /></i><b>{compactEtb(item.commission)}</b></li>)}</ul></div>
+      </section>
+
+      <section className="panel table-panel">
+        <div className="panel-head"><div><span className="eyebrow">DRILL DOWN</span><h2>Largest orders</h2></div></div>
+        <div className="table-scroll"><table><thead><tr><th>Order</th><th>Client</th><th>Instrument</th><th className="num">Net (ETB)</th><th>Status</th></tr></thead><tbody>{a.largestOrders.map((row) => <tr key={row.id} onClick={() => { const order = orders.find((item) => item.id === row.id); if (order) onOpen(order); }}><td><b>{row.id}</b></td><td>{row.client}</td><td><span className={`side side-${row.side}`}>{row.side.toUpperCase()}</span> <b>{row.symbol}</b></td><td className="num"><b>{fmt.format(row.net)}</b></td><td><StatusBadge status={row.status as OrderStatus} /></td></tr>)}</tbody></table></div>
+      </section>
+    </div>
+  </>;
 }
 
 function OrderDetail({ order, role, busy, controls, onApprove, onReject, onCancel, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; controls: { makerChecker: boolean; approvalThreshold: number } | null; onApprove: () => void; onReject: () => void; onCancel: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
