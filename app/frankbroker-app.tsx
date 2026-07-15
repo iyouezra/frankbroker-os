@@ -14,6 +14,7 @@ type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "s
 type TradeValue = { quantity: string; price: string; tradeDate: string };
 type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
 type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
+type AuditEntry = { id?: string; time: string; actor: string; action: string; detail: string; entity: string };
 type BrokerInstrument = { id: string; symbol: string; name: string; asset: string; issuer: string; status: string; currency: string; lot: number; tick: number; cycle: string; price: number; coupon?: string; maturity?: string };
 type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[] };
 type TenantFeatures = { manualTradeCapture: boolean; [key: string]: boolean };
@@ -119,6 +120,7 @@ const fallbackReconBatch: ReconBatch = {
     { id: "rec_exc_2", reference: "TELE", exceptionType: "quantity_mismatch", expectedValue: "12500", actualValue: "12495", status: "open", resolutionNotes: null },
   ],
 };
+const emptyReconBatch: ReconBatch = { id: "No batches", batchDate: "", fileName: null, totalRecords: 0, matchedRecords: 0, exceptionRecords: 0, status: "empty", exceptions: [] };
 
 const statusLabels: Record<OrderStatus, string> = {
   draft: "Draft",
@@ -159,6 +161,10 @@ const compactEtb = (value: number) => {
   if (value >= 1_000) return `ETB ${Math.round(value / 1_000)}K`;
   return `ETB ${Math.round(value)}`;
 };
+const auditTime = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+};
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className={`status status-${statusTone[status]}`}><i />{statusLabels[status]}</span>;
@@ -194,6 +200,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [clients, setClients] = useState<BrokerClient[]>(fallbackClients);
   const [selectedClientId, setSelectedClientId] = useState(fallbackClients[0].id);
   const [reconBatch, setReconBatch] = useState<ReconBatch>(fallbackReconBatch);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [newOrder, setNewOrder] = useState({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy" as "buy" | "sell", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "" });
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
@@ -201,10 +208,11 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [features, setFeatures] = useState<TenantFeatures>(fallbackFeatures);
   const [instruments, setInstruments] = useState<BrokerInstrument[]>(fallbackInstruments);
   const [collapsed, setCollapsed] = useState(true);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
+  const pendingOrderCount = orders.filter((order) => order.status === "pending_broker_review").length;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -220,8 +228,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           source: order.source.charAt(0).toUpperCase() + order.source.slice(1),
           trader: order.trader ?? "Unassigned",
         })) as DemoOrder[];
-        const persistedIds = new Set(persisted.map((order) => order.id));
-        setOrders([...persisted, ...initialOrders.filter((order) => !persistedIds.has(order.id))]);
+        setOrders(persisted);
       })
       .catch(() => {
         // Keep the static demonstration surface available before a database is connected.
@@ -236,12 +243,14 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
-    ]).then(([clientResult, reconResult, tenantResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, TenantApiResult]) => {
-      if (clientResult.clients?.length) {
+      fetch("/api/audit", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
+    ]).then(([clientResult, reconResult, tenantResult, auditResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, TenantApiResult, { events?: AuditEntry[] }]) => {
+      if (clientResult.clients) {
         setClients(clientResult.clients);
-        setSelectedClientId((current) => clientResult.clients!.some((client) => client.id === current) ? current : clientResult.clients![0].id);
+        setSelectedClientId((current) => clientResult.clients!.some((client) => client.id === current) ? current : clientResult.clients![0]?.id ?? "");
       }
-      if (reconResult.batches?.[0]) setReconBatch(reconResult.batches[0]);
+      if (reconResult.batches) setReconBatch(reconResult.batches[0] ?? emptyReconBatch);
+      if (auditResult.events) setAuditEntries(auditResult.events);
       const nextControls = { ...fallbackControls, ...(tenantResult.tenant?.controls ?? {}) };
       const nextFeatures: TenantFeatures = { ...fallbackFeatures };
       Object.entries(tenantResult.tenant?.features ?? {}).forEach(([key, enabled]) => {
@@ -290,9 +299,6 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     window.setTimeout(() => setToast(null), 3600);
   };
 
-  useEffect(() => {
-    setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
-  }, []);
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -317,7 +323,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   };
 
   const persistAction = async (id: string, payload: Record<string, unknown>) => {
-      return apiRequest<{ status: OrderStatus; trade?: { id: string; settlementDate: string }; filledQuantity?: number; remainingQuantity?: number }>(`/api/orders/${encodeURIComponent(id)}/action`, {
+      return apiRequest<{ status: OrderStatus; trade?: { id: string; tradeDate: string; settlementDate: string; quantity: number; executionPrice: number; gross: number; fees: number; net: number; cashStatus: string; securitiesStatus: string; capturedBy: string }; filledQuantity?: number; remainingQuantity?: number }>(`/api/orders/${encodeURIComponent(id)}/action`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-frank-demo-role": role },
         body: JSON.stringify(payload),
@@ -344,7 +350,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     if (!features.manualTradeCapture) return notify("Manual trade capture is disabled for this tenant in the admin console.", "error");
     if (!hasPermission(role, "trade")) return notify(`${roleLabels[role]} cannot capture trades.`, "error");
     setSelectedId(order.id);
-    setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: "2026-07-14" });
+    setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: new Date().toISOString().slice(0, 10) });
     setDrawer("trade");
   };
 
@@ -358,9 +364,17 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     try {
       const result = await persistAction(selected.id, { action: "execute", executionPrice: price, quantityFilled: quantity, tradeDate: tradeForm.tradeDate });
       updateStatus(selected.id, result.status, {
-        price,
         tradeId: result.trade?.id,
+        capturedBy: result.trade?.capturedBy,
+        tradeDate: result.trade?.tradeDate,
         settlementDate: result.trade?.settlementDate,
+        tradeQuantity: result.trade?.quantity,
+        executionPrice: result.trade?.executionPrice,
+        tradeGross: result.trade?.gross,
+        tradeFees: result.trade?.fees,
+        tradeNet: result.trade?.net,
+        cashStatus: result.trade?.cashStatus,
+        securitiesStatus: result.trade?.securitiesStatus,
         filledQuantity: result.filledQuantity,
         remainingQuantity: result.remainingQuantity,
       });
@@ -537,7 +551,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         </div>
         <nav aria-label="Main navigation">
           <span className="nav-label">OPERATIONS</span>
-          {navItems.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && <em>3</em>}{item.id === "reconciliation" && <em className="warn">2</em>}</button>)}
+          {navItems.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
         </nav>
         <div className="sidebar-foot"><div className="system-state"><i /><span><b>{features.manualTradeCapture ? "Manual market mode" : "Trade capture disabled"}</b><small>{features.manualTradeCapture ? "ESX / CSD disconnected by design" : "Controlled from platform admin"}</small></span></div><p>FrankBroker OS <b>MVP 0.1</b></p></div>
       </aside>
@@ -551,14 +565,14 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         </header>
 
         <main>
-          {view === "dashboard" && <Dashboard orders={orders} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
+          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "orders" && <OrdersPage orders={filteredOrders} instruments={instruments} onOpen={openDetail} onNewOrder={openNewOrder} onExport={exportOrders} />}
           {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} onOpenOrder={openDetail} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage onExport={exportOrders} />}
-          {view === "audit" && <AuditPage onExport={exportOrders} />}
+          {view === "audit" && <AuditPage events={auditEntries} />}
         </main>
 
         <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
@@ -578,19 +592,23 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   );
 }
 
-function Dashboard({ orders, settlementCycle, manualTradeCapture, onViewOrders, onOpen, onNewOrder, onSettle }: { orders: DemoOrder[]; settlementCycle: string; manualTradeCapture: boolean; onViewOrders: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onSettle: () => void }) {
+function Dashboard({ orders, auditEntries, settlementCycle, manualTradeCapture, onViewOrders, onOpen, onNewOrder, onSettle }: { orders: DemoOrder[]; auditEntries: AuditEntry[]; settlementCycle: string; manualTradeCapture: boolean; onViewOrders: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onSettle: () => void }) {
   const pending = orders.filter((order) => order.status === "pending_broker_review");
   const settlement = orders.filter((order) => order.status === "settlement_pending" || order.status === "partially_filled");
+  const filled = orders.filter((order) => ["partially_filled", "settlement_pending", "settled"].includes(order.status));
+  const orderValue = orders.reduce((total, order) => total + order.estimatedNet, 0);
+  const filledValue = filled.reduce((total, order) => total + (order.tradeNet ?? order.estimatedNet), 0);
+  const settlementValue = settlement.reduce((total, order) => total + (order.tradeNet ?? order.estimatedNet), 0);
   return <>
     <SectionHeader eyebrow="TUESDAY · 14 JULY 2026" title="Good morning, Mekdes" copy="Here’s the control picture for today’s brokerage operations." action={<><button className="btn secondary" onClick={onViewOrders}>View order log</button><button className="btn primary" onClick={onNewOrder}><span>＋</span> New order</button></>} />
     <div className="manual-banner"><span>{manualTradeCapture ? "MANUAL MARKET MODE" : "TRADE CAPTURE DISABLED"}</span><p>{manualTradeCapture ? "Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations." : "Platform administration has paused manual execution capture for this tenant. Existing orders and settlements remain visible."}</p></div>
-    <section className="metric-grid"><Metric label="Today’s orders" value={String(orders.length + 16)} note="ETB 8.42M estimated value" /><Metric label="Pending approvals" value={String(pending.length + 2)} note="1 requires enhanced review" tone="warning" /><Metric label="Filled today" value="11" note="ETB 4.18M executed" tone="success" /><Metric label="Settlement pending" value={String(settlement.length + 3)} note={`ETB 3.06M due by ${settlementCycle}`} tone="purple" /><Metric label="Recon exceptions" value="2" note="ETB 18,750 variance" tone="danger" /></section>
+    <section className="metric-grid"><Metric label="Orders in view" value={String(orders.length)} note={`${compactEtb(orderValue)} estimated value`} /><Metric label="Pending approvals" value={String(pending.length)} note={`${pending.filter((order) => order.riskFlag !== "none").length} require risk review`} tone="warning" /><Metric label="Executed orders" value={String(filled.length)} note={`${compactEtb(filledValue)} captured`} tone="success" /><Metric label="Settlement pending" value={String(settlement.length)} note={`${compactEtb(settlementValue)} due by ${settlementCycle}`} tone="purple" /><Metric label="Validation exceptions" value={String(orders.filter((order) => order.status === "validation_failed").length)} note="Orders requiring correction" tone="danger" /></section>
     <div className="dashboard-grid">
       <section className="panel queue-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL QUEUE</span><h2>Needs your attention</h2></div><button className="text-button" onClick={onViewOrders}>View all <span>→</span></button></div>
         <div className="queue-list">{[...pending, ...orders.filter((order) => order.status === "validation_failed")].slice(0, 3).map((order) => <button key={order.id} onClick={() => onOpen(order)}><span className={`queue-icon ${order.status === "validation_failed" ? "danger" : "warning"}`}>{order.status === "validation_failed" ? "!" : "↗"}</span><span><b>{order.status === "validation_failed" ? "Validation failed" : "Order awaiting approval"}</b><small>{order.id} · {order.client} · {order.side.toUpperCase()} {fmt.format(order.quantity)} {order.symbol}</small></span><StatusBadge status={order.status} /><em>›</em></button>)}</div>
       </section>
       <section className="panel settlement-card"><div className="panel-head"><div><span className="eyebrow">SETTLEMENT POSITION</span><h2>Due by value date</h2></div><button className="text-button" onClick={onSettle}>Open queue <span>→</span></button></div><div className="settlement-bars"><div><span><b>Today</b><small>3 trades</small></span><i><em style={{ width: "82%" }} /></i><strong>ETB 1.84M</strong></div><div><span><b>Tomorrow</b><small>5 trades</small></span><i><em style={{ width: "58%" }} /></i><strong>ETB 1.22M</strong></div><div><span><b>16 Jul</b><small>2 trades</small></span><i><em style={{ width: "30%" }} /></i><strong>ETB 640K</strong></div></div><div className="settlement-foot"><span><i className="cash" /> Cash pending <b>3</b></span><span><i className="security" /> Securities pending <b>4</b></span></div></section>
-      <section className="panel activity-panel"><div className="panel-head"><div><span className="eyebrow">LIVE ACTIVITY</span><h2>Latest control events</h2></div><button className="text-button">Audit trail <span>→</span></button></div><div className="activity-list">{demoAudit.slice(0, 4).map((item) => <div key={item.time}><i /><time>{item.time}</time><span><b>{item.action.replaceAll("_", " ")}</b><small>{item.detail}</small></span><em>{item.actor}</em></div>)}</div></section>
+      <section className="panel activity-panel"><div className="panel-head"><div><span className="eyebrow">LIVE ACTIVITY</span><h2>Latest control events</h2></div></div><div className="activity-list">{auditEntries.slice(0, 4).map((item) => <div key={item.id ?? item.time}><i /><time>{auditTime(item.time)}</time><span><b>{item.action.replaceAll("_", " ")}</b><small>{item.detail}</small></span><em>{item.actor}</em></div>)}</div></section>
     </div>
   </>;
 }
@@ -655,7 +673,9 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, onOpe
 
 function SettlementPage({ orders, onOpen, onExport }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void; onExport: () => void }) {
   const queue = orders.filter((order) => ["settlement_pending", "partially_filled", "settled"].includes(order.status));
-  return <><SectionHeader eyebrow="POST-TRADE CONTROL" title="Settlement tracking" copy="Confirm cash and securities legs, value dates, and operational exceptions." action={<button className="btn secondary" onClick={onExport}>Export queue</button>} /><section className="metric-grid settlement-metrics"><Metric label="Due today" value="3" note="ETB 1.84M net" tone="warning" /><Metric label="Cash confirmed" value="7 / 10" note="3 awaiting confirmation" tone="success" /><Metric label="Securities confirmed" value="6 / 10" note="4 awaiting confirmation" tone="purple" /><Metric label="Exceptions" value="1" note="Age: 2h 14m" tone="danger" /></section><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Client</th><th>Instrument</th><th>Value date</th><th className="num">Net amount</th><th>Cash</th><th>Securities</th><th>Overall</th></tr></thead><tbody>{queue.map((order) => <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.tradeId ?? "Trade pending"}</b><small>{order.id}</small></td><td><b>{order.client}</b></td><td><b>{order.symbol}</b><small>{order.side.toUpperCase()} {fmt.format(order.quantity)}</small></td><td><b>{order.settlementDate ?? "Pending"}</b></td><td className="num"><b>{fmt.format(order.estimatedNet)}</b><small>ETB</small></td><td><span className={`leg ${order.status === "settled" ? "done" : "pending"}`}>{order.status === "settled" ? "Confirmed" : "Pending"}</span></td><td><span className={`leg ${order.status === "settled" ? "done" : "pending"}`}>{order.status === "settled" ? "Confirmed" : "Pending"}</span></td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div></section></>;
+  const settledCash = queue.filter((order) => (order.cashStatus ?? (order.status === "settled" ? "settled" : "pending")) === "settled").length;
+  const settledSecurities = queue.filter((order) => (order.securitiesStatus ?? (order.status === "settled" ? "settled" : "pending")) === "settled").length;
+  return <><SectionHeader eyebrow="POST-TRADE CONTROL" title="Settlement tracking" copy="Confirm cash and securities legs, value dates, and operational exceptions." action={<button className="btn secondary" onClick={onExport}>Export queue</button>} /><section className="metric-grid settlement-metrics"><Metric label="Settlement records" value={String(queue.length)} note={`${queue.filter((order) => order.status !== "settled").length} awaiting completion`} tone="warning" /><Metric label="Cash confirmed" value={`${settledCash} / ${queue.length}`} note={`${queue.length - settledCash} awaiting confirmation`} tone="success" /><Metric label="Securities confirmed" value={`${settledSecurities} / ${queue.length}`} note={`${queue.length - settledSecurities} awaiting confirmation`} tone="purple" /><Metric label="Exceptions" value={String(queue.filter((order) => order.cashStatus === "exception" || order.securitiesStatus === "exception").length)} note="From settlement records" tone="danger" /></section><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Client</th><th>Instrument</th><th>Value date</th><th className="num">Net amount</th><th>Cash</th><th>Securities</th><th>Overall</th></tr></thead><tbody>{queue.map((order) => { const cash = order.cashStatus ?? (order.status === "settled" ? "settled" : "pending"); const securities = order.securitiesStatus ?? (order.status === "settled" ? "settled" : "pending"); return <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.tradeId ?? "Trade pending"}</b><small>{order.id}</small></td><td><b>{order.client}</b></td><td><b>{order.symbol}</b><small>{order.side.toUpperCase()} {fmt.format(order.tradeQuantity ?? order.quantity)}</small></td><td><b>{order.settlementDate ?? "Pending"}</b></td><td className="num"><b>{fmt.format(order.tradeNet ?? order.estimatedNet)}</b><small>ETB</small></td><td><span className={`leg ${cash === "settled" ? "done" : "pending"}`}>{displayLabel(cash)}</span></td><td><span className={`leg ${securities === "settled" ? "done" : "pending"}`}>{displayLabel(securities)}</span></td><td><StatusBadge status={order.status} /></td></tr>; })}</tbody></table></div></section></>;
 }
 
 function ReconciliationPage({ batch, busy, onFile, onDownload, onResolve, resolvingId }: { batch: ReconBatch; busy: boolean; onFile: (file: File) => void; onDownload: () => void; onResolve: (id: string) => void; resolvingId: string | null }) {
@@ -681,8 +701,14 @@ function ReportsPage({ onExport }: { onExport: () => void }) {
   return <><SectionHeader eyebrow="CONTROL REPORTING" title="Reports" copy="Operational, client asset, fee, and audit exports for management and oversight." /><div className="report-grid">{reports.map((report, index) => <button className="panel report-card" key={report} onClick={onExport}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{report}</h3><p>{index < 2 ? "Business date · 14 Jul 2026" : index < 4 ? "Open items as of now" : "All active accounts"}</p></div><em>CSV <b>↓</b></em></button>)}</div><section className="panel fee-summary"><div><span className="eyebrow">MONTH TO DATE</span><h2>Brokerage fee summary</h2><p>Indicative demo calculation; fee rules remain configurable.</p></div><strong>ETB 184,620.50<small>+12.4% vs previous period</small></strong></section></>;
 }
 
-function AuditPage({ onExport }: { onExport: () => void }) {
-  return <><SectionHeader eyebrow="IMMUTABLE CONTROL RECORD" title="Audit trail" copy="Sensitive actions, actors, timestamps, and before-and-after state for every workflow." action={<button className="btn secondary" onClick={onExport}>Export audit log</button>} /><section className="panel audit-timeline">{demoAudit.map((item) => <div key={item.time}><span className="audit-dot" /><time>14 Jul 2026<br /><b>{item.time}</b></time><div><span className="asset-chip">{item.entity}</span><h3>{item.action.replaceAll("_", " ")}</h3><p>{item.detail}</p></div><strong>{item.actor}<small>Addis Ababa · Workspace</small></strong></div>)}</section></>;
+function AuditPage({ events }: { events: AuditEntry[] }) {
+  const exportAudit = () => {
+    const rows = [["Time", "Actor", "Action", "Entity", "Detail"], ...events.map((item) => [item.time, item.actor, item.action, item.entity, item.detail])];
+    const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = "frankbroker-audit-log.csv"; link.click(); URL.revokeObjectURL(url);
+  };
+  return <><SectionHeader eyebrow="CONTROL RECORD" title="Audit trail" copy="Sensitive actions, actors, timestamps, and recorded state for every workflow." action={<button className="btn secondary" onClick={exportAudit}>Export audit log</button>} /><section className="panel audit-timeline">{events.map((item) => { const date = new Date(item.time); return <div key={item.id ?? `${item.time}-${item.action}`}><span className="audit-dot" /><time>{Number.isNaN(date.getTime()) ? "Demo record" : date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}<br /><b>{auditTime(item.time)}</b></time><div><span className="asset-chip">{displayLabel(item.entity)}</span><h3>{displayLabel(item.action)}</h3><p>{item.detail}</p></div><strong>{item.actor}<small>Addis Ababa · Workspace</small></strong></div>; })}</section></>;
 }
 
 function NewOrderForm({ value, setValue, clients, instruments, controls, checks, busy, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; clients: BrokerClient[]; instruments: BrokerInstrument[]; controls: TenantControls; checks: { label: string; passed: boolean; message: string }[] | null; busy: boolean; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {
@@ -845,5 +871,14 @@ function TradeForm({ order, value, setValue, controls, busy, onSubmit, onCancel 
 
 function ContractNote({ order, instruments, tenantInfo, settlementCycle, onPrint }: { order: DemoOrder; instruments: BrokerInstrument[]; tenantInfo: TenantInfo; settlementCycle: string; onPrint: () => void }) {
   const instrument = instruments.find((item) => item.id === order.instrumentId);
-  return <div className="drawer-content contract-wrapper"><div className="contract-toolbar"><div><span className="eyebrow">PRINTABLE CONTRACT NOTE</span><h2>{order.tradeId ?? "Trade pending"}</h2></div><button className="btn primary" onClick={onPrint}>Print / Save PDF</button></div><article className="contract-note"><header><div className="contract-brand"><img src="/frankscore-icon.png" alt="" /><span><b>{tenantInfo.name}</b><small>Licensed securities broker{tenantInfo.license ? ` · ${tenantInfo.license}` : ""}</small></span></div><div><b>CONTRACT NOTE</b><small>Original · Client copy</small></div></header><section><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · Addis Ababa, Ethiopia</span></div><div><small>CONTRACT NOTE NO.</small><b>CN-2026-{order.id.slice(-4)}</b><span>Trade date · 14 July 2026</span></div></section><table><thead><tr><th>Security</th><th>Side</th><th className="num">Quantity</th><th className="num">Price (ETB)</th><th className="num">Gross (ETB)</th></tr></thead><tbody><tr><td><b>{order.symbol}</b><small>{instrument?.name ?? "Tenant instrument"}</small></td><td>{order.side.toUpperCase()}</td><td className="num">{fmt.format(order.quantity)}</td><td className="num">{fmt.format(order.price)}</td><td className="num"><b>{fmt.format(order.estimatedGross)}</b></td></tr></tbody></table><div className="contract-totals"><span><small>Gross consideration</small><b>{etb(order.estimatedGross)}</b></span><span><small>Brokerage & market fees</small><b>{etb(order.estimatedFees)}</b></span><span><small>{order.side === "buy" ? "Amount payable" : "Net proceeds"}</small><strong>{etb(order.estimatedNet)}</strong></span></div><div className="contract-meta"><span><small>ORDER ID</small><b>{order.id}</b></span><span><small>TRADE ID</small><b>{order.tradeId ?? "Pending"}</b></span><span><small>SETTLEMENT DATE</small><b>{order.settlementDate ?? "Pending"}</b></span><span><small>SETTLEMENT CYCLE</small><b>{settlementCycle || instrument?.cycle}</b></span></div><footer><p>This contract note records a manually captured execution in FrankBroker OS. It is subject to confirmation against the broker’s official books and external market records.</p><div><span>Authorized by</span><b>Mekdes Tadesse</b><small>Broker administrator</small></div></footer></article></div>;
+  const quantity = order.tradeQuantity ?? order.quantity;
+  const price = order.executionPrice ?? order.price;
+  const gross = order.tradeGross ?? order.estimatedGross;
+  const fees = order.tradeFees ?? order.estimatedFees;
+  const net = order.tradeNet ?? order.estimatedNet;
+  const tradeDate = order.tradeDate ?? order.createdAt.slice(0, 10);
+  const parsedTradeDate = new Date(`${tradeDate}T00:00:00.000Z`);
+  const displayTradeDate = Number.isNaN(parsedTradeDate.getTime()) ? tradeDate : parsedTradeDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  const noteNumber = order.tradeId ? `CN-${order.tradeId}` : `DRAFT-${order.id}`;
+  return <div className="drawer-content contract-wrapper"><div className="contract-toolbar"><div><span className="eyebrow">PRINTABLE CONTRACT NOTE</span><h2>{order.tradeId ?? "Trade pending"}</h2></div><button className="btn primary" onClick={onPrint} disabled={!order.tradeId}>Print / Save PDF</button></div>{!order.tradeId && <div className="permission-note">A final contract note is available only after an execution has been captured.</div>}<article className="contract-note"><header><div className="contract-brand"><img src="/frankscore-icon.png" alt="" /><span><b>{tenantInfo.name}</b><small>Licensed securities broker{tenantInfo.license ? ` · ${tenantInfo.license}` : ""}</small></span></div><div><b>CONTRACT NOTE</b><small>{order.tradeId ? "Original · Client copy" : "Draft preview"}</small></div></header><section><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · Addis Ababa, Ethiopia</span></div><div><small>CONTRACT NOTE NO.</small><b>{noteNumber}</b><span>Trade date · {displayTradeDate}</span></div></section><table><thead><tr><th>Security</th><th>Side</th><th className="num">Quantity</th><th className="num">Execution price (ETB)</th><th className="num">Gross (ETB)</th></tr></thead><tbody><tr><td><b>{order.symbol}</b><small>{instrument?.name ?? "Tenant instrument"}</small></td><td>{order.side.toUpperCase()}</td><td className="num">{fmt.format(quantity)}</td><td className="num">{fmt.format(price)}</td><td className="num"><b>{fmt.format(gross)}</b></td></tr></tbody></table><div className="contract-totals"><span><small>Gross consideration</small><b>{etb(gross)}</b></span><span><small>Brokerage & market fees</small><b>{etb(fees)}</b></span><span><small>{order.side === "buy" ? "Amount payable" : "Net proceeds"}</small><strong>{etb(net)}</strong></span></div><div className="contract-meta"><span><small>ORDER ID</small><b>{order.id}</b></span><span><small>TRADE ID</small><b>{order.tradeId ?? "Pending"}</b></span><span><small>SETTLEMENT DATE</small><b>{order.settlementDate ?? "Pending"}</b></span><span><small>SETTLEMENT CYCLE</small><b>{settlementCycle || instrument?.cycle}</b></span></div><footer><p>This contract note records a manually captured execution in FrankBroker OS. It is subject to confirmation against the broker’s official books and external market records.</p><div><span>Captured by</span><b>{order.capturedBy ?? order.trader}</b><small>Authorized broker user</small></div></footer></article></div>;
 }

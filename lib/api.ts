@@ -27,6 +27,9 @@ export function apiError(error: unknown): Response {
       { status: 503 },
     );
   }
+  // Keep database/driver details out of production responses while preserving
+  // useful local diagnostics during MVP development.
   const message = error instanceof Error ? error.message : "Unexpected error";
-  return Response.json({ error: message }, { status: 500 });
+  if (process.env.NODE_ENV === "production") console.error("Unhandled API error", error);
+  return Response.json({ error: process.env.NODE_ENV === "production" ? "Unexpected server error." : message }, { status: 500 });
 }

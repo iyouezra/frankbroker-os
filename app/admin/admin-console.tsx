@@ -163,11 +163,10 @@ export default function AdminConsole() {
   const [auditEvents, setAuditEvents] = useState(adminAudit);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
   const [toast, setToast] = useState("");
   const tenant = tenants.find((item) => item.id === tenantId) ?? tenants[0];
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
-  useEffect(() => { setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light"); }, []);
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);

@@ -41,3 +41,18 @@ export function computeAmounts(side: "buy" | "sell", quantity: DecimalValue, pri
   const net = side === "buy" ? money(gross.plus(fees)) : money(gross.minus(fees));
   return { gross, fees, net };
 }
+
+/**
+ * Calculates one execution while applying a percentage/minimum fee once across
+ * all fills already captured for the order.
+ */
+export function computeCumulativeFillAmounts(side: "buy" | "sell", quantity: DecimalValue, price: DecimalValue, priorGross: DecimalValue, priorFees: DecimalValue, feeRate: DecimalValue = FEE_RATE, minimumFee: DecimalValue = 0) {
+  const gross = money(D(quantity).times(price));
+  const cumulativePercentageFee = money(D(priorGross).plus(gross).times(feeRate));
+  const floor = money(minimumFee);
+  const cumulativeFeeTarget = cumulativePercentageFee.gte(floor) ? cumulativePercentageFee : floor;
+  const remainingFee = money(cumulativeFeeTarget.minus(priorFees));
+  const fees = remainingFee.gte(0) ? remainingFee : ZERO;
+  const net = side === "buy" ? money(gross.plus(fees)) : money(gross.minus(fees));
+  return { gross, fees, net };
+}

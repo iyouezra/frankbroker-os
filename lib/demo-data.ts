@@ -22,6 +22,15 @@ export type DemoOrder = {
   riskFlag: "none" | "review" | "high";
   settlementDate?: string;
   tradeId?: string;
+  capturedBy?: string;
+  tradeDate?: string;
+  tradeQuantity?: number;
+  executionPrice?: number;
+  tradeGross?: number;
+  tradeFees?: number;
+  tradeNet?: number;
+  cashStatus?: string;
+  securitiesStatus?: string;
   filledQuantity?: number;
   remainingQuantity?: number;
   events?: Array<{

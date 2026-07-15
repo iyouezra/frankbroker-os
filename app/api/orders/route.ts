@@ -2,12 +2,9 @@ import { prisma } from "../../../lib/prisma";
 import { requirePermission, resolveActor } from "../../../lib/server-auth";
 import { computeAmounts, D, toNum } from "../../../lib/money";
 import { apiError as routeError } from "../../../lib/api";
+import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 
 export const runtime = "nodejs";
-
-function normalizeOrderType(value: string) {
-  return value.trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
-}
 
 export async function GET(request: Request) {
   try {
@@ -18,7 +15,7 @@ export async function GET(request: Request) {
         account: { include: { client: true } },
         instrument: true,
         assignedTrader: true,
-        trades: { include: { settlement: true }, orderBy: { capturedAt: "asc" } },
+        trades: { include: { settlement: true, capturedByUser: true }, orderBy: { capturedAt: "asc" } },
         events: { include: { actor: true }, orderBy: { createdAt: "asc" } },
       },
       orderBy: { submittedAt: "desc" },
@@ -51,7 +48,16 @@ export async function GET(request: Request) {
         filledQuantity: toNum(filledQuantity),
         remainingQuantity: toNum(order.quantity.minus(filledQuantity)),
         tradeId: latestTrade?.id,
+        capturedBy: latestTrade?.capturedByUser.fullName,
+        tradeDate: latestTrade?.tradeDate.toISOString().slice(0, 10),
         settlementDate: latestTrade?.settlementDate.toISOString().slice(0, 10),
+        tradeQuantity: latestTrade ? toNum(latestTrade.quantityFilled) : undefined,
+        executionPrice: latestTrade ? toNum(latestTrade.executionPrice) : undefined,
+        tradeGross: latestTrade ? toNum(latestTrade.grossAmount) : undefined,
+        tradeFees: latestTrade ? toNum(latestTrade.fees) : undefined,
+        tradeNet: latestTrade ? toNum(latestTrade.netAmount) : undefined,
+        cashStatus: latestTrade?.settlement?.cashStatus,
+        securitiesStatus: latestTrade?.settlement?.securitiesStatus,
         events: order.events.map((event) => ({
           id: event.id,
           fromStatus: event.fromStatus,
@@ -82,13 +88,17 @@ export async function POST(request: Request) {
       notes?: string;
     };
 
-    const quantityInput = Number(payload.quantity);
-    const priceInput = Number(payload.price);
-    if (!payload.accountId || !payload.instrumentId || !payload.side || !quantityInput || !priceInput) {
+    const side = parseOrderSide(payload.side);
+    const quantityInput = parsePositiveFiniteNumber(payload.quantity);
+    const priceInput = parsePositiveFiniteNumber(payload.price);
+    if (!payload.accountId || !payload.instrumentId || !side || quantityInput === null || priceInput === null) {
       return Response.json(
-        { error: "Account, instrument, side, quantity, and price are required." },
+        { error: "A valid account, instrument, buy/sell side, positive quantity, and positive price are required." },
         { status: 400 },
       );
+    }
+    if ((payload.notes?.length ?? 0) > 2_000 || (payload.validity?.length ?? 0) > 40 || (payload.orderType?.length ?? 0) > 40) {
+      return Response.json({ error: "Order text fields exceed the permitted length." }, { status: 400 });
     }
 
     const [account, instrument, entitlement, settings] = await Promise.all([
@@ -122,7 +132,7 @@ export async function POST(request: Request) {
     const orderTypeAllowed = allowedOrderTypes.some((item) => normalizeOrderType(item) === orderType);
     const holding = account.holdings[0];
     const feeRate = settings ? settings.brokerageFeePct.div(100) : undefined;
-    const amounts = computeAmounts(payload.side, quantity, price, feeRate, settings?.minimumFee);
+    const amounts = computeAmounts(side, quantity, price, feeRate, settings?.minimumFee);
 
     // Committed notional booked for this account so far today (excludes orders
     // that never consumed limit: rejected, cancelled, validation-failed).
@@ -142,7 +152,7 @@ export async function POST(request: Request) {
       { code: "ORDER_TYPE_ALLOWED", label: "Order type enabled", passed: orderTypeAllowed, message: orderTypeAllowed ? `${payload.orderType ?? "Limit"} is enabled for this tenant` : "This order type is disabled in the tenant policy" },
       { code: "QUANTITY_VALID", label: "Quantity valid", passed: quantity.gt(0) && quantity.mod(instrument.lotSize).isZero(), message: `Must be a positive multiple of ${instrument.lotSize}` },
       { code: "PRICE_VALID", label: "Price valid", passed: price.gt(0) && price.div(instrument.tickSize).isInteger(), message: `Must align to the ${instrument.tickSize.toString()} tick size` },
-      payload.side === "buy"
+      side === "buy"
         ? { code: "SUFFICIENT_CASH", label: "Sufficient available cash", passed: account.availableCash.gte(amounts.net), message: `${toNum(account.availableCash).toLocaleString()} ETB available including estimated fees` }
         : { code: "SUFFICIENT_HOLDINGS", label: "Sufficient available holdings", passed: Boolean(holding && holding.availableQuantity.gte(quantity)), message: `${toNum(holding?.availableQuantity).toLocaleString()} units available and unblocked` },
       { code: "DAILY_LIMIT", label: "Within daily trading limit", passed: !settings?.clientDailyLimit || projectedToday.lte(settings.clientDailyLimit), message: settings?.clientDailyLimit ? `${toNum(projectedToday).toLocaleString()} / ${toNum(settings.clientDailyLimit).toLocaleString()} ETB used today` : "No daily limit configured" },
@@ -161,7 +171,7 @@ export async function POST(request: Request) {
           brokerId: actor.brokerId,
           accountId: payload.accountId!,
           instrumentId: payload.instrumentId!,
-          side: payload.side!,
+          side,
           quantity,
           price,
           orderType,
@@ -202,7 +212,7 @@ export async function POST(request: Request) {
           action: "ORDER_CREATED",
           entityType: "order",
           entityId: id,
-          summary: `${payload.side!.toUpperCase()} order created for ${account.client.fullName}: ${toNum(quantity)} ${instrument.symbol} at ${toNum(price)} ETB`,
+          summary: `${side.toUpperCase()} order created for ${account.client.fullName}: ${toNum(quantity)} ${instrument.symbol} at ${toNum(price)} ETB`,
           newValue: JSON.stringify({ status, riskFlag, gross: toNum(amounts.gross), fees: toNum(amounts.fees), net: toNum(amounts.net) }),
         },
       });
@@ -218,7 +228,7 @@ export async function POST(request: Request) {
           accountId: payload.accountId,
           instrumentId: payload.instrumentId,
           symbol: instrument.symbol,
-          side: payload.side,
+          side,
           quantity: toNum(quantity),
           price: toNum(price),
           orderType,

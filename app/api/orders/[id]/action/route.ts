@@ -1,8 +1,9 @@
-import { settlementDateFrom } from "../../../../../lib/frank";
+import { FEE_RATE, settlementDateFrom } from "../../../../../lib/frank";
 import { prisma } from "../../../../../lib/prisma";
 import { requirePermission } from "../../../../../lib/server-auth";
-import { computeAmounts, D, money, ZERO, toNum } from "../../../../../lib/money";
+import { computeCumulativeFillAmounts, D, money, ZERO, toNum } from "../../../../../lib/money";
 import { apiError as routeError } from "../../../../../lib/api";
+import { normalizeOrderType, parseDateOnly, parsePositiveFiniteNumber } from "../../../../../lib/order-input";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       quantityFilled?: number;
       tradeDate?: string;
     };
+    const supportedActions = ["approve", "reject", "cancel", "execute", "settle"];
+    if (!payload.action || !supportedActions.includes(payload.action)) {
+      return Response.json({ error: "Unsupported workflow action." }, { status: 400 });
+    }
+    if ((payload.reason?.length ?? 0) > 1_000) {
+      return Response.json({ error: "The workflow reason is too long." }, { status: 400 });
+    }
+    if (payload.action === "execute") {
+      const quantityFilled = parsePositiveFiniteNumber(payload.quantityFilled);
+      const executionPrice = parsePositiveFiniteNumber(payload.executionPrice);
+      const tradeDate = parseDateOnly(payload.tradeDate);
+      if (quantityFilled === null || executionPrice === null || !tradeDate) {
+        return Response.json({ error: "A positive execution quantity, positive price, and valid trade date are required." }, { status: 400 });
+      }
+    }
     const permission = payload.action === "execute"
       ? "trade"
       : payload.action === "settle"
@@ -48,6 +64,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       where: { id },
       include: {
         instrument: true,
+        account: { include: { client: true } },
         events: { orderBy: { createdAt: "asc" } },
         trades: { include: { settlement: true }, orderBy: { capturedAt: "asc" } },
       },
@@ -56,7 +73,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (order.brokerId !== actor.brokerId) {
       return Response.json({ error: "Order not found for this tenant." }, { status: 404 });
     }
-    const settings = await prisma.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } });
+    const [settings, entitlement] = await Promise.all([
+      prisma.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } }),
+      prisma.brokerInstrument.findUnique({ where: { brokerId_instrumentId: { brokerId: actor.brokerId, instrumentId: order.instrumentId } } }),
+    ]);
+    const features = (settings?.features ?? {}) as unknown as Record<string, unknown>;
 
     const now = new Date();
 
@@ -75,6 +96,28 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         if (creatorId && creatorId === actor.id) {
           return Response.json({ error: `Four-eyes control: orders at or above ${toNum(approvalThreshold).toLocaleString()} ETB require a second approver. The order creator cannot approve this one — switch to Compliance or another authorized approver.` }, { status: 409 });
         }
+      }
+
+      const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
+        ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
+        : ["Limit"];
+      const controlFailure = order.account.client.brokerId !== actor.brokerId
+        ? "The account no longer belongs to this tenant."
+        : order.account.client.kycStatus !== "approved"
+          ? "Client KYC is no longer approved."
+          : order.account.status !== "active" || order.account.client.status !== "active"
+            ? "The client or trading account is no longer active."
+            : order.instrument.tradingStatus !== "tradable" || entitlement?.enabled !== true
+              ? "The instrument is no longer tradable for this tenant."
+              : !allowedOrderTypes.some((item) => normalizeOrderType(item) === normalizeOrderType(order.orderType))
+                ? "The order type is no longer enabled for this tenant."
+                : !["buy", "sell"].includes(order.side) || order.quantity.lte(0) || order.price.lte(0)
+                  ? "The stored order direction, quantity, or price is invalid."
+                  : (!(order.source === "investor_portal" && features.fractionalOrders === true) && !order.quantity.mod(order.instrument.lotSize).isZero()) || !order.price.div(order.instrument.tickSize).isInteger()
+                    ? "The order no longer meets the instrument lot or tick-size rules."
+                    : null;
+      if (controlFailure) {
+        return Response.json({ error: `${controlFailure} Run validation again before approval.` }, { status: 409 });
       }
 
       if (order.side === "buy") {
@@ -238,7 +281,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (payload.action === "execute") {
-      const features = (settings?.features ?? {}) as unknown as Record<string, unknown>;
       if (features.manualTradeCapture === false) {
         return Response.json({ error: "Manual trade capture is disabled for this tenant." }, { status: 403 });
       }
@@ -255,16 +297,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
       const tradeDate = payload.tradeDate ?? now.toISOString().slice(0, 10);
       const settlementDate = settlementDateFrom(tradeDate, settings?.settlementCycle ?? order.instrument.settlementCycle);
-      const effectiveFeeRate = order.estimatedGross.gt(0) ? order.estimatedFees.div(order.estimatedGross) : undefined;
-      const amounts = computeAmounts(order.side as "buy" | "sell", quantityFilled, executionPrice, effectiveFeeRate);
+      const priorGross = order.trades.reduce((total, trade) => total.plus(trade.grossAmount), ZERO);
+      const priorFees = order.trades.reduce((total, trade) => total.plus(trade.fees), ZERO);
+      const feeRate = settings ? settings.brokerageFeePct.div(100) : D(FEE_RATE);
+      const amounts = computeCumulativeFillAmounts(order.side as "buy" | "sell", quantityFilled, executionPrice, priorGross, priorFees, feeRate, settings?.minimumFee);
+      let reservationUpdate = null;
       if (order.side === "buy") {
         const reservedForFill = money(order.estimatedNet.times(quantityFilled).div(order.quantity));
-        const additionalCashRequired = amounts.net.minus(reservedForFill);
-        if (additionalCashRequired.gt(0)) {
-          const account = await prisma.account.findUnique({ where: { id: order.accountId } });
-          if (!account || account.availableCash.lt(additionalCashRequired)) {
+        const reservationDelta = money(amounts.net.minus(reservedForFill));
+        if (reservationDelta.gt(0)) {
+          if (order.account.availableCash.lt(reservationDelta)) {
             return Response.json({ error: "Execution price exceeds reserved cash and the account has insufficient available cash." }, { status: 409 });
           }
+          reservationUpdate = prisma.account.update({ where: { id: order.accountId }, data: { availableCash: { decrement: reservationDelta }, blockedCash: { increment: reservationDelta } } });
+        } else if (reservationDelta.lt(0)) {
+          const release = reservationDelta.abs();
+          reservationUpdate = prisma.account.update({ where: { id: order.accountId }, data: { availableCash: { increment: release }, blockedCash: { decrement: release } } });
         }
       }
       const tradeId = `TRD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
@@ -273,6 +321,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const status = cumulativeFilled.lt(order.quantity) ? "partially_filled" : "settlement_pending";
 
       await prisma.$transaction([
+        ...(reservationUpdate ? [reservationUpdate] : []),
         prisma.trade.create({
           data: {
             id: tradeId,
@@ -324,7 +373,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         status,
         filledQuantity: toNum(cumulativeFilled),
         remainingQuantity: toNum(order.quantity.minus(cumulativeFilled)),
-        trade: { id: tradeId, settlementId, settlementDate, gross: toNum(amounts.gross), fees: toNum(amounts.fees), net: toNum(amounts.net) },
+        trade: { id: tradeId, settlementId, tradeDate, settlementDate, quantity: toNum(quantityFilled), executionPrice: toNum(executionPrice), gross: toNum(amounts.gross), fees: toNum(amounts.fees), net: toNum(amounts.net), cashStatus: "pending", securitiesStatus: "pending", capturedBy: actor.email },
       });
     }
 
@@ -340,16 +389,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (!trade.settlement) return Response.json({ error: "Settlement record not found." }, { status: 404 });
       if (!account) return Response.json({ error: "Account not found." }, { status: 404 });
 
-      const reservedForFill = money(order.estimatedNet.times(trade.quantityFilled).div(order.quantity));
-      // Release only this fill's proportional reservation so subsequent partial
-      // fills remain fully covered until they settle or the remainder is cancelled.
       const accountUpdate = order.side === "buy"
         ? prisma.account.update({
           where: { id: account.id },
           data: {
             totalCash: { decrement: trade.netAmount },
-            blockedCash: { decrement: reservedForFill },
-            availableCash: { increment: reservedForFill.minus(trade.netAmount) },
+            blockedCash: { decrement: trade.netAmount },
           },
         })
         : prisma.account.update({

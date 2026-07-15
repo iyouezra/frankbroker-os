@@ -2,6 +2,7 @@ import { prisma } from "../../../lib/prisma";
 import { computeAmounts, D, toNum } from "../../../lib/money";
 import { resolveInvestorContext } from "../../../lib/server-auth";
 import { apiError as routeError } from "../../../lib/api";
+import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 
 export const runtime = "nodejs";
 
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
       const fullName = String(payload.fullName ?? "").trim();
       const faydaId = String(payload.faydaId ?? "").replace(/\D/g, "");
       const tin = String(payload.tin ?? "").replace(/\D/g, "");
-      if (!fullName || faydaId.length < 4 || tin.length < 4) {
+      if (!fullName || fullName.length > 160 || faydaId.length < 4 || faydaId.length > 32 || tin.length < 4 || tin.length > 32) {
         return Response.json({ error: "Name, Fayda ID, and TIN are required." }, { status: 400 });
       }
       const client = await prisma.client.findFirst({ where: { id: clientId, brokerId } });
@@ -115,13 +116,20 @@ export async function POST(request: Request) {
       if (!client || !account) return Response.json({ error: "Investor account not found." }, { status: 404 });
       if (!instrument || !entitlement) return Response.json({ error: "This instrument is not enabled for the tenant." }, { status: 404 });
 
-      const side = payload.side === "sell" ? "sell" : "buy";
-      const quantity = D(String(payload.quantity ?? 0));
-      const price = D(String(payload.price ?? instrument.lastPrice ?? 0));
+      const side = parseOrderSide(payload.side);
+      const quantityInput = parsePositiveFiniteNumber(payload.quantity);
+      const priceInput = parsePositiveFiniteNumber(payload.price ?? toNum(instrument.lastPrice));
+      if (!side || quantityInput === null || priceInput === null) {
+        return Response.json({ error: "A buy/sell side, positive quantity, and positive price are required." }, { status: 400 });
+      }
+      const quantity = D(quantityInput);
+      const price = D(priceInput);
       const features = (settings?.features ?? {}) as Record<string, unknown>;
       const fractionalAllowed = features.fractionalOrders === true;
-      const orderType = String(payload.orderType ?? "market").toLowerCase().replace("-", "_");
-      const allowedTypes = (settings?.allowedOrderTypes ?? ["Market", "Limit"]) as string[];
+      const orderType = normalizeOrderType(payload.orderType, "market");
+      const allowedTypes = Array.isArray(settings?.allowedOrderTypes)
+        ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
+        : ["Market", "Limit"];
       const feeRate = settings ? settings.brokerageFeePct.div(100) : undefined;
       const amounts = computeAmounts(side, quantity, price, feeRate, settings?.minimumFee);
       const holding = account.holdings.find((item) => item.instrumentId === instrument.id);
@@ -133,8 +141,9 @@ export async function POST(request: Request) {
         { code: "KYC_APPROVED", passed: client.kycStatus === "approved", message: "Investor KYC must be approved" },
         { code: "ACCOUNT_ACTIVE", passed: account.status === "active" && client.status === "active", message: "Investor account must be active" },
         { code: "TENANT_INSTRUMENT", passed: entitlement.enabled && instrument.tradingStatus === "tradable", message: "Instrument must be enabled and tradable" },
-        { code: "ORDER_TYPE", passed: allowedTypes.some((item) => item.toLowerCase().replace("-", "_") === orderType), message: "Order type must be enabled by the tenant" },
+        { code: "ORDER_TYPE", passed: allowedTypes.some((item) => normalizeOrderType(item) === orderType), message: "Order type must be enabled by the tenant" },
         { code: "QUANTITY_VALID", passed: quantity.gt(0) && (fractionalAllowed || quantity.mod(instrument.lotSize).isZero()), message: fractionalAllowed ? "Quantity must be positive" : `Quantity must be a multiple of ${instrument.lotSize}` },
+        { code: "PRICE_VALID", passed: price.gt(0) && price.div(instrument.tickSize).isInteger(), message: `Price must align to the ${instrument.tickSize.toString()} tick size` },
         side === "buy"
           ? { code: "SUFFICIENT_CASH", passed: account.availableCash.gte(amounts.net), message: "Sufficient available cash is required" }
           : { code: "SUFFICIENT_HOLDINGS", passed: Boolean(holding?.availableQuantity.gte(quantity)), message: "Sufficient available holdings are required" },

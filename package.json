@@ -10,7 +10,7 @@
     "build": "prisma generate && next build --webpack",
     "start": "next start",
     "postinstall": "prisma generate",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && tsx --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern .next --ignore-pattern app/generated",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

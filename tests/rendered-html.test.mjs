@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("ships the FrankBroker product surface and PostgreSQL model", async () => {
-  const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, investorApi, adminApi, tenantApi, ordersApi, orderActionApi, schema, migration, wiringMigration] = await Promise.all([
+  const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, investorApi, adminApi, tenantApi, ordersApi, orderActionApi, auditApi, orderInput, schema, migration, wiringMigration] = await Promise.all([
     readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
     readFile(new URL("app/investor/investor-app.tsx", root), "utf8"),
     readFile(new URL("lib/investor-data.ts", root), "utf8"),
@@ -22,6 +22,8 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
     readFile(new URL("app/api/tenant/route.ts", root), "utf8"),
     readFile(new URL("app/api/orders/route.ts", root), "utf8"),
     readFile(new URL("app/api/orders/[id]/action/route.ts", root), "utf8"),
+    readFile(new URL("app/api/audit/route.ts", root), "utf8"),
+    readFile(new URL("lib/order-input.ts", root), "utf8"),
     readFile(new URL("prisma/schema.prisma", root), "utf8"),
     readFile(new URL("prisma/migrations/20260714130000_init/migration.sql", root), "utf8"),
     readFile(new URL("prisma/migrations/20260714213000_tenant_portal_wiring/migration.sql", root), "utf8"),
@@ -75,6 +77,10 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(ordersApi, /ORDER_TYPE_ALLOWED/);
   assert.match(orderActionApi, /manualTradeCapture/);
   assert.match(orderActionApi, /settings\?\.settlementCycle/);
+  assert.match(orderActionApi, /computeCumulativeFillAmounts/);
+  assert.match(auditApi, /prisma\.auditLog\.findMany/);
+  assert.match(orderInput, /parsePositiveFiniteNumber/);
+  assert.doesNotMatch(app, /setOrders\(\[\.\.\.persisted, \.\.\.initialOrders/);
   assert.match(schema, /provider = "postgresql"/);
   assert.match(schema, /model Order/);
   assert.match(schema, /model AuditLog/);
