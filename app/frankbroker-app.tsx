@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { demoAudit, demoClients, demoInstruments, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
-import { calculateOrderAmounts, hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
+import { hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
 import { computeBrokerAnalytics, PERIODS, type Period } from "../lib/broker-analytics";
 
 type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
@@ -14,6 +14,40 @@ type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "s
 type TradeValue = { quantity: string; price: string; tradeDate: string };
 type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
 type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
+type BrokerInstrument = { id: string; symbol: string; name: string; asset: string; issuer: string; status: string; currency: string; lot: number; tick: number; cycle: string; price: number; coupon?: string; maturity?: string };
+type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[] };
+type TenantFeatures = { manualTradeCapture: boolean; [key: string]: boolean };
+type TenantInfo = { name: string; license: string; primaryColor: string };
+type TenantApiInstrument = { id: string; symbol: string; name: string; assetClass: string; issuer: string; status: string; currency: string; price: number; lotSize: number; tickSize: number; settlementCycle: string };
+type TenantApiResult = { tenant?: { tradingName?: string; licenseNumber?: string; primaryColor?: string; features?: Partial<TenantFeatures>; controls?: Partial<TenantControls> | null }; instruments?: TenantApiInstrument[] };
+
+const fallbackControls: TenantControls = {
+  makerChecker: true,
+  approvalThreshold: 250_000,
+  clientDailyLimit: 2_500_000,
+  brokerageFeePct: 0.5,
+  minimumFee: 25,
+  settlementCycle: "T+2",
+  allowedOrderTypes: ["Market", "Limit", "Stop-loss"],
+};
+const fallbackFeatures: TenantFeatures = { manualTradeCapture: true };
+const fallbackInstruments: BrokerInstrument[] = demoInstruments;
+
+function displayLabel(value: string) {
+  return value.replaceAll("_", " ").replaceAll("-", " ").split(" ").filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1).toLowerCase()).join(" ");
+}
+
+function normalizedOrderType(value: string) {
+  return value.trim().toLowerCase().replaceAll("_", "-").replaceAll(" ", "-");
+}
+
+function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, price: number, feePct: number, minimumFee = 0) {
+  const gross = quantity * price;
+  const percentageFee = Math.round(gross * (feePct / 100) * 100) / 100;
+  const fees = gross > 0 ? Math.max(minimumFee, percentageFee) : 0;
+  const net = side === "buy" ? gross + fees : gross - fees;
+  return { gross, fees, net };
+}
 
 const navItems: { id: View; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
@@ -161,10 +195,12 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [newOrder, setNewOrder] = useState({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy" as "buy" | "sell", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "" });
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
-  const [controls, setControls] = useState<{ makerChecker: boolean; approvalThreshold: number } | null>(null);
+  const [controls, setControls] = useState<TenantControls>(fallbackControls);
+  const [features, setFeatures] = useState<TenantFeatures>(fallbackFeatures);
+  const [instruments, setInstruments] = useState<BrokerInstrument[]>(fallbackInstruments);
   const [collapsed, setCollapsed] = useState(true);
   const [period, setPeriod] = useState<Period>("month");
-  const [tenantInfo, setTenantInfo] = useState<{ name: string; license: string }>({ name: "Abyssinia Securities", license: "ESCA-BR-004" });
+  const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
 
   useEffect(() => {
@@ -177,7 +213,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         const persisted = result.orders.map((order) => ({
           ...order,
           time: new Date(order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
-          orderType: order.orderType.charAt(0).toUpperCase() + order.orderType.slice(1),
+          orderType: displayLabel(order.orderType),
           source: order.source.charAt(0).toUpperCase() + order.source.slice(1),
           trader: order.trader ?? "Unassigned",
         })) as DemoOrder[];
@@ -197,14 +233,42 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
-    ]).then(([clientResult, reconResult, tenantResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, { tenant?: { tradingName?: string; licenseNumber?: string; controls?: { makerChecker: boolean; approvalThreshold: number } } }]) => {
+    ]).then(([clientResult, reconResult, tenantResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, TenantApiResult]) => {
       if (clientResult.clients?.length) {
         setClients(clientResult.clients);
         setSelectedClientId((current) => clientResult.clients!.some((client) => client.id === current) ? current : clientResult.clients![0].id);
       }
       if (reconResult.batches?.[0]) setReconBatch(reconResult.batches[0]);
-      if (tenantResult.tenant?.controls) setControls({ makerChecker: tenantResult.tenant.controls.makerChecker, approvalThreshold: tenantResult.tenant.controls.approvalThreshold });
-      if (tenantResult.tenant?.tradingName) setTenantInfo({ name: tenantResult.tenant.tradingName, license: tenantResult.tenant.licenseNumber ?? "" });
+      const nextControls = { ...fallbackControls, ...(tenantResult.tenant?.controls ?? {}) };
+      const nextFeatures: TenantFeatures = { ...fallbackFeatures };
+      Object.entries(tenantResult.tenant?.features ?? {}).forEach(([key, enabled]) => {
+        if (typeof enabled === "boolean") nextFeatures[key] = enabled;
+      });
+      setControls(nextControls);
+      setFeatures(nextFeatures);
+      if (tenantResult.tenant?.tradingName) setTenantInfo({ name: tenantResult.tenant.tradingName, license: tenantResult.tenant.licenseNumber ?? "", primaryColor: tenantResult.tenant.primaryColor ?? "#0C8189" });
+
+      if (tenantResult.instruments) {
+        const nextInstruments = tenantResult.instruments.map((instrument): BrokerInstrument => ({
+          id: instrument.id,
+          symbol: instrument.symbol,
+          name: instrument.name,
+          asset: displayLabel(instrument.assetClass),
+          issuer: instrument.issuer,
+          status: displayLabel(instrument.status),
+          currency: instrument.currency,
+          lot: instrument.lotSize,
+          tick: instrument.tickSize,
+          cycle: nextControls.settlementCycle || instrument.settlementCycle,
+          price: instrument.price,
+        }));
+        setInstruments(nextInstruments);
+        setNewOrder((current) => {
+          const instrument = nextInstruments.find((item) => item.id === current.instrumentId) ?? nextInstruments[0];
+          const orderType = nextControls.allowedOrderTypes.find((item) => normalizedOrderType(item) === normalizedOrderType(current.orderType)) ?? nextControls.allowedOrderTypes[0] ?? "";
+          return { ...current, instrumentId: instrument?.id ?? "", price: instrument && instrument.id !== current.instrumentId ? String(instrument.price) : current.price, orderType };
+        });
+      }
     }).catch(() => {
       // The synthetic fallback keeps the market-validation demo usable offline.
     });
@@ -264,6 +328,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   };
 
   const openTrade = (order: DemoOrder) => {
+    if (!features.manualTradeCapture) return notify("Manual trade capture is disabled for this tenant in the admin console.", "error");
     if (!hasPermission(role, "trade")) return notify(`${roleLabels[role]} cannot capture trades.`, "error");
     setSelectedId(order.id);
     setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: "2026-07-14" });
@@ -296,22 +361,24 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   };
 
   const runValidation = () => {
-    const client = clients.find((item) => item.accountId === newOrder.accountId)!;
-    const instrument = demoInstruments.find((item) => item.id === newOrder.instrumentId)!;
+    const client = clients.find((item) => item.accountId === newOrder.accountId);
+    const instrument = instruments.find((item) => item.id === newOrder.instrumentId);
     const quantity = Number(newOrder.quantity);
     const price = Number(newOrder.price);
-    const amounts = calculateOrderAmounts(newOrder.side, quantity, price);
-    const owned = client.holdings.find((holding) => holding.symbol === instrument.symbol)?.available ?? 0;
+    const amounts = calculateConfiguredAmounts(newOrder.side, quantity, price, controls.brokerageFeePct, controls.minimumFee);
+    const owned = client && instrument ? client.holdings.find((holding) => holding.symbol === instrument.symbol)?.available ?? 0 : 0;
+    const orderTypeAllowed = controls.allowedOrderTypes.some((item) => normalizedOrderType(item) === normalizedOrderType(newOrder.orderType));
     const results = [
-      { label: "Client and account", passed: Boolean(client), message: `${client.code} · ${client.status}` },
-      { label: "KYC approved", passed: client.kyc === "approved", message: client.kyc.replaceAll("_", " ") },
-      { label: "Account active", passed: client.status === "active", message: client.status },
-      { label: "Instrument tradable", passed: instrument.status === "Tradable", message: `${instrument.symbol} · ${instrument.status}` },
-      { label: "Quantity valid", passed: quantity > 0 && quantity % instrument.lot === 0, message: `Lot size ${instrument.lot}` },
-      { label: "Price valid", passed: price > 0 && Math.abs(price / instrument.tick - Math.round(price / instrument.tick)) < 0.001, message: `Tick size ${instrument.tick} ETB` },
+      { label: "Client and account", passed: Boolean(client), message: client ? `${client.code} · ${client.status}` : "Select an available client account" },
+      { label: "KYC approved", passed: client?.kyc === "approved", message: client?.kyc.replaceAll("_", " ") ?? "Client unavailable" },
+      { label: "Account active", passed: client?.status === "active", message: client?.status ?? "Client unavailable" },
+      { label: "Instrument tradable", passed: instrument?.status === "Tradable", message: instrument ? `${instrument.symbol} · ${instrument.status}` : "No instruments are enabled for this tenant" },
+      { label: "Order type enabled", passed: orderTypeAllowed, message: orderTypeAllowed ? `${newOrder.orderType} is enabled` : "Enable an order type in the admin console" },
+      { label: "Quantity valid", passed: Boolean(instrument && quantity > 0 && quantity % instrument.lot === 0), message: instrument ? `Lot size ${instrument.lot}` : "Instrument unavailable" },
+      { label: "Price valid", passed: Boolean(instrument && price > 0 && Math.abs(price / instrument.tick - Math.round(price / instrument.tick)) < 0.001), message: instrument ? `Tick size ${instrument.tick} ETB` : "Instrument unavailable" },
       newOrder.side === "buy"
-        ? { label: "Cash including fees", passed: client.availableCash >= amounts.net, message: `${etb(client.availableCash)} available` }
-        : { label: "Available, unblocked holdings", passed: owned >= quantity, message: `${fmt.format(owned)} ${instrument.symbol} available` },
+        ? { label: "Cash including fees", passed: Boolean(client && client.availableCash >= amounts.net), message: client ? `${etb(client.availableCash)} available` : "Client unavailable" }
+        : { label: "Available, unblocked holdings", passed: Boolean(instrument && owned >= quantity), message: instrument ? `${fmt.format(owned)} ${instrument.symbol} available` : "Instrument unavailable" },
     ];
     setChecks(results);
     notify(results.every((item) => item.passed) ? "All pre-trade checks passed." : "Validation found checks that need attention.");
@@ -328,7 +395,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       // Reflect the server's authoritative pre-trade checks (incl. daily limit).
       if (result.checks) setChecks(result.checks);
       const failed = result.checks?.filter((item) => !item.passed) ?? [];
-      const created = { ...result.order, time: new Date(result.order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), trader: "Unassigned" };
+      const created = { ...result.order, orderType: displayLabel(result.order.orderType), time: new Date(result.order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), trader: "Unassigned" };
       setOrders((current) => [created, ...current]);
       if (result.order.status === "validation_failed") {
         setView("orders");
@@ -459,22 +526,22 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           <span className="nav-label">OPERATIONS</span>
           {navItems.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && <em>3</em>}{item.id === "reconciliation" && <em className="warn">2</em>}</button>)}
         </nav>
-        <div className="sidebar-foot"><div className="system-state"><i /><span><b>Manual market mode</b><small>ESX / CSD disconnected by design</small></span></div><p>FrankBroker OS <b>MVP 0.1</b></p></div>
+        <div className="sidebar-foot"><div className="system-state"><i /><span><b>{features.manualTradeCapture ? "Manual market mode" : "Trade capture disabled"}</b><small>{features.manualTradeCapture ? "ESX / CSD disconnected by design" : "Controlled from platform admin"}</small></span></div><p>FrankBroker OS <b>MVP 0.1</b></p></div>
       </aside>
 
       <div className="workspace">
         <header className="topbar">
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
-          <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
+          <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
           <label className="search"><span><Icon name="search" size={17} /></span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
           <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label="Notifications"><Icon name="bell" size={18} /><em>3</em></button><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
         </header>
 
         <main>
-          {view === "dashboard" && <Dashboard orders={orders} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
+          {view === "dashboard" && <Dashboard orders={orders} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
-          {view === "orders" && <OrdersPage orders={filteredOrders} onOpen={openDetail} onNewOrder={openNewOrder} onExport={exportOrders} />}
-          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} onOpenOrder={openDetail} />}
+          {view === "orders" && <OrdersPage orders={filteredOrders} instruments={instruments} onOpen={openDetail} onNewOrder={openNewOrder} onExport={exportOrders} />}
+          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} onOpenOrder={openDetail} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage onExport={exportOrders} />}
@@ -487,10 +554,10 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
         <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
           <button className="drawer-close" onClick={() => setDrawer(null)} aria-label="Close">×</button>
-          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={clients} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
-          {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
-          {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
-          {drawer === "contract" && <ContractNote order={selected} onPrint={() => window.print()} />}
+          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={clients} instruments={instruments} controls={controls} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
+          {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} manualTradeCapture={features.manualTradeCapture} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
+          {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} controls={controls} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
+          {drawer === "contract" && <ContractNote order={selected} instruments={instruments} tenantInfo={tenantInfo} settlementCycle={controls.settlementCycle} onPrint={() => window.print()} />}
         </aside>
       </div>}
       {toast && <div className={`toast${toast.tone === "error" ? " toast-error" : ""}`}><span>{toast.tone === "error" ? "!" : "✓"}</span>{toast.message}</div>}
@@ -498,13 +565,13 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   );
 }
 
-function Dashboard({ orders, onViewOrders, onOpen, onNewOrder, onSettle }: { orders: DemoOrder[]; onViewOrders: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onSettle: () => void }) {
+function Dashboard({ orders, settlementCycle, manualTradeCapture, onViewOrders, onOpen, onNewOrder, onSettle }: { orders: DemoOrder[]; settlementCycle: string; manualTradeCapture: boolean; onViewOrders: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onSettle: () => void }) {
   const pending = orders.filter((order) => order.status === "pending_broker_review");
   const settlement = orders.filter((order) => order.status === "settlement_pending" || order.status === "partially_filled");
   return <>
     <SectionHeader eyebrow="TUESDAY · 14 JULY 2026" title="Good morning, Mekdes" copy="Here’s the control picture for today’s brokerage operations." action={<><button className="btn secondary" onClick={onViewOrders}>View order log</button><button className="btn primary" onClick={onNewOrder}><span>＋</span> New order</button></>} />
-    <div className="manual-banner"><span>MANUAL MARKET MODE</span><p>Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations.</p></div>
-    <section className="metric-grid"><Metric label="Today’s orders" value={String(orders.length + 16)} note="ETB 8.42M estimated value" /><Metric label="Pending approvals" value={String(pending.length + 2)} note="1 requires enhanced review" tone="warning" /><Metric label="Filled today" value="11" note="ETB 4.18M executed" tone="success" /><Metric label="Settlement pending" value={String(settlement.length + 3)} note="ETB 3.06M due by T+2" tone="purple" /><Metric label="Recon exceptions" value="2" note="ETB 18,750 variance" tone="danger" /></section>
+    <div className="manual-banner"><span>{manualTradeCapture ? "MANUAL MARKET MODE" : "TRADE CAPTURE DISABLED"}</span><p>{manualTradeCapture ? "Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations." : "Platform administration has paused manual execution capture for this tenant. Existing orders and settlements remain visible."}</p></div>
+    <section className="metric-grid"><Metric label="Today’s orders" value={String(orders.length + 16)} note="ETB 8.42M estimated value" /><Metric label="Pending approvals" value={String(pending.length + 2)} note="1 requires enhanced review" tone="warning" /><Metric label="Filled today" value="11" note="ETB 4.18M executed" tone="success" /><Metric label="Settlement pending" value={String(settlement.length + 3)} note={`ETB 3.06M due by ${settlementCycle}`} tone="purple" /><Metric label="Recon exceptions" value="2" note="ETB 18,750 variance" tone="danger" /></section>
     <div className="dashboard-grid">
       <section className="panel queue-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL QUEUE</span><h2>Needs your attention</h2></div><button className="text-button" onClick={onViewOrders}>View all <span>→</span></button></div>
         <div className="queue-list">{[...pending, ...orders.filter((order) => order.status === "validation_failed")].slice(0, 3).map((order) => <button key={order.id} onClick={() => onOpen(order)}><span className={`queue-icon ${order.status === "validation_failed" ? "danger" : "warning"}`}>{order.status === "validation_failed" ? "!" : "↗"}</span><span><b>{order.status === "validation_failed" ? "Validation failed" : "Order awaiting approval"}</b><small>{order.id} · {order.client} · {order.side.toUpperCase()} {fmt.format(order.quantity)} {order.symbol}</small></span><StatusBadge status={order.status} /><em>›</em></button>)}</div>
@@ -515,7 +582,7 @@ function Dashboard({ orders, onViewOrders, onOpen, onNewOrder, onSettle }: { ord
   </>;
 }
 
-function OrdersPage({ orders, onOpen, onNewOrder, onExport }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onExport: () => void }) {
+function OrdersPage({ orders, instruments, onOpen, onNewOrder, onExport }: { orders: DemoOrder[]; instruments: BrokerInstrument[]; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onExport: () => void }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions">("all");
   const [sideFilter, setSideFilter] = useState<"all" | "buy" | "sell">("all");
   const [riskFilter, setRiskFilter] = useState<"all" | "flagged">("all");
@@ -548,17 +615,17 @@ function OrdersPage({ orders, onOpen, onNewOrder, onExport }: { orders: DemoOrde
       <label>Sort<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="value">Highest value</option></select></label>
       <span>{filtered.length} matching orders</span>
     </div>
-    <section className="panel table-panel"><OrderTable orders={visible} onOpen={onOpen} /></section>
+    <section className="panel table-panel"><OrderTable orders={visible} instruments={instruments} onOpen={onOpen} /></section>
     {pageCount > 1 && <div className="pagination"><button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {Math.min(page, pageCount)} of {pageCount}</span><button disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></div>}
   </>;
 }
 
-function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void }) {
+function OrderTable({ orders, instruments, onOpen }: { orders: DemoOrder[]; instruments: BrokerInstrument[]; onOpen: (order: DemoOrder) => void }) {
   if (!orders.length) return <EmptyState title="No orders found" copy="Try another client, symbol, order ID, or status." />;
-  return <div className="table-scroll"><table><thead><tr><th>Order / time</th><th>Client</th><th>Instrument</th><th>Side</th><th className="num">Quantity</th><th className="num">Limit price</th><th className="num">Est. value</th><th>Status</th><th>Trader</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.id}</b><small>{order.time} · {order.source}</small></td><td><b>{order.client}</b><small>{order.clientCode}</small></td><td><b>{order.symbol}</b><small>{demoInstruments.find((item) => item.id === order.instrumentId)?.asset}</small></td><td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td><td className="num"><b>{fmt.format(order.quantity)}</b></td><td className="num">{fmt.format(order.price)}</td><td className="num"><b>{fmt.format(order.estimatedNet)}</b><small>ETB incl. fees</small></td><td><StatusBadge status={order.status} />{order.riskFlag !== "none" && <small className="risk-note">◇ Risk review</small>}</td><td><b>{order.trader}</b></td><td><button className="row-action" onClick={(event) => { event.stopPropagation(); onOpen(order); }}>•••</button></td></tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr><th>Order / time</th><th>Client</th><th>Instrument</th><th>Side</th><th className="num">Quantity</th><th className="num">Limit price</th><th className="num">Est. value</th><th>Status</th><th>Trader</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.id}</b><small>{order.time} · {order.source}</small></td><td><b>{order.client}</b><small>{order.clientCode}</small></td><td><b>{order.symbol}</b><small>{instruments.find((item) => item.id === order.instrumentId)?.asset ?? "Instrument"}</small></td><td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td><td className="num"><b>{fmt.format(order.quantity)}</b></td><td className="num">{fmt.format(order.price)}</td><td className="num"><b>{fmt.format(order.estimatedNet)}</b><small>ETB incl. fees</small></td><td><StatusBadge status={order.status} />{order.riskFlag !== "none" && <small className="risk-note">◇ Risk review</small>}</td><td><b>{order.trader}</b></td><td><button className="row-action" onClick={(event) => { event.stopPropagation(); onOpen(order); }}>•••</button></td></tr>)}</tbody></table></div>;
 }
 
-function ClientsPage({ clients, selectedId, onSelect, orders, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; onOpenOrder: (order: DemoOrder) => void }) {
+function ClientsPage({ clients, selectedId, onSelect, orders, instruments, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; onOpenOrder: (order: DemoOrder) => void }) {
   const selected = clients.find((client) => client.id === selectedId) ?? clients[0];
   const clientOrders = orders.filter((order) => order.accountId === selected?.accountId).slice(0, 6);
   return <>
@@ -567,7 +634,7 @@ function ClientsPage({ clients, selectedId, onSelect, orders, onOpenOrder }: { c
     {selected && <div className="account-workspace">
       <section className="panel account-summary"><div className="panel-head"><div><span className="eyebrow">TRADING ACCOUNT</span><h2>{selected.name}</h2></div><span className="account-number">{selected.accountNumber}</span></div><div className="account-balance-grid"><span><small>Total cash</small><b>{etb(selected.totalCash)}</b></span><span><small>Available</small><b className="positive">{etb(selected.availableCash)}</b></span><span><small>Blocked</small><b>{etb(selected.blockedCash)}</b></span><span><small>Open orders</small><b>{clientOrders.filter((order) => !["settled", "cancelled", "rejected"].includes(order.status)).length}</b></span></div></section>
       <section className="panel holdings-panel"><div className="panel-head"><div><span className="eyebrow">CUSTODY POSITION</span><h2>Holdings</h2></div></div>{selected.holdings.length ? <div className="table-scroll"><table><thead><tr><th>Instrument</th><th className="num">Total</th><th className="num">Available</th><th className="num">Blocked</th><th className="num">Average cost</th></tr></thead><tbody>{selected.holdings.map((holding) => <tr key={holding.symbol}><td><b>{holding.symbol}</b><small>{holding.name}</small></td><td className="num">{fmt.format(holding.total)}</td><td className="num positive">{fmt.format(holding.available)}</td><td className="num">{fmt.format(holding.blocked)}</td><td className="num">{fmt.format(holding.averageCost)} ETB</td></tr>)}</tbody></table></div> : <EmptyState title="No securities positions" copy="This account currently holds cash only." />}</section>
-      <section className="panel client-orders"><div className="panel-head"><div><span className="eyebrow">ORDER HISTORY</span><h2>Recent instructions</h2></div></div><OrderTable orders={clientOrders} onOpen={onOpenOrder} /></section>
+      <section className="panel client-orders"><div className="panel-head"><div><span className="eyebrow">ORDER HISTORY</span><h2>Recent instructions</h2></div></div><OrderTable orders={clientOrders} instruments={instruments} onOpen={onOpenOrder} /></section>
       <section className="panel ledger-panel"><div className="panel-head"><div><span className="eyebrow">CASH LEDGER</span><h2>Recent account movements</h2></div></div>{selected.ledger.length ? <div className="table-scroll"><table><thead><tr><th>Value date</th><th>Reference</th><th>Type</th><th className="num">Amount</th><th className="num">Running balance</th></tr></thead><tbody>{selected.ledger.map((entry) => <tr key={entry.id}><td>{entry.valueDate}</td><td><b>{entry.reference}</b></td><td>{entry.type.replaceAll("_", " ")}</td><td className={`num ${entry.amount >= 0 ? "positive" : "negative"}`}>{fmt.format(entry.amount)}</td><td className="num"><b>{fmt.format(entry.runningBalance)}</b></td></tr>)}</tbody></table></div> : <EmptyState title="No posted cash movements" copy="Ledger entries appear after settlement is confirmed." />}</section>
     </div>}
   </>;
@@ -605,11 +672,25 @@ function AuditPage({ onExport }: { onExport: () => void }) {
   return <><SectionHeader eyebrow="IMMUTABLE CONTROL RECORD" title="Audit trail" copy="Sensitive actions, actors, timestamps, and before-and-after state for every workflow." action={<button className="btn secondary" onClick={onExport}>Export audit log</button>} /><section className="panel audit-timeline">{demoAudit.map((item) => <div key={item.time}><span className="audit-dot" /><time>14 Jul 2026<br /><b>{item.time}</b></time><div><span className="asset-chip">{item.entity}</span><h3>{item.action.replaceAll("_", " ")}</h3><p>{item.detail}</p></div><strong>{item.actor}<small>Addis Ababa · Workspace</small></strong></div>)}</section></>;
 }
 
-function NewOrderForm({ value, setValue, clients, checks, busy, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; clients: BrokerClient[]; checks: { label: string; passed: boolean; message: string }[] | null; busy: boolean; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {
+function NewOrderForm({ value, setValue, clients, instruments, controls, checks, busy, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; clients: BrokerClient[]; instruments: BrokerInstrument[]; controls: TenantControls; checks: { label: string; passed: boolean; message: string }[] | null; busy: boolean; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {
   const client = clients.find((item) => item.accountId === value.accountId) ?? clients[0];
-  const instrument = demoInstruments.find((item) => item.id === value.instrumentId)!;
-  const amounts = calculateOrderAmounts(value.side, Number(value.quantity) || 0, Number(value.price) || 0);
-  return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL ORDER ENTRY</span><h2>Create client order</h2><p>Capture the instruction, run server-side controls, then submit for approval.</p></div><div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div><div className="form-section"><h3>Client instruction</h3><label>Client account<select value={value.accountId} onChange={(event) => { setValue({ ...value, accountId: event.target.value }); }}>{clients.map((item) => <option key={item.id} value={item.accountId}>{item.code} · {item.name}</option>)}</select><small>{etb(client.availableCash)} available cash · KYC {client.kyc.replaceAll("_", " ")}</small></label><label>Instrument<select value={value.instrumentId} onChange={(event) => { const next = demoInstruments.find((item) => item.id === event.target.value)!; setValue({ ...value, instrumentId: event.target.value, price: String(next.price) }); }} >{demoInstruments.map((item) => <option key={item.id} value={item.id}>{item.symbol} · {item.name}</option>)}</select><small>{instrument.asset} · {instrument.status} · Lot {instrument.lot} · {instrument.cycle}</small></label><div className="segmented"><button type="button" className={value.side === "buy" ? "active buy" : ""} onClick={() => setValue({ ...value, side: "buy" })}>BUY</button><button type="button" className={value.side === "sell" ? "active sell" : ""} onClick={() => setValue({ ...value, side: "sell" })}>SELL</button></div><div className="field-row"><label>Quantity<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /></label><label>Limit price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><div className="field-row"><label>Order type<select value={value.orderType} onChange={(event) => setValue({ ...value, orderType: event.target.value })}><option>Limit</option><option>Market</option></select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div><label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Estimated fees (0.50%)</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div><div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, lot, and tick-size controls before submission.</p>}</div><div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : "Submit for review"} <span>→</span></button></div></form>;
+  const instrument = instruments.find((item) => item.id === value.instrumentId) ?? instruments[0];
+  const amounts = calculateConfiguredAmounts(value.side, Number(value.quantity) || 0, Number(value.price) || 0, controls.brokerageFeePct, controls.minimumFee);
+  return <form onSubmit={onSubmit} className="drawer-content">
+    <div className="drawer-title"><span className="eyebrow">MANUAL ORDER ENTRY</span><h2>Create client order</h2><p>Capture the instruction, run server-side controls, then submit for approval.</p></div>
+    <div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div>
+    <div className="form-section"><h3>Client instruction</h3>
+      <label>Client account<select value={value.accountId} onChange={(event) => setValue({ ...value, accountId: event.target.value })}>{clients.map((item) => <option key={item.id} value={item.accountId}>{item.code} · {item.name}</option>)}</select><small>{client ? `${etb(client.availableCash)} available cash · KYC ${client.kyc.replaceAll("_", " ")}` : "No client accounts available"}</small></label>
+      <label>Instrument<select value={instrument?.id ?? ""} disabled={!instruments.length} onChange={(event) => { const next = instruments.find((item) => item.id === event.target.value); if (next) setValue({ ...value, instrumentId: next.id, price: String(next.price) }); }}>{instruments.length ? instruments.map((item) => <option key={item.id} value={item.id}>{item.symbol} · {item.name}</option>) : <option value="">No instruments enabled</option>}</select><small>{instrument ? `${instrument.asset} · ${instrument.status} · Lot ${instrument.lot} · ${instrument.cycle}` : "Enable an instrument for this tenant in the admin console."}</small></label>
+      <div className="segmented"><button type="button" className={value.side === "buy" ? "active buy" : ""} onClick={() => setValue({ ...value, side: "buy" })}>BUY</button><button type="button" className={value.side === "sell" ? "active sell" : ""} onClick={() => setValue({ ...value, side: "sell" })}>SELL</button></div>
+      <div className="field-row"><label>Quantity<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /></label><label>Limit price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div>
+      <div className="field-row"><label>Order type<select value={value.orderType} disabled={!controls.allowedOrderTypes.length} onChange={(event) => setValue({ ...value, orderType: event.target.value })}>{controls.allowedOrderTypes.length ? controls.allowedOrderTypes.map((orderType) => <option key={orderType}>{orderType}</option>) : <option value="">No order types enabled</option>}</select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div>
+      <label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label>
+    </div>
+    <div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Estimated fees ({controls.brokerageFeePct.toFixed(2)}% · min {etb(controls.minimumFee)})</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div>
+    <div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, order-type, lot, and tick-size controls before submission.</p>}</div>
+    <div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : "Submit for review"} <span>→</span></button></div>
+  </form>;
 }
 
 function TrendChart({ data, metric }: { data: { label: string; volume: number; revenue: number }[]; metric: "revenue" | "volume" }) {
@@ -712,7 +793,7 @@ function PerformancePage({ orders, clients, period, setPeriod, onOpen }: { order
   </>;
 }
 
-function OrderDetail({ order, role, busy, controls, onApprove, onReject, onCancel, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; controls: { makerChecker: boolean; approvalThreshold: number } | null; onApprove: () => void; onReject: () => void; onCancel: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
+function OrderDetail({ order, role, busy, controls, manualTradeCapture, onApprove, onReject, onCancel, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; controls: TenantControls; manualTradeCapture: boolean; onApprove: () => void; onReject: () => void; onCancel: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
   const remaining = order.remainingQuantity ?? order.quantity;
   const events = order.events?.length ? order.events : [
     { id: `${order.id}-created`, fromStatus: null, toStatus: "submitted", reason: "Order created and pre-trade controls recorded", actor: "Mekdes Tadesse", createdAt: order.createdAt },
@@ -720,8 +801,8 @@ function OrderDetail({ order, role, busy, controls, onApprove, onReject, onCance
   ];
   const maker = events.find((event) => event.fromStatus === null)?.actor;
   // Mirror the server rule: four-eyes applies only when the tenant has maker-checker
-  // on and the order value meets the approval threshold. Default strict when unknown.
-  const requiresFourEyes = controls ? controls.makerChecker && order.estimatedNet >= controls.approvalThreshold : true;
+  // on and the order value meets the approval threshold.
+  const requiresFourEyes = controls.makerChecker && order.estimatedNet >= controls.approvalThreshold;
   return <div className="drawer-content">
     <div className="drawer-title"><span className="eyebrow">ORDER CONTROL</span><h2>{order.id}</h2><div className="title-badges"><StatusBadge status={order.status} /><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></div></div>
     <div className="order-hero"><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · {order.accountId.replace("acc_", "TRD-").toUpperCase()}</span></div><strong>{fmt.format(order.quantity)} <small>{order.symbol}</small></strong><p>@ {fmt.format(order.price)} ETB · {order.orderType}</p></div>
@@ -729,24 +810,27 @@ function OrderDetail({ order, role, busy, controls, onApprove, onReject, onCance
     <dl className="detail-grid"><div><dt>Gross consideration</dt><dd>{etb(order.estimatedGross)}</dd></div><div><dt>Estimated fees</dt><dd>{etb(order.estimatedFees)}</dd></div><div className="total"><dt>Estimated net</dt><dd>{etb(order.estimatedNet)}</dd></div><div><dt>Source</dt><dd>{order.source}</dd></div><div><dt>Assigned trader</dt><dd>{order.trader}</dd></div><div><dt>Risk flag</dt><dd>{order.riskFlag === "none" ? "No flags" : "Enhanced review"}</dd></div></dl>
     <div className="workflow-card"><h3>Workflow history</h3><ol>{events.map((event, index) => <li className={index === events.length - 1 ? "current" : "done"} key={event.id}><i>{index === events.length - 1 ? index + 1 : "✓"}</i><div><b>{statusLabels[event.toStatus as OrderStatus] ?? event.toStatus.replaceAll("_", " ")}</b><small>{new Date(event.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {event.actor}{event.reason ? ` · ${event.reason}` : ""}</small></div></li>)}</ol></div>
     {role === "management" && <div className="permission-note">Read-only management mode: workflow actions are disabled.</div>}
-    {order.status === "pending_broker_review" && requiresFourEyes && <div className="permission-note">{controls ? `Four-eyes control: at or above ${etb(controls.approvalThreshold)} the maker${maker ? ` (${maker})` : ""} cannot approve this order — a second authorized approver is required.` : `Four-eyes control: the order maker${maker ? ` (${maker})` : ""} cannot approve this order; a second authorized approver is required.`}</div>}
+    {order.status === "pending_broker_review" && requiresFourEyes && <div className="permission-note">{`Four-eyes control: at or above ${etb(controls.approvalThreshold)} the maker${maker ? ` (${maker})` : ""} cannot approve this order — a second authorized approver is required.`}</div>}
     {order.status === "pending_broker_review" && !requiresFourEyes && <div className="permission-note" style={{ background: "#e8f8f2", borderColor: "#bfe6d5", color: "#17765b" }}>Below the four-eyes threshold — a single authorized approver may release this order.</div>}
+    {!manualTradeCapture && ["approved", "partially_filled"].includes(order.status) && <div className="permission-note">Manual execution capture is disabled for this tenant by platform administration.</div>}
     <div className="drawer-actions stacked">
       {order.status === "pending_broker_review" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel</button><button className="btn danger" onClick={onReject} disabled={Boolean(busy) || !hasPermission(role, "reject")}>Reject</button><button className="btn primary" onClick={onApprove} disabled={Boolean(busy) || !hasPermission(role, "approve")}>{busy === "approve" ? "Approving…" : "Approve & block assets"}</button></>}
-      {order.status === "approved" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel & release</button><button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !hasPermission(role, "trade")}>Capture execution <span>→</span></button></>}
-      {order.status === "partially_filled" && <><button className="btn secondary" onClick={onContract}>Contract note</button>{remaining > 0 && <button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !hasPermission(role, "trade")}>Capture remaining fill</button>}{order.tradeId && <button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>Settle next fill</button>}</>}
+      {order.status === "approved" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel & release</button><button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !manualTradeCapture || !hasPermission(role, "trade")}>Capture execution <span>→</span></button></>}
+      {order.status === "partially_filled" && <><button className="btn secondary" onClick={onContract}>Contract note</button>{remaining > 0 && <button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !manualTradeCapture || !hasPermission(role, "trade")}>Capture remaining fill</button>}{order.tradeId && <button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>Settle next fill</button>}</>}
       {order.status === "settlement_pending" && <><button className="btn secondary" onClick={onContract}>Contract note</button><button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>{busy === "settle" ? "Settling…" : "Confirm next settlement"}</button></>}
       {order.status === "settled" && <button className="btn secondary full" onClick={onContract}>View contract note</button>}
     </div>
   </div>;
 }
 
-function TradeForm({ order, value, setValue, busy, onSubmit, onCancel }: { order: DemoOrder; value: TradeValue; setValue: (value: TradeValue) => void; busy: boolean; onSubmit: (event: FormEvent) => void; onCancel: () => void }) {
-  const amount = calculateOrderAmounts(order.side, Number(value.quantity) || 0, Number(value.price) || 0);
+function TradeForm({ order, value, setValue, controls, busy, onSubmit, onCancel }: { order: DemoOrder; value: TradeValue; setValue: (value: TradeValue) => void; controls: TenantControls; busy: boolean; onSubmit: (event: FormEvent) => void; onCancel: () => void }) {
+  const effectiveFeePct = order.estimatedGross > 0 ? (order.estimatedFees / order.estimatedGross) * 100 : controls.brokerageFeePct;
+  const amount = calculateConfiguredAmounts(order.side, Number(value.quantity) || 0, Number(value.price) || 0, effectiveFeePct);
   const remaining = order.remainingQuantity ?? order.quantity;
   return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL TRADE CAPTURE</span><h2>Record execution</h2><p>Link a full or partial fill to {order.id}. No ESX message will be sent.</p></div><div className="manual-callout"><span>MANUAL</span><p>Confirm these details against the official external execution record before capture.</p></div><div className="order-reference"><span>{order.side.toUpperCase()}</span><div><b>{fmt.format(remaining)} {order.symbol} remaining</b><small>{order.client} · Limit {fmt.format(order.price)} ETB</small></div></div><div className="form-section"><div className="field-row"><label>Quantity filled<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /><small>Maximum remaining {fmt.format(remaining)}</small></label><label>Execution price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><label>Trade date<input type="date" value={value.tradeDate} onChange={(event) => setValue({ ...value, tradeDate: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross amount</small><b>{etb(amount.gross)}</b></span><span><small>Fees</small><b>{etb(amount.fees)}</b></span><span><small>Net amount</small><strong>{etb(amount.net)}</strong></span></div><div className="drawer-actions"><button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>Cancel</button><button type="submit" className="btn primary" disabled={busy}>{busy ? "Capturing…" : "Capture trade & open settlement"}</button></div></form>;
 }
 
-function ContractNote({ order, onPrint }: { order: DemoOrder; onPrint: () => void }) {
-  return <div className="drawer-content contract-wrapper"><div className="contract-toolbar"><div><span className="eyebrow">PRINTABLE CONTRACT NOTE</span><h2>{order.tradeId ?? "Trade pending"}</h2></div><button className="btn primary" onClick={onPrint}>Print / Save PDF</button></div><article className="contract-note"><header><div className="contract-brand"><img src="/frankscore-icon.png" alt="" /><span><b>Abyssinia Securities S.C.</b><small>Licensed securities broker · ESCA-BR-004</small></span></div><div><b>CONTRACT NOTE</b><small>Original · Client copy</small></div></header><section><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · Addis Ababa, Ethiopia</span></div><div><small>CONTRACT NOTE NO.</small><b>CN-2026-{order.id.slice(-4)}</b><span>Trade date · 14 July 2026</span></div></section><table><thead><tr><th>Security</th><th>Side</th><th className="num">Quantity</th><th className="num">Price (ETB)</th><th className="num">Gross (ETB)</th></tr></thead><tbody><tr><td><b>{order.symbol}</b><small>{demoInstruments.find((item) => item.id === order.instrumentId)?.name}</small></td><td>{order.side.toUpperCase()}</td><td className="num">{fmt.format(order.quantity)}</td><td className="num">{fmt.format(order.price)}</td><td className="num"><b>{fmt.format(order.estimatedGross)}</b></td></tr></tbody></table><div className="contract-totals"><span><small>Gross consideration</small><b>{etb(order.estimatedGross)}</b></span><span><small>Brokerage & market fees</small><b>{etb(order.estimatedFees)}</b></span><span><small>{order.side === "buy" ? "Amount payable" : "Net proceeds"}</small><strong>{etb(order.estimatedNet)}</strong></span></div><div className="contract-meta"><span><small>ORDER ID</small><b>{order.id}</b></span><span><small>TRADE ID</small><b>{order.tradeId ?? "Pending"}</b></span><span><small>SETTLEMENT DATE</small><b>{order.settlementDate ?? "Pending"}</b></span><span><small>SETTLEMENT CYCLE</small><b>{demoInstruments.find((item) => item.id === order.instrumentId)?.cycle}</b></span></div><footer><p>This contract note records a manually captured execution in FrankBroker OS. It is subject to confirmation against the broker’s official books and external market records.</p><div><span>Authorized by</span><b>Mekdes Tadesse</b><small>Broker administrator</small></div></footer></article></div>;
+function ContractNote({ order, instruments, tenantInfo, settlementCycle, onPrint }: { order: DemoOrder; instruments: BrokerInstrument[]; tenantInfo: TenantInfo; settlementCycle: string; onPrint: () => void }) {
+  const instrument = instruments.find((item) => item.id === order.instrumentId);
+  return <div className="drawer-content contract-wrapper"><div className="contract-toolbar"><div><span className="eyebrow">PRINTABLE CONTRACT NOTE</span><h2>{order.tradeId ?? "Trade pending"}</h2></div><button className="btn primary" onClick={onPrint}>Print / Save PDF</button></div><article className="contract-note"><header><div className="contract-brand"><img src="/frankscore-icon.png" alt="" /><span><b>{tenantInfo.name}</b><small>Licensed securities broker{tenantInfo.license ? ` · ${tenantInfo.license}` : ""}</small></span></div><div><b>CONTRACT NOTE</b><small>Original · Client copy</small></div></header><section><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · Addis Ababa, Ethiopia</span></div><div><small>CONTRACT NOTE NO.</small><b>CN-2026-{order.id.slice(-4)}</b><span>Trade date · 14 July 2026</span></div></section><table><thead><tr><th>Security</th><th>Side</th><th className="num">Quantity</th><th className="num">Price (ETB)</th><th className="num">Gross (ETB)</th></tr></thead><tbody><tr><td><b>{order.symbol}</b><small>{instrument?.name ?? "Tenant instrument"}</small></td><td>{order.side.toUpperCase()}</td><td className="num">{fmt.format(order.quantity)}</td><td className="num">{fmt.format(order.price)}</td><td className="num"><b>{fmt.format(order.estimatedGross)}</b></td></tr></tbody></table><div className="contract-totals"><span><small>Gross consideration</small><b>{etb(order.estimatedGross)}</b></span><span><small>Brokerage & market fees</small><b>{etb(order.estimatedFees)}</b></span><span><small>{order.side === "buy" ? "Amount payable" : "Net proceeds"}</small><strong>{etb(order.estimatedNet)}</strong></span></div><div className="contract-meta"><span><small>ORDER ID</small><b>{order.id}</b></span><span><small>TRADE ID</small><b>{order.tradeId ?? "Pending"}</b></span><span><small>SETTLEMENT DATE</small><b>{order.settlementDate ?? "Pending"}</b></span><span><small>SETTLEMENT CYCLE</small><b>{settlementCycle || instrument?.cycle}</b></span></div><footer><p>This contract note records a manually captured execution in FrankBroker OS. It is subject to confirmation against the broker’s official books and external market records.</p><div><span>Authorized by</span><b>Mekdes Tadesse</b><small>Broker administrator</small></div></footer></article></div>;
 }

@@ -56,6 +56,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (order.brokerId !== actor.brokerId) {
       return Response.json({ error: "Order not found for this tenant." }, { status: 404 });
     }
+    const settings = await prisma.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } });
 
     const now = new Date();
 
@@ -67,7 +68,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       // approve their own order, but only when the tenant has maker-checker
       // enabled and the order value meets the configured approval threshold.
       // Defaults (no settings) preserve strict four-eyes on every order.
-      const settings = await prisma.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } });
       const makerChecker = settings?.makerChecker ?? true;
       const approvalThreshold = settings?.approvalThreshold ?? D(0);
       if (makerChecker && order.estimatedNet.gte(approvalThreshold)) {
@@ -238,6 +238,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (payload.action === "execute") {
+      const features = (settings?.features ?? {}) as unknown as Record<string, unknown>;
+      if (features.manualTradeCapture === false) {
+        return Response.json({ error: "Manual trade capture is disabled for this tenant." }, { status: 403 });
+      }
       if (!["approved", "partially_filled", "sent_to_esx_manually"].includes(order.status)) {
         return Response.json({ error: "This order is not ready for trade capture." }, { status: 409 });
       }
@@ -250,7 +254,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       }
 
       const tradeDate = payload.tradeDate ?? now.toISOString().slice(0, 10);
-      const settlementDate = settlementDateFrom(tradeDate, order.instrument.settlementCycle);
+      const settlementDate = settlementDateFrom(tradeDate, settings?.settlementCycle ?? order.instrument.settlementCycle);
       const effectiveFeeRate = order.estimatedGross.gt(0) ? order.estimatedFees.div(order.estimatedGross) : undefined;
       const amounts = computeAmounts(order.side as "buy" | "sell", quantityFilled, executionPrice, effectiveFeeRate);
       if (order.side === "buy") {

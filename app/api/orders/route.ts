@@ -5,6 +5,10 @@ import { apiError as routeError } from "../../../lib/api";
 
 export const runtime = "nodejs";
 
+function normalizeOrderType(value: string) {
+  return value.trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+}
+
 export async function GET(request: Request) {
   try {
     const actor = resolveActor(request);
@@ -111,6 +115,11 @@ export async function POST(request: Request) {
 
     const quantity = D(quantityInput);
     const price = D(priceInput);
+    const orderType = normalizeOrderType(payload.orderType ?? "limit");
+    const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
+      ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
+      : ["Limit"];
+    const orderTypeAllowed = allowedOrderTypes.some((item) => normalizeOrderType(item) === orderType);
     const holding = account.holdings[0];
     const feeRate = settings ? settings.brokerageFeePct.div(100) : undefined;
     const amounts = computeAmounts(payload.side, quantity, price, feeRate, settings?.minimumFee);
@@ -130,6 +139,7 @@ export async function POST(request: Request) {
       { code: "KYC_APPROVED", label: "KYC approved", passed: account.client.kycStatus === "approved", message: account.client.kycStatus === "approved" ? "KYC is current" : "KYC approval is required" },
       { code: "ACCOUNT_ACTIVE", label: "Account active", passed: account.status === "active" && account.client.status === "active", message: account.status === "active" ? "Trading account is active" : "Trading account is not active" },
       { code: "INSTRUMENT_TRADABLE", label: "Instrument tradable", passed: instrument.tradingStatus === "tradable" && entitlement?.enabled === true, message: instrument.tradingStatus === "tradable" && entitlement?.enabled === true ? "Instrument is enabled for this tenant" : "Instrument is not available to this tenant" },
+      { code: "ORDER_TYPE_ALLOWED", label: "Order type enabled", passed: orderTypeAllowed, message: orderTypeAllowed ? `${payload.orderType ?? "Limit"} is enabled for this tenant` : "This order type is disabled in the tenant policy" },
       { code: "QUANTITY_VALID", label: "Quantity valid", passed: quantity.gt(0) && quantity.mod(instrument.lotSize).isZero(), message: `Must be a positive multiple of ${instrument.lotSize}` },
       { code: "PRICE_VALID", label: "Price valid", passed: price.gt(0) && price.div(instrument.tickSize).isInteger(), message: `Must align to the ${instrument.tickSize.toString()} tick size` },
       payload.side === "buy"
@@ -154,7 +164,7 @@ export async function POST(request: Request) {
           side: payload.side!,
           quantity,
           price,
-          orderType: payload.orderType ?? "limit",
+          orderType,
           validity: payload.validity ?? "day",
           estimatedGross: amounts.gross,
           estimatedFees: amounts.fees,
@@ -211,7 +221,7 @@ export async function POST(request: Request) {
           side: payload.side,
           quantity: toNum(quantity),
           price: toNum(price),
-          orderType: payload.orderType ?? "limit",
+          orderType,
           estimatedGross: toNum(amounts.gross),
           estimatedFees: toNum(amounts.fees),
           estimatedNet: toNum(amounts.net),
