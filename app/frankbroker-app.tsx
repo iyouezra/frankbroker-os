@@ -73,6 +73,8 @@ const ICON_PATHS: Record<string, string> = {
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M21 21l-4.3-4.3",
   bell: "M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
   collapse: "M9 3v18 M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
+  moon: "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z",
+  sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4",
 };
 
 function Icon({ name, size = 20 }: { name: string; size?: number }) {
@@ -199,6 +201,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [features, setFeatures] = useState<TenantFeatures>(fallbackFeatures);
   const [instruments, setInstruments] = useState<BrokerInstrument[]>(fallbackInstruments);
   const [collapsed, setCollapsed] = useState(true);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
@@ -285,6 +288,16 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const notify = (message: string, tone: "success" | "error" = "success") => {
     setToast({ message, tone });
     window.setTimeout(() => setToast(null), 3600);
+  };
+
+  useEffect(() => {
+    setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  }, []);
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("frank-theme", next); } catch { /* storage unavailable */ }
   };
 
   const openDetail = (order: DemoOrder) => {
@@ -534,7 +547,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
           <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
           <label className="search"><span><Icon name="search" size={17} /></span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
-          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label="Notifications"><Icon name="bell" size={18} /><em>3</em></button><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
+          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><button className="icon-button" aria-label="Notifications"><Icon name="bell" size={18} /><em>3</em></button><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
         </header>
 
         <main>

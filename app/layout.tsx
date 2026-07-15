@@ -20,6 +20,13 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+const themeInit = `(function(){try{var t=localStorage.getItem('frank-theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  return (
+    <html lang="en">
+      <head><script dangerouslySetInnerHTML={{ __html: themeInit }} /></head>
+      <body>{children}</body>
+    </html>
+  );
 }
