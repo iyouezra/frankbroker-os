@@ -2,14 +2,14 @@ import { apiError } from "../../../../../lib/api";
 import { prisma } from "../../../../../lib/prisma";
 import { ZERO } from "../../../../../lib/money";
 import { requirePermission } from "../../../../../lib/server-auth";
+import { approveClient, rejectClient } from "../../../../../lib/client-service";
 
 export const runtime = "nodejs";
 
-type ClientAction = "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note";
+type ClientAction = "approve_client" | "reject_client" | "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, "adjust");
     const { id } = await context.params;
     const payload = await request.json() as {
       action?: ClientAction;
@@ -20,8 +20,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       category?: string;
     };
     if (!payload.action) return Response.json({ error: "A client action is required." }, { status: 400 });
+    const permission = payload.action === "approve_client" ? "approve" : payload.action === "reject_client" ? "reject" : "adjust";
+    const actor = requirePermission(request, permission);
     const reason = String(payload.reason ?? payload.resolutionNotes ?? "").trim();
     if (reason.length > 1_000) return Response.json({ error: "The reason is too long." }, { status: 400 });
+
+    if (payload.action === "approve_client") {
+      return Response.json({ ok: true, ...(await approveClient(actor, id)) });
+    }
+    if (payload.action === "reject_client") {
+      return Response.json({ ok: true, ...(await rejectClient(actor, id, reason || "Client onboarding rejected after review")) });
+    }
 
     if (payload.action === "add_note") {
       const client = await prisma.client.findFirst({ where: { id, brokerId: actor.brokerId } });

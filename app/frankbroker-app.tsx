@@ -7,10 +7,30 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { demoAudit, demoClients, demoInstruments, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
 import { hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
 import { computeBrokerAnalytics, PERIODS, type Period } from "../lib/broker-analytics";
+import { isOrderEligibleClient } from "../lib/client-readiness";
 
 type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
-type Drawer = "new" | "detail" | "trade" | "contract" | null;
+type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string };
+type NewClientValue = {
+  clientType: "individual" | "institution";
+  fullName: string;
+  phone: string;
+  email: string;
+  faydaId: string;
+  tin: string;
+  address: string;
+  proofOfAddressType: string;
+  proofOfAddressReference: string;
+  businessRegistrationNumber: string;
+  authorizedRepresentativeName: string;
+  beneficialOwnerName: string;
+  signatoryAuthorityConfirmed: boolean;
+  csdReference: string;
+  riskRating: "standard" | "enhanced" | "review";
+  termsAccepted: boolean;
+  electronicDeliveryConsent: boolean;
+};
 type TradeValue = { quantity: string; price: string; tradeDate: string; captureReference: string };
 type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
 type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
@@ -24,7 +44,7 @@ type TenantApiInstrument = { id: string; symbol: string; name: string; assetClas
 type TenantApiResult = { tenant?: { tradingName?: string; licenseNumber?: string; primaryColor?: string; features?: Partial<TenantFeatures>; controls?: Partial<TenantControls> | null }; instruments?: TenantApiInstrument[] };
 type Client360Tab = "overview" | "assets" | "orders" | "trades" | "transactions" | "settlements" | "documents" | "notes" | "audit";
 type Client360Detail = {
-  client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string };
+  client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string; createdBy: string | null; submittedAt: string | null; approvedBy: string | null; approvedAt: string | null; rejectionReason: string | null };
   readiness: { canTrade: boolean; blockingReasons: string[]; items: Array<{ key: string; label: string; state: "pass" | "fail" | "warning"; detail: string }> };
   cash: { total: number; available: number; blocked: number; unsettled: number; pendingDeposits: number; pendingWithdrawals: number; currency: string } | null;
   holdings: Array<{ id: string; instrumentId: string; symbol: string; name: string; assetClass: string; total: number; available: number; blocked: number; unsettled: number; averageCost: number; lastPrice: number; marketValue: number; updatedAt: string }>;
@@ -60,6 +80,25 @@ const fallbackControls: TenantControls = {
 };
 const fallbackFeatures: TenantFeatures = { manualTradeCapture: true };
 const fallbackInstruments: BrokerInstrument[] = demoInstruments;
+const newClientDefaults = (): NewClientValue => ({
+  clientType: "individual",
+  fullName: "",
+  phone: "",
+  email: "",
+  faydaId: "",
+  tin: "",
+  address: "",
+  proofOfAddressType: "Bank letter",
+  proofOfAddressReference: "",
+  businessRegistrationNumber: "",
+  authorizedRepresentativeName: "",
+  beneficialOwnerName: "",
+  signatoryAuthorityConfirmed: false,
+  csdReference: "",
+  riskRating: "standard",
+  termsAccepted: false,
+  electronicDeliveryConsent: true,
+});
 
 function displayLabel(value: string) {
   return value.replaceAll("_", " ").replaceAll("-", " ").split(" ").filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1).toLowerCase()).join(" ");
@@ -123,12 +162,16 @@ const fallbackClients: BrokerClient[] = demoClients.map((client) => ({
   type: client.type,
   kyc: client.kyc.toLowerCase().replaceAll(" ", "_"),
   status: client.status.toLowerCase(),
+  accountStatus: client.status.toLowerCase(),
+  tradeEligible: client.kyc === "Approved" && client.status === "Active",
   risk: client.risk.toLowerCase(),
   totalCash: client.cash,
   availableCash: client.available,
   blockedCash: client.blocked,
+  unsettledCash: 0,
   accountId: client.accountId,
   accountNumber: client.accountId.replace("acc_", "TRD-").toUpperCase(),
+  termsAcceptedVersion: client.kyc === "Approved" && client.status === "Active" ? "1.0" : null,
   holdings: client.accountId === "acc_meron"
     ? [{ symbol: "WGBX", name: "Wegagen Bank", total: 3_200, available: 2_000, blocked: 1_200, averageCost: 1_685 }]
     : client.accountId === "acc_blue"
@@ -244,6 +287,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID() });
+  const [newClient, setNewClient] = useState<NewClientValue>(newClientDefaults);
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [controls, setControls] = useState<TenantControls>(fallbackControls);
   const [features, setFeatures] = useState<TenantFeatures>(fallbackFeatures);
@@ -254,6 +298,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
   const pendingOrderCount = orders.filter((order) => order.status === "pending_broker_review").length;
+  const eligibleClients = clients.filter(isOrderEligibleClient);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -544,9 +589,42 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
 
   const openNewOrder = () => {
     if (!hasPermission(role, "create")) return notify(`${roleLabels[role]} has read-only access.`, "error");
+    const firstEligible = eligibleClients.find((client) => client.accountId === newOrder.accountId) ?? eligibleClients[0];
+    if (!firstEligible) {
+      setView("clients");
+      return notify("No approved, trade-ready client is available. Complete client approval first.", "error");
+    }
     setChecks(null);
-    setNewOrder((current) => ({ ...current, submissionReference: crypto.randomUUID() }));
+    setNewOrder((current) => ({ ...current, accountId: firstEligible.accountId, submissionReference: crypto.randomUUID() }));
     setDrawer("new");
+  };
+
+  const openNewClient = () => {
+    if (!hasPermission(role, "create")) return notify(`${roleLabels[role]} cannot create clients.`, "error");
+    setNewClient(newClientDefaults());
+    setDrawer("client");
+  };
+
+  const submitClient = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusyAction("create_client");
+    try {
+      const result = await apiRequest<{ client: { id: string; clientCode: string; status: string } }>("/api/clients", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-demo-role": role },
+        body: JSON.stringify(newClient),
+      });
+      await refreshOmsData();
+      setSelectedClientId(result.client.id);
+      setView("clients");
+      setDrawer(null);
+      setNewClient(newClientDefaults());
+      notify(`${result.client.clientCode} submitted for independent approval. It will appear in New Order after activation.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Client onboarding failed.", "error");
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const downloadReconTemplate = () => {
@@ -659,7 +737,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "orders" && <OrdersPage orders={filteredOrders} instruments={instruments} onOpen={openDetail} onNewOrder={openNewOrder} onExport={exportOrders} />}
-          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} onOpenOrder={openDetail} />}
+          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage onExport={exportOrders} />}
@@ -670,9 +748,10 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       </div>
 
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
-        <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
+        <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "client" ? "New client" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
           <button className="drawer-close" onClick={() => setDrawer(null)} aria-label="Close">×</button>
-          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={clients} instruments={instruments} controls={controls} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
+          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={eligibleClients} instruments={instruments} controls={controls} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
+          {drawer === "client" && <NewClientForm value={newClient} setValue={setNewClient} busy={busyAction === "create_client"} onCancel={() => setDrawer(null)} onSubmit={submitClient} />}
           {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} manualTradeCapture={features.manualTradeCapture} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onFail={() => actionOrder("fail")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
           {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} controls={controls} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
           {drawer === "contract" && <ContractNote order={selected} instruments={instruments} tenantInfo={tenantInfo} settlementCycle={controls.settlementCycle} busy={busyAction === "contract_note"} onPrint={printContractNote} />}
@@ -747,7 +826,7 @@ function OrderTable({ orders, instruments, onOpen }: { orders: DemoOrder[]; inst
   return <div className="table-scroll"><table><thead><tr><th>Order / time</th><th>Client</th><th>Instrument</th><th>Side</th><th className="num">Quantity</th><th className="num">Limit price</th><th className="num">Est. value</th><th>Status</th><th>Trader</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.id}</b><small>{order.time} · {order.source}</small></td><td><b>{order.client}</b><small>{order.clientCode}</small></td><td><b>{order.symbol}</b><small>{instruments.find((item) => item.id === order.instrumentId)?.asset ?? "Instrument"}</small></td><td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td><td className="num"><b>{fmt.format(order.quantity)}</b></td><td className="num">{fmt.format(order.price)}</td><td className="num"><b>{fmt.format(order.estimatedNet)}</b><small>ETB incl. fees</small></td><td><StatusBadge status={order.status} />{order.riskFlag !== "none" && <small className="risk-note">◇ Risk review</small>}</td><td><b>{order.trader}</b></td><td><button className="row-action" onClick={(event) => { event.stopPropagation(); onOpen(order); }}>•••</button></td></tr>)}</tbody></table></div>;
 }
 
-function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; role: Role; onOpenOrder: (order: DemoOrder) => void }) {
+function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role, onNewClient, onRefresh, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; role: Role; onNewClient: () => void; onRefresh: () => Promise<void>; onOpenOrder: (order: DemoOrder) => void }) {
   const selected = clients.find((client) => client.id === selectedId) ?? clients[0];
   const fallbackOrders = orders.filter((order) => order.accountId === selected?.accountId);
   const [tab, setTab] = useState<Client360Tab>("overview");
@@ -813,6 +892,11 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
       tradingStatus: fallbackReady ? "ready" : "not_ready",
       csdReference: null,
       riskRating: selected.risk,
+      createdBy: selected.createdBy ?? null,
+      submittedAt: selected.submittedAt ?? null,
+      approvedBy: selected.approvedBy ?? null,
+      approvedAt: selected.approvedAt ?? null,
+      rejectionReason: selected.rejectionReason ?? null,
     },
     readiness: {
       canTrade: fallbackReady,
@@ -847,7 +931,7 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
     if (order) onOpenOrder(order);
   };
   const canAdjust = hasPermission(role, "adjust");
-  const act = async (action: "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note", requestId?: string) => {
+  const act = async (action: "approve_client" | "reject_client" | "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note", requestId?: string) => {
     const key = requestId ?? action;
     setBusy(key);
     setMessage("");
@@ -860,7 +944,7 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
           requestId,
           noteText: action === "add_note" ? noteText : undefined,
           category: action === "add_note" ? noteCategory : undefined,
-          reason: action === "restrict" ? "Restricted pending compliance review" : undefined,
+          reason: action === "restrict" ? "Restricted pending compliance review" : action === "reject_client" ? "Client onboarding rejected after compliance review" : undefined,
           resolutionNotes: action === "reject_request" ? "Request rejected after broker review." : "Reviewed and resolved by broker operations.",
         }),
       });
@@ -868,7 +952,8 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
       if (!response.ok) throw new Error(result.error ?? "Client action failed.");
       if (action === "add_note") setNoteText("");
       setRefreshKey((current) => current + 1);
-      setMessage(action === "add_note" ? "Internal note added and audit logged." : "Control action recorded in the client audit trail.");
+      await onRefresh();
+      setMessage(action === "add_note" ? "Internal note added and audit logged." : action === "approve_client" ? "Client approved and activated. The account is now eligible for New Order." : action === "reject_client" ? "Client onboarding rejected and retained in the audit trail." : "Control action recorded in the client audit trail.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Client action failed.");
     } finally {
@@ -888,13 +973,13 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
   ];
 
   return <>
-    <SectionHeader eyebrow="CLIENT 360" title="Client accounts" copy="A complete operational view of readiness, assets, orders, trades, settlement, documents, and control history." action={<span className="demo-control-badge">{detail ? "CONTROLLED BROKER VIEW" : "DEMO FALLBACK VIEW"}</span>} />
+    <SectionHeader eyebrow="CLIENT 360" title="Client accounts" copy="A complete operational view of readiness, assets, orders, trades, settlement, documents, and control history." action={<><span className="demo-control-badge">{detail ? "CONTROLLED BROKER VIEW" : "DEMO FALLBACK VIEW"}</span>{hasPermission(role, "create") && <button className="btn primary" onClick={onNewClient}>＋ Add client</button>}</>} />
     <div className="client-picker">{clients.map((client) => <button className={client.id === selected.id ? "active" : ""} key={client.id} onClick={() => { onSelect(client.id); setTab("overview"); setMessage(""); setDetail(null); }}><span>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><b>{client.name}</b><small>{client.code} · {displayLabel(client.kyc)}</small></div><i className={client.status === "active" ? "ready" : "warning"} /></button>)}</div>
     <section className="panel client-360-hero">
       <div className="client-360-identity"><span>{model.client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><small>{displayLabel(model.client.type)} · {model.client.code}</small><h2>{model.client.name}</h2><p>{model.client.phone ?? "Phone not recorded"} · {model.client.email ?? "Email not recorded"}</p></div></div>
       <div className="client-360-statuses"><span className={`status ${model.readiness.canTrade ? "status-success" : "status-danger"}`}><i />{model.readiness.canTrade ? "Trade ready" : "Not trade ready"}</span><span className={`status ${model.client.kycStatus === "approved" ? "status-success" : "status-warning"}`}><i />KYC {displayLabel(model.client.kycStatus)}</span><span className={`status ${model.client.accountStatus === "active" ? "status-success" : "status-warning"}`}><i />{displayLabel(model.client.accountStatus)}</span></div>
       <div className="client-360-meta"><span><small>Account</small><b>{selected.accountNumber}</b></span><span><small>CSD reference</small><b>{model.client.csdReference ?? "Not recorded"}</b></span><span><small>Broker / branch</small><b>{model.client.broker}{model.client.branch ? ` · ${model.client.branch}` : ""}</b></span><span><small>Opened</small><b>{new Date(model.client.openedAt).toLocaleDateString("en-GB")}</b></span><span><small>Last activity</small><b>{model.client.lastActivityAt ? new Date(model.client.lastActivityAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "No activity"}</b></span></div>
-      <div className="client-360-hero-actions">{canAdjust && (model.restrictions.restricted ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore")}>Restore account</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => void act("restrict")}>Restrict account</button>)}</div>
+      <div className="client-360-hero-actions">{model.client.clientStatus === "pending_approval" ? <>{hasPermission(role, "reject") && <button className="btn danger small" disabled={Boolean(busy)} onClick={() => void act("reject_client")}>Reject onboarding</button>}{hasPermission(role, "approve") && <button className="btn primary small" disabled={Boolean(busy)} onClick={() => void act("approve_client")}>{busy === "approve_client" ? "Approving…" : "Approve client"}</button>}</> : canAdjust && (model.restrictions.restricted ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore")}>Restore account</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => void act("restrict")}>Restrict account</button>)}</div>
     </section>
     <nav className="client-360-tabs" aria-label="Client 360 sections">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}{item.count !== undefined && <span>{item.count}</span>}</button>)}</nav>
     {message && <p className="control-message client-360-message">{message}</p>}
@@ -963,6 +1048,57 @@ function AuditPage({ events }: { events: AuditEntry[] }) {
     const link = document.createElement("a"); link.href = url; link.download = "frankbroker-audit-log.csv"; link.click(); URL.revokeObjectURL(url);
   };
   return <><SectionHeader eyebrow="CONTROL RECORD" title="Audit trail" copy="Sensitive actions, actors, timestamps, and recorded state for every workflow." action={<button className="btn secondary" onClick={exportAudit}>Export audit log</button>} /><section className="panel audit-timeline">{events.map((item) => { const date = new Date(item.time); return <div key={item.id ?? `${item.time}-${item.action}`}><span className="audit-dot" /><time>{Number.isNaN(date.getTime()) ? "Demo record" : date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}<br /><b>{auditTime(item.time)}</b></time><div><span className="asset-chip">{displayLabel(item.entity)}</span><h3>{displayLabel(item.action)}</h3><p>{item.detail}</p></div><strong>{item.actor}<small>Addis Ababa · Workspace</small></strong></div>; })}</section></>;
+}
+
+function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: NewClientValue; setValue: (value: NewClientValue) => void; busy: boolean; onCancel: () => void; onSubmit: (event: FormEvent) => void }) {
+  const institution = value.clientType === "institution";
+  const faydaValid = /^\d{12}$/.test(value.faydaId);
+  const tinValid = /^\d{10,12}$/.test(value.tin.replace(/\D/g, ""));
+  const ready = value.fullName.trim().length >= 3
+    && value.phone.trim().length >= 7
+    && faydaValid
+    && tinValid
+    && value.address.trim().length >= 4
+    && value.proofOfAddressReference.trim().length >= 4
+    && value.termsAccepted
+    && (!institution || (
+      value.businessRegistrationNumber.trim().length >= 4
+      && value.authorizedRepresentativeName.trim().length >= 3
+      && value.beneficialOwnerName.trim().length >= 3
+      && value.signatoryAuthorityConfirmed
+    ));
+  const set = <K extends keyof NewClientValue>(key: K, next: NewClientValue[K]) => setValue({ ...value, [key]: next });
+  return <form onSubmit={onSubmit} className="drawer-content client-onboarding-form">
+    <div className="drawer-title"><span className="eyebrow">CONTROLLED CLIENT ONBOARDING</span><h2>Add a client</h2><p>Capture identity, documents, authority, and consent. The account remains unavailable for trading until an authorized second user approves it.</p></div>
+    <div className="stepper"><span className="active">1 <b>Client record</b></span><i /><span className={ready ? "active" : ""}>2 <b>Approval</b></span><i /><span>3 <b>Trading active</b></span></div>
+    <section className="form-section">
+      <h3>Account owner</h3>
+      <div className="segmented"><button type="button" className={value.clientType === "individual" ? "active buy" : ""} onClick={() => set("clientType", "individual")}>INDIVIDUAL</button><button type="button" className={value.clientType === "institution" ? "active buy" : ""} onClick={() => set("clientType", "institution")}>INSTITUTION</button></div>
+      <label>{institution ? "Legal organization name" : "Full legal name"}<input value={value.fullName} onChange={(event) => set("fullName", event.target.value)} placeholder="As shown on official records" /></label>
+      <div className="field-row"><label>Phone<input value={value.phone} onChange={(event) => set("phone", event.target.value.replace(/[^0-9+]/g, ""))} placeholder="+251…" /></label><label>Email<input type="email" value={value.email} onChange={(event) => set("email", event.target.value)} placeholder="client@example.et" /></label></div>
+      <label>{institution ? "Registered address" : "Current address"}<input value={value.address} onChange={(event) => set("address", event.target.value)} placeholder="City, sub-city, and locality" /></label>
+    </section>
+    <section className="form-section">
+      <h3>Identity and tax</h3>
+      <div className="field-row"><label>{institution ? "Representative Fayda FIN" : "Fayda FIN"}<input inputMode="numeric" maxLength={12} value={value.faydaId} onChange={(event) => set("faydaId", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digits" /><small>{value.faydaId && !faydaValid ? "FIN must contain 12 digits." : "Only a masked reference is retained."}</small></label><label>TIN<input inputMode="numeric" value={value.tin} onChange={(event) => set("tin", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="10–12 digits" /><small>{value.tin && !tinValid ? "Enter a valid TIN." : "Used for tax and account records."}</small></label></div>
+      <div className="field-row"><label>Proof of address<select value={value.proofOfAddressType} onChange={(event) => set("proofOfAddressType", event.target.value)}><option>Bank letter</option><option>Utility bill</option><option>Government correspondence</option><option>Business license</option><option>Lease agreement</option></select></label><label>Document reference<input value={value.proofOfAddressReference} onChange={(event) => set("proofOfAddressReference", event.target.value)} placeholder="Internal document reference" /></label></div>
+      <label>CSD account/reference <span className="optional-label">optional</span><input value={value.csdReference} onChange={(event) => set("csdReference", event.target.value)} placeholder="Record when available" /></label>
+    </section>
+    {institution && <section className="form-section">
+      <h3>Institutional authority</h3>
+      <label>Business registration number<input value={value.businessRegistrationNumber} onChange={(event) => set("businessRegistrationNumber", event.target.value)} /></label>
+      <div className="field-row"><label>Authorized representative<input value={value.authorizedRepresentativeName} onChange={(event) => set("authorizedRepresentativeName", event.target.value)} /></label><label>Beneficial owner / controller<input value={value.beneficialOwnerName} onChange={(event) => set("beneficialOwnerName", event.target.value)} /></label></div>
+      <label className="control-checkbox"><input type="checkbox" checked={value.signatoryAuthorityConfirmed} onChange={(event) => set("signatoryAuthorityConfirmed", event.target.checked)} /><i>{value.signatoryAuthorityConfirmed ? "✓" : ""}</i><span><b>Signatory authority confirmed</b><small>The representative is authorized to open and operate the account.</small></span></label>
+    </section>}
+    <section className="form-section">
+      <h3>Risk and consent</h3>
+      <label>Initial risk rating<select value={value.riskRating} onChange={(event) => set("riskRating", event.target.value as NewClientValue["riskRating"])}><option value="standard">Standard</option><option value="enhanced">Enhanced due diligence</option><option value="review">Compliance review</option></select></label>
+      <label className="control-checkbox"><input type="checkbox" checked={value.termsAccepted} onChange={(event) => set("termsAccepted", event.target.checked)} /><i>{value.termsAccepted ? "✓" : ""}</i><span><b>Current brokerage agreement accepted</b><small>Record acceptance only after the client has reviewed the tenant’s published terms.</small></span></label>
+      <label className="control-checkbox"><input type="checkbox" checked={value.electronicDeliveryConsent} onChange={(event) => set("electronicDeliveryConsent", event.target.checked)} /><i>{value.electronicDeliveryConsent ? "✓" : ""}</i><span><b>Electronic delivery consent</b><small>Contract notes, statements, and account notices may be sent electronically.</small></span></label>
+    </section>
+    <div className="client-approval-callout"><span>FOUR-EYES</span><div><b>Approval is a separate step</b><small>This record will be created as Pending Approval. It will not appear in New Order until KYC, consent, and account activation controls pass.</small></div></div>
+    <div className="drawer-actions"><button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>Cancel</button><button type="submit" className="btn primary" disabled={busy || !ready}>{busy ? "Submitting…" : "Submit for approval"} <span>→</span></button></div>
+  </form>;
 }
 
 function NewOrderForm({ value, setValue, clients, instruments, controls, checks, busy, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; clients: BrokerClient[]; instruments: BrokerInstrument[]; controls: TenantControls; checks: { label: string; passed: boolean; message: string }[] | null; busy: boolean; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {

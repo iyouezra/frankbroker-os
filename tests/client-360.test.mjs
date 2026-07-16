@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { evaluateClientReadiness } from "../lib/client-readiness.ts";
+import { evaluateClientReadiness, isOrderEligibleClient } from "../lib/client-readiness.ts";
 import { hasPermission } from "../lib/frank.ts";
 import { requirePermission } from "../lib/server-auth.ts";
 
@@ -66,6 +66,34 @@ test("read-only management cannot create notes or change restrictions", () => {
   assert.equal(hasPermission("management", "adjust"), false);
 });
 
+test("new-order eligibility begins only after client and account approval", () => {
+  const pending = {
+    tradeEligible: false,
+    status: "pending_approval",
+    kyc: "pending_review",
+    accountStatus: "pending_approval",
+    accountId: "acc_pending",
+    termsAcceptedVersion: "1.0",
+    restrictionReason: "Awaiting client onboarding approval",
+  };
+  assert.equal(isOrderEligibleClient(pending), false);
+  assert.equal(isOrderEligibleClient({
+    ...pending,
+    tradeEligible: true,
+    status: "active",
+    kyc: "approved",
+    accountStatus: "active",
+    restrictionReason: null,
+  }), true);
+});
+
+test("read-only users cannot create or approve clients", () => {
+  assert.equal(hasPermission("management", "create"), false);
+  assert.equal(hasPermission("management", "approve"), false);
+  assert.equal(hasPermission("trader", "create"), true);
+  assert.equal(hasPermission("compliance", "approve"), true);
+});
+
 test("Client 360 surfaces cash, holdings, orders, ledgers, settlements, documents, notes, and audit data", async () => {
   const root = new URL("../", import.meta.url);
   const [ui, route, action, schema] = await Promise.all([
@@ -93,4 +121,31 @@ test("Client 360 surfaces cash, holdings, orders, ledgers, settlements, document
   assert.match(route, /securitiesLedgerEntries/);
   assert.match(action, /CLIENT_INTERNAL_NOTE_ADDED/);
   assert.match(schema, /model ClientNote/);
+});
+
+test("broker onboarding is wired through approval into the New Order client list", async () => {
+  const root = new URL("../", import.meta.url);
+  const [ui, clientsRoute, actionRoute, service, styles, migration] = await Promise.all([
+    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readFile(new URL("app/api/clients/route.ts", root), "utf8"),
+    readFile(new URL("app/api/clients/[id]/action/route.ts", root), "utf8"),
+    readFile(new URL("lib/client-service.ts", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("prisma/migrations/20260716170000_client_onboarding_workflow/migration.sql", root), "utf8"),
+  ]);
+  assert.match(ui, /CONTROLLED CLIENT ONBOARDING/);
+  assert.match(ui, /Submit for approval/);
+  assert.match(ui, /eligibleClients/);
+  assert.match(ui, /Approve client/);
+  assert.match(clientsRoute, /createClientForApproval/);
+  assert.match(actionRoute, /approveClient/);
+  assert.match(actionRoute, /rejectClient/);
+  assert.match(service, /Four-eyes control/);
+  assert.match(service, /status: "pending_approval"/);
+  assert.match(service, /status: "active"/);
+  assert.match(service, /CLIENT_SUBMITTED_FOR_APPROVAL/);
+  assert.match(service, /CLIENT_APPROVED/);
+  assert.match(styles, /Branded dropdown treatment/);
+  assert.match(styles, /select:not\(\[multiple\]\)/);
+  assert.match(migration, /clients_created_by_fkey/);
 });

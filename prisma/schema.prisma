@@ -53,6 +53,8 @@ model User {
   auditLogs                     AuditLog[]                @relation("AuditActor")
   orderEvents                   OrderEvent[]              @relation("OrderEventActor")
   clientNotes                   ClientNote[]              @relation("ClientNoteAuthor")
+  createdClients                Client[]                  @relation("ClientCreator")
+  approvedClients               Client[]                  @relation("ClientApprover")
 
   @@index([brokerId])
   @@map("users")
@@ -84,6 +86,11 @@ model Client {
   kycStatus                    String                 @default("pending") @map("kyc_status")
   riskRating                   String                 @default("standard") @map("risk_rating")
   status                       String                 @default("active")
+  createdBy                    String?                @map("created_by")
+  submittedAt                  DateTime?              @map("submitted_at")
+  approvedBy                   String?                @map("approved_by")
+  approvedAt                   DateTime?              @map("approved_at")
+  rejectionReason              String?                @map("rejection_reason")
   createdAt                    DateTime               @default(now()) @map("created_at")
   updatedAt                    DateTime               @updatedAt @map("updated_at")
   broker                       Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
@@ -91,8 +98,11 @@ model Client {
   consents                     ClientConsent[]
   serviceRequests              ClientServiceRequest[]
   notes                        ClientNote[]
+  creator                      User?                  @relation("ClientCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  approver                     User?                  @relation("ClientApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
 
   @@index([brokerId])
+  @@index([status, kycStatus])
   @@map("clients")
 }
 

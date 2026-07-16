@@ -40,6 +40,7 @@ async function main() {
       { id: "cli_selam", brokerId: "brk_abyssinia", clientCode: "CL-10052", fullName: "Selamawit Tesfaye", clientType: "individual", phone: "+251911000052", email: "selam@example.et", kycStatus: "pending", riskRating: "review", status: "restricted" },
       { id: "cli_blue", brokerId: "brk_abyssinia", clientCode: "CL-10017", fullName: "Blue Nile Trading PLC", clientType: "corporate", phone: "+251115000017", email: "finance@bluenile.example", kycStatus: "approved", riskRating: "standard", status: "active" },
       { id: "cli_investor_demo", brokerId: "brk_abyssinia", clientCode: "CL-INV-001", fullName: "Selam Mekonnen", clientType: "individual", phone: "+251911000041", email: "selam.mekonnen@example.et", identityReference: "demo_seed_reference", faydaLast4: "9012", taxIdLast4: "4908", address: "Bole, Addis Ababa", proofOfAddressType: "Utility bill", proofOfAddressReference: "DEMO-POA-001", proofOfAddressStatus: "received", kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date("2026-07-14T08:00:00Z"), electronicDeliveryConsentAt: new Date("2026-07-14T08:00:00Z"), kycReviewDueAt: new Date("2027-07-14T08:00:00Z") },
+      { id: "cli_pending_demo", brokerId: "brk_abyssinia", clientCode: "CL-2026-P001", fullName: "Hana Tesfaye", clientType: "individual", phone: "+251911000077", email: "hana.tesfaye@example.et", identityReference: "demo_pending_fayda", faydaLast4: "1122", taxIdLast4: "7788", address: "Yeka, Addis Ababa", proofOfAddressType: "Bank letter", proofOfAddressReference: "POA-HANA-001", proofOfAddressStatus: "received", kycStatus: "pending_review", riskRating: "standard", status: "pending_approval", kycConsentAt: new Date("2026-07-15T09:00:00Z"), electronicDeliveryConsentAt: new Date("2026-07-15T09:00:00Z"), createdBy: "usr_trader", submittedAt: new Date("2026-07-15T09:05:00Z") },
     ],
     skipDuplicates: true,
   });
@@ -51,6 +52,7 @@ async function main() {
       { id: "acc_selam", clientId: "cli_selam", accountNumber: "TRD-10052-01", totalCash: 428_900, availableCash: 428_900, blockedCash: 0, unsettledCash: 0, status: "restricted" },
       { id: "acc_blue", clientId: "cli_blue", accountNumber: "TRD-10017-01", totalCash: 4_705_300, availableCash: 4_120_300, blockedCash: 585_000, unsettledCash: 0, status: "active" },
       { id: "acc_investor_demo", clientId: "cli_investor_demo", accountNumber: "INV-00001-01", totalCash: 75_000, availableCash: 75_000, blockedCash: 0, unsettledCash: 0, status: "active" },
+      { id: "acc_pending_demo", clientId: "cli_pending_demo", accountNumber: "TRD-2026-P001-01", totalCash: 0, availableCash: 0, blockedCash: 0, unsettledCash: 0, status: "pending_approval", restrictionReason: "Awaiting client onboarding approval" },
     ],
     skipDuplicates: true,
   });
@@ -106,6 +108,7 @@ async function main() {
     data: [
       { id: "consent_investor_terms_1_0", clientId: "cli_investor_demo", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "investor_portal", acceptedAt: new Date("2026-07-14T08:00:00Z"), metadata: { electronicDeliveryConsent: true } },
       { id: "consent_meron_terms_1_0", clientId: "cli_meron", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "broker_desk", acceptedAt: new Date("2026-07-10T09:15:00Z") },
+      { id: "consent_pending_terms_1_0", clientId: "cli_pending_demo", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "broker_desk", acceptedAt: new Date("2026-07-15T09:02:00Z"), metadata: { recordedBy: "usr_trader", electronicDeliveryConsent: true } },
     ],
     skipDuplicates: true,
   });

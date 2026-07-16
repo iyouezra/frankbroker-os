@@ -21,6 +21,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const client = await prisma.client.findFirst({
       where: { id, brokerId: actor.brokerId },
       include: {
+        creator: true,
+        approver: true,
         broker: {
           include: {
             settings: true,
@@ -171,6 +173,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         tradingStatus: readiness.baseReady ? "ready" : "not_ready",
         csdReference: account?.csdReference ?? null,
         riskRating: client.riskRating,
+        createdBy: client.creator?.fullName ?? null,
+        submittedAt: client.submittedAt?.toISOString() ?? null,
+        approvedBy: client.approver?.fullName ?? null,
+        approvedAt: client.approvedAt?.toISOString() ?? null,
+        rejectionReason: client.rejectionReason,
       },
       readiness: { canTrade: readiness.canTrade, blockingReasons: readiness.blockingReasons, items: readiness.items },
       cash: account ? {

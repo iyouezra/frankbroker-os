@@ -61,3 +61,21 @@ export function evaluateClientReadiness(input: ClientReadinessInput) {
     ] as Array<{ key: string; label: string; state: "pass" | "fail" | "warning"; detail: string }>,
   };
 }
+
+export function isOrderEligibleClient(client: {
+  tradeEligible?: boolean;
+  status: string;
+  kyc: string;
+  accountStatus?: string;
+  accountId: string;
+  termsAcceptedVersion?: string | null;
+  restrictionReason?: string | null;
+}) {
+  if (typeof client.tradeEligible === "boolean") return client.tradeEligible;
+  return client.status === "active"
+    && client.kyc === "approved"
+    && (client.accountStatus ?? "active") === "active"
+    && Boolean(client.accountId)
+    && Boolean(client.termsAcceptedVersion)
+    && !client.restrictionReason;
+}

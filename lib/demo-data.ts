@@ -104,10 +104,13 @@ export type BrokerClient = {
   type: string;
   kyc: string;
   status: string;
+  accountStatus?: string;
+  tradeEligible?: boolean;
   risk: string;
   totalCash: number;
   availableCash: number;
   blockedCash: number;
+  unsettledCash?: number;
   accountId: string;
   accountNumber: string;
   address?: string | null;
@@ -119,6 +122,12 @@ export type BrokerClient = {
   kycReviewDueAt?: string | null;
   termsAcceptedVersion?: string | null;
   restrictionReason?: string | null;
+  currentTermsVersion?: string | null;
+  createdBy?: string | null;
+  approvedBy?: string | null;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
   serviceRequests?: Array<{
     id: string;
     requestType: string;
