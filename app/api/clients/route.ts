@@ -1,5 +1,5 @@
 import { prisma } from "../../../lib/prisma";
-import { resolveActor } from "../../../lib/server-auth";
+import { requirePermission } from "../../../lib/server-auth";
 import { toNum } from "../../../lib/money";
 import { apiError } from "../../../lib/api";
 
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const actor = requirePermission(request, "report");
     const rows = await prisma.client.findMany({
       where: { brokerId: actor.brokerId },
       include: {

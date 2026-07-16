@@ -1,0 +1,96 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+import { evaluateClientReadiness } from "../lib/client-readiness.ts";
+import { hasPermission } from "../lib/frank.ts";
+import { requirePermission } from "../lib/server-auth.ts";
+
+const readyClient = {
+  kycStatus: "approved",
+  clientStatus: "active",
+  accountStatus: "active",
+  proofOfAddressStatus: "received",
+  institutional: false,
+  businessRegistrationNumber: null,
+  authorizedRepresentativeName: null,
+  signatoryAuthorityConfirmed: false,
+  currentLegalVersion: "1.0",
+  acceptedLegalVersion: "1.0",
+  csdReference: "CSD-ET-10041",
+  availableCash: 100_000,
+  availableHoldings: 200,
+  restrictionReason: null,
+};
+
+test("broker and read-only users can view Client 360, while unknown roles are rejected", () => {
+  assert.equal(requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "broker_admin" } }), "report").role, "broker_admin");
+  assert.equal(requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "management" } }), "report").role, "management");
+  assert.throws(
+    () => requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "unauthorized" } }), "report"),
+    (error) => error instanceof Response && error.status === 403,
+  );
+});
+
+test("missing consent blocks trading readiness", () => {
+  const result = evaluateClientReadiness({ ...readyClient, acceptedLegalVersion: null });
+  assert.equal(result.canTrade, false);
+  assert.equal(result.consentReady, false);
+  assert.match(result.blockingReasons.join(" "), /terms are not accepted/);
+  assert.equal(result.items.find((item) => item.key === "consent")?.state, "fail");
+});
+
+test("restricted accounts are not trade-ready", () => {
+  const result = evaluateClientReadiness({
+    ...readyClient,
+    clientStatus: "restricted",
+    accountStatus: "restricted",
+    restrictionReason: "Compliance review required",
+  });
+  assert.equal(result.canBuy, false);
+  assert.equal(result.canSell, false);
+  assert.equal(result.unrestricted, false);
+  assert.match(result.blockingReasons.join(" "), /Compliance review required/);
+});
+
+test("ready clients can buy and sell when cash and holdings are available", () => {
+  const result = evaluateClientReadiness(readyClient);
+  assert.equal(result.canTrade, true);
+  assert.equal(result.canBuy, true);
+  assert.equal(result.canSell, true);
+  assert.equal(result.items.find((item) => item.key === "cash")?.state, "pass");
+});
+
+test("read-only management cannot create notes or change restrictions", () => {
+  assert.equal(hasPermission("management", "report"), true);
+  assert.equal(hasPermission("management", "adjust"), false);
+});
+
+test("Client 360 surfaces cash, holdings, orders, ledgers, settlements, documents, notes, and audit data", async () => {
+  const root = new URL("../", import.meta.url);
+  const [ui, route, action, schema] = await Promise.all([
+    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readFile(new URL("app/api/clients/[id]/route.ts", root), "utf8"),
+    readFile(new URL("app/api/clients/[id]/action/route.ts", root), "utf8"),
+    readFile(new URL("prisma/schema.prisma", root), "utf8"),
+  ]);
+  assert.match(ui, /CLIENT 360/);
+  assert.match(ui, /Cash & holdings/);
+  assert.match(ui, /Open and recent orders/);
+  assert.match(ui, /Transaction history/);
+  assert.match(ui, /Settlement items/);
+  assert.match(ui, /Accepted agreements/);
+  assert.match(ui, /Internal notes/);
+  assert.match(ui, /CLIENT CONTROL RECORD/);
+  assert.match(route, /availableQuantity/);
+  assert.match(route, /blockedQuantity/);
+  assert.match(route, /unsettledQuantity/);
+  assert.match(route, /availableCash/);
+  assert.match(route, /blockedCash/);
+  assert.match(route, /unsettledCash/);
+  assert.match(route, /remainingQuantity/);
+  assert.match(route, /cashLedgerEntries/);
+  assert.match(route, /securitiesLedgerEntries/);
+  assert.match(action, /CLIENT_INTERNAL_NOTE_ADDED/);
+  assert.match(schema, /model ClientNote/);
+});

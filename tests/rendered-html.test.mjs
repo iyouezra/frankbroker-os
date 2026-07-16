@@ -143,7 +143,7 @@ test("ships versioned terms, itemized fees, and controlled client requests", asy
   assert.match(adminApp, /VERSIONED FEE SCHEDULE/);
   assert.match(adminApp, /Legal & consent/);
   assert.match(brokerApp, /Requests and discrepancies/);
-  assert.match(brokerApp, /Signatory authority/);
+  assert.match(brokerApp, /TRADING READINESS/);
   assert.match(investorApi, /disclosureAccepted/);
   assert.match(investorApi, /clientConsent\.create/);
   assert.match(clientActionApi, /CLIENT_ACCOUNT_RESTRICTED/);

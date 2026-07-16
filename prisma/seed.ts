@@ -35,9 +35,9 @@ async function main() {
 
   await prisma.client.createMany({
     data: [
-      { id: "cli_meron", brokerId: "brk_abyssinia", clientCode: "CL-10041", fullName: "Meron Bekele", clientType: "individual", phone: "+251911000041", email: "meron@example.et", kycStatus: "approved", riskRating: "standard", status: "active" },
+      { id: "cli_meron", brokerId: "brk_abyssinia", clientCode: "CL-10041", fullName: "Meron Bekele", clientType: "individual", phone: "+251911000041", email: "meron@example.et", identityReference: "demo_meron_fayda", address: "Bole, Addis Ababa", proofOfAddressType: "Bank letter", proofOfAddressReference: "POA-MERON-001", proofOfAddressStatus: "received", kycStatus: "approved", kycReviewDueAt: new Date("2027-07-14T08:00:00Z"), riskRating: "standard", status: "active" },
       { id: "cli_wegagen", brokerId: "brk_abyssinia", clientCode: "CL-10008", fullName: "Wegagen Pension Fund", clientType: "institution", phone: "+251115000008", email: "ops@wegagen-pension.example", kycStatus: "approved", riskRating: "enhanced", status: "active" },
-      { id: "cli_selam", brokerId: "brk_abyssinia", clientCode: "CL-10052", fullName: "Selamawit Tesfaye", clientType: "individual", phone: "+251911000052", email: "selam@example.et", kycStatus: "review_due", riskRating: "review", status: "restricted" },
+      { id: "cli_selam", brokerId: "brk_abyssinia", clientCode: "CL-10052", fullName: "Selamawit Tesfaye", clientType: "individual", phone: "+251911000052", email: "selam@example.et", kycStatus: "pending", riskRating: "review", status: "restricted" },
       { id: "cli_blue", brokerId: "brk_abyssinia", clientCode: "CL-10017", fullName: "Blue Nile Trading PLC", clientType: "corporate", phone: "+251115000017", email: "finance@bluenile.example", kycStatus: "approved", riskRating: "standard", status: "active" },
       { id: "cli_investor_demo", brokerId: "brk_abyssinia", clientCode: "CL-INV-001", fullName: "Selam Mekonnen", clientType: "individual", phone: "+251911000041", email: "selam.mekonnen@example.et", identityReference: "demo_seed_reference", faydaLast4: "9012", taxIdLast4: "4908", address: "Bole, Addis Ababa", proofOfAddressType: "Utility bill", proofOfAddressReference: "DEMO-POA-001", proofOfAddressStatus: "received", kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date("2026-07-14T08:00:00Z"), electronicDeliveryConsentAt: new Date("2026-07-14T08:00:00Z"), kycReviewDueAt: new Date("2027-07-14T08:00:00Z") },
     ],
@@ -46,7 +46,7 @@ async function main() {
 
   await prisma.account.createMany({
     data: [
-      { id: "acc_meron", clientId: "cli_meron", accountNumber: "TRD-10041-01", totalCash: 1_840_500, availableCash: 1_526_850, blockedCash: 313_650, unsettledCash: 0, status: "active" },
+      { id: "acc_meron", clientId: "cli_meron", accountNumber: "TRD-10041-01", csdReference: "CSD-ET-10041", totalCash: 1_840_500, availableCash: 1_526_850, blockedCash: 313_650, unsettledCash: 0, status: "active" },
       { id: "acc_wegagen", clientId: "cli_wegagen", accountNumber: "TRD-10008-01", totalCash: 12_400_000, availableCash: 10_172_500, blockedCash: 2_227_500, unsettledCash: 0, status: "active" },
       { id: "acc_selam", clientId: "cli_selam", accountNumber: "TRD-10052-01", totalCash: 428_900, availableCash: 428_900, blockedCash: 0, unsettledCash: 0, status: "restricted" },
       { id: "acc_blue", clientId: "cli_blue", accountNumber: "TRD-10017-01", totalCash: 4_705_300, availableCash: 4_120_300, blockedCash: 585_000, unsettledCash: 0, status: "active" },
@@ -105,12 +105,20 @@ async function main() {
   await prisma.clientConsent.createMany({
     data: [
       { id: "consent_investor_terms_1_0", clientId: "cli_investor_demo", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "investor_portal", acceptedAt: new Date("2026-07-14T08:00:00Z"), metadata: { electronicDeliveryConsent: true } },
+      { id: "consent_meron_terms_1_0", clientId: "cli_meron", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "broker_desk", acceptedAt: new Date("2026-07-10T09:15:00Z") },
     ],
     skipDuplicates: true,
   });
   await prisma.clientServiceRequest.createMany({
     data: [
       { id: "REQ-DEMO-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", requestType: "profile_correction", status: "open", subject: "Profile correction request", description: "Please review the spelling of my address before the next statement.", submittedBy: "investor_portal", submittedAt: new Date("2026-07-15T11:30:00Z") },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.clientNote.createMany({
+    data: [
+      { id: "NOTE-DEMO-001", clientId: "cli_meron", noteText: "Client confirmed the WGBX sell instruction by phone; dealer callback completed.", category: "trading", visibility: "internal", createdBy: "usr_trader", createdAt: new Date("2026-07-14T10:12:00Z") },
+      { id: "NOTE-DEMO-002", clientId: "cli_meron", noteText: "Annual KYC review is complete. Proof of address reference checked against the client file.", category: "compliance", visibility: "internal", createdBy: "usr_compliance", createdAt: new Date("2026-07-12T08:30:00Z") },
     ],
     skipDuplicates: true,
   });

@@ -34,6 +34,9 @@ export function resolveBrokerId(request: Request) {
 // server-side session before allowing real users or live brokerage data.
 export function resolveActor(request: Request): Actor {
   const requestedRole = request.headers.get("x-frank-demo-role") as Role | null;
+  if (requestedRole && !(requestedRole in demoActors)) {
+    throw new Response("The requested demo role is not authorized.", { status: 403 });
+  }
   const role: Role = requestedRole && requestedRole in demoActors ? requestedRole : "broker_admin";
 
   return {

@@ -5,7 +5,7 @@ import { requirePermission } from "../../../../../lib/server-auth";
 
 export const runtime = "nodejs";
 
-type ClientAction = "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request";
+type ClientAction = "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -16,10 +16,47 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       requestId?: string;
       reason?: string;
       resolutionNotes?: string;
+      noteText?: string;
+      category?: string;
     };
     if (!payload.action) return Response.json({ error: "A client action is required." }, { status: 400 });
     const reason = String(payload.reason ?? payload.resolutionNotes ?? "").trim();
     if (reason.length > 1_000) return Response.json({ error: "The reason is too long." }, { status: 400 });
+
+    if (payload.action === "add_note") {
+      const client = await prisma.client.findFirst({ where: { id, brokerId: actor.brokerId } });
+      if (!client) return Response.json({ error: "Client not found for this tenant." }, { status: 404 });
+      const noteText = String(payload.noteText ?? "").trim();
+      const category = String(payload.category ?? "general").trim().toLowerCase();
+      if (noteText.length < 3 || noteText.length > 2_000) {
+        return Response.json({ error: "Internal notes must contain between 3 and 2,000 characters." }, { status: 400 });
+      }
+      if (!["general", "compliance", "support", "trading", "settlement"].includes(category)) {
+        return Response.json({ error: "Unsupported note category." }, { status: 400 });
+      }
+      const note = await prisma.$transaction(async (tx) => {
+        const next = await tx.clientNote.create({ data: {
+          id: `NOTE-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+          clientId: id,
+          noteText,
+          category,
+          visibility: "internal",
+          createdBy: actor.id,
+        } });
+        await tx.auditLog.create({ data: {
+          id: crypto.randomUUID(),
+          brokerId: actor.brokerId,
+          actorId: actor.id,
+          action: "CLIENT_INTERNAL_NOTE_ADDED",
+          entityType: "client_note",
+          entityId: next.id,
+          summary: `${category} note added to ${client.fullName}`,
+          newValue: JSON.stringify({ clientId: id, category, visibility: "internal" }),
+        } });
+        return next;
+      });
+      return Response.json({ ok: true, note: { id: note.id, category: note.category, createdAt: note.createdAt.toISOString() } }, { status: 201 });
+    }
 
     if (payload.action === "restrict" || payload.action === "restore") {
       const client = await prisma.client.findFirst({ where: { id, brokerId: actor.brokerId }, include: { accounts: true } });

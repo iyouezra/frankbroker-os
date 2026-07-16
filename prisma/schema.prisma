@@ -52,6 +52,7 @@ model User {
   resolvedExceptions            ReconciliationException[] @relation("ExceptionResolver")
   auditLogs                     AuditLog[]                @relation("AuditActor")
   orderEvents                   OrderEvent[]              @relation("OrderEventActor")
+  clientNotes                   ClientNote[]              @relation("ClientNoteAuthor")
 
   @@index([brokerId])
   @@map("users")
@@ -89,6 +90,7 @@ model Client {
   accounts                     Account[]
   consents                     ClientConsent[]
   serviceRequests              ClientServiceRequest[]
+  notes                        ClientNote[]
 
   @@index([brokerId])
   @@map("clients")
@@ -99,6 +101,7 @@ model Account {
   clientId                String                  @map("client_id")
   accountNumber           String                  @unique @map("account_number")
   accountType             String                  @default("cash") @map("account_type")
+  csdReference            String?                 @map("csd_reference")
   currency                String                  @default("ETB")
   totalCash               Decimal                 @default(0) @map("total_cash") @db.Decimal(20, 4)
   availableCash           Decimal                 @default(0) @map("available_cash") @db.Decimal(20, 4)
@@ -448,6 +451,22 @@ model ClientServiceRequest {
   @@index([brokerId, status, submittedAt])
   @@index([clientId, status])
   @@map("client_service_requests")
+}
+
+model ClientNote {
+  id         String   @id
+  clientId   String   @map("client_id")
+  noteText   String   @map("note_text")
+  category   String   @default("general")
+  visibility String   @default("internal")
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author     User     @relation("ClientNoteAuthor", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([clientId, createdAt])
+  @@map("client_notes")
 }
 
 model Settlement {
