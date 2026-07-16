@@ -288,6 +288,24 @@ td b { display: block; color: var(--fx-text); font-size: 11.5px; } td small { di
 .holdings-panel, .client-orders { overflow: hidden; }
 .holdings-panel table { min-width: 620px; }
 .client-orders, .ledger-panel { grid-column: 1 / -1; }
+.compliance-panel { overflow: hidden; }
+.compliance-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.compliance-grid span { display: flex; flex-direction: column; min-height: 68px; padding: 15px 18px; border-right: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
+.compliance-grid span:nth-child(2n) { border-right: 0; }
+.compliance-grid span:nth-last-child(-n+2) { border-bottom: 0; }
+.compliance-grid small, .account-control-bar small { color: var(--muted); font-size: 10px; }
+.compliance-grid b, .account-control-bar b { margin-top: 5px; font-size: 11px; line-height: 1.4; }
+.account-control-bar { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 13px 18px; border-top: 1px solid var(--soft-line); background: var(--fx-sunken); }
+.account-control-bar > span { display: flex; flex-direction: column; }
+.request-panel { grid-column: 1 / -1; overflow: hidden; }
+.client-request-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 15px; padding: 14px 18px; border-bottom: 1px solid var(--soft-line); }
+.client-request-row > span { min-width: 0; display: flex; flex-direction: column; }
+.client-request-row b { font-size: 11.5px; }
+.client-request-row small { margin-top: 4px; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.client-request-row em { width: fit-content; margin-top: 6px; padding: 3px 6px; border-radius: 5px; background: var(--fx-sunken); color: var(--fx-teal); font-family: var(--font-mono); font-size: 9.5px; font-style: normal; }
+.client-request-row > strong { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.client-request-row > div { display: flex; gap: 6px; }
+.control-message { margin: 0; padding: 11px 18px; background: var(--mint); color: var(--fx-teal); font-size: 10.5px; }
 .upload-card.processing { cursor: wait; border-style: solid; background: linear-gradient(135deg, var(--mint), var(--fx-sunken)); }
 .upload-card.processing > span { animation: pulse 1s ease-in-out infinite alternate; }
 .recon-summary > small { display: block; color: var(--muted); font-size: 10px; margin: -14px 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -373,6 +391,10 @@ td b { display: block; color: var(--fx-text); font-size: 11.5px; } td small { di
   .account-balance-grid { grid-template-columns: 1fr; }
   .account-balance-grid span { border-right: 0; border-bottom: 1px solid var(--soft-line) !important; }
   .account-balance-grid span:last-child { border-bottom: 0 !important; }
+  .compliance-grid { grid-template-columns: 1fr; }
+  .compliance-grid span { border-right: 0; border-bottom: 1px solid var(--soft-line) !important; }
+  .client-request-row { grid-template-columns: 1fr; }
+  .client-request-row > div { flex-wrap: wrap; }
 }
 
 @media print {

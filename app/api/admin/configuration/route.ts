@@ -39,6 +39,17 @@ export async function GET(request: Request) {
           clients: { include: { accounts: { include: { holdings: { include: { instrument: true } } } } } },
           orders: { where: { submittedAt: { gte: start } } },
           integrations: { orderBy: { name: "asc" } },
+          legalDocuments: {
+            where: { documentType: "brokerage_terms", status: "published" },
+            orderBy: [{ effectiveAt: "desc" }, { publishedAt: "desc" }],
+            take: 1,
+          },
+          feeSchedules: {
+            where: { status: "published" },
+            include: { rules: true },
+            orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+            take: 1,
+          },
         },
         orderBy: { name: "asc" },
       }),
@@ -48,6 +59,8 @@ export async function GET(request: Request) {
 
     const tenants = brokers.map((broker) => {
       const settings = broker.settings;
+      const legalDocument = broker.legalDocuments[0];
+      const feeSchedule = broker.feeSchedules[0];
       const aua = broker.clients.reduce((clientTotal, client) => clientTotal + client.accounts.reduce((accountTotal, account) => {
         const securities = account.holdings.reduce((total, holding) => total + toNum(holding.totalQuantity) * toNum(holding.instrument.lastPrice), 0);
         return accountTotal + toNum(account.totalCash) + securities;
@@ -80,6 +93,61 @@ export async function GET(request: Request) {
           minimumFee: toNum(settings?.minimumFee),
           settlementCycle: settings?.settlementCycle ?? "T+2",
           allowedOrderTypes: settings?.allowedOrderTypes ?? ["Limit"],
+          requireTermsAcceptance: settings?.requireTermsAcceptance ?? true,
+          discrepancyWindowDays: settings?.discrepancyWindowDays ?? 10,
+          kycReviewMonths: settings?.kycReviewMonths ?? 12,
+        },
+        legalDocument: legalDocument ? {
+          id: legalDocument.id,
+          title: legalDocument.title,
+          version: legalDocument.version,
+          language: legalDocument.language,
+          summary: legalDocument.summary,
+          content: legalDocument.content,
+          status: legalDocument.status,
+          effectiveAt: legalDocument.effectiveAt.toISOString().slice(0, 10),
+          requiresReacceptance: legalDocument.requiresReacceptance,
+        } : {
+          title: `${settings?.tradingName ?? broker.name} Brokerage Account Terms`,
+          version: "1.0",
+          language: "en",
+          summary: "Account operation, order handling, fees, confirmations, settlement, and closure terms.",
+          content: "Add counsel-approved tenant brokerage terms before production.",
+          status: "draft",
+          effectiveAt: new Date().toISOString().slice(0, 10),
+          requiresReacceptance: true,
+        },
+        feeSchedule: feeSchedule ? {
+          id: feeSchedule.id,
+          name: feeSchedule.name,
+          version: feeSchedule.version,
+          status: feeSchedule.status,
+          effectiveFrom: feeSchedule.effectiveFrom.toISOString().slice(0, 10),
+          rules: feeSchedule.rules.map((rule) => ({
+            assetClass: rule.assetClass,
+            marketSegment: rule.marketSegment,
+            brokeragePct: toNum(rule.brokeragePct),
+            regulatorPct: toNum(rule.regulatorPct),
+            exchangePct: toNum(rule.exchangePct),
+            csdPct: toNum(rule.csdPct),
+            minimumFee: toNum(rule.minimumFee),
+            maximumFee: rule.maximumFee ? toNum(rule.maximumFee) : null,
+          })),
+        } : {
+          name: "Standard ESX fee schedule",
+          version: "1.0",
+          status: "draft",
+          effectiveFrom: new Date().toISOString().slice(0, 10),
+          rules: ["equity", "bond"].map((assetClass) => ({
+            assetClass,
+            marketSegment: "main",
+            brokeragePct: toNum(settings?.brokerageFeePct),
+            regulatorPct: 0,
+            exchangePct: 0,
+            csdPct: 0,
+            minimumFee: toNum(settings?.minimumFee),
+            maximumFee: null,
+          })),
         },
       };
     });
@@ -133,6 +201,9 @@ export async function PATCH(request: Request) {
           features: data.features as Prisma.InputJsonValue, makerChecker: Boolean(controls.makerChecker), approvalThreshold: Number(controls.approvalThreshold),
           clientDailyLimit: Number(controls.clientDailyLimit), brokerageFeePct: Number(controls.brokerageFeePct), minimumFee: Number(controls.minimumFee),
           settlementCycle: String(controls.settlementCycle), allowedOrderTypes: controls.allowedOrderTypes as Prisma.InputJsonValue,
+          requireTermsAcceptance: Boolean(controls.requireTermsAcceptance),
+          discrepancyWindowDays: Number(controls.discrepancyWindowDays),
+          kycReviewMonths: Number(controls.kycReviewMonths),
         }, create: {
           id: `set_${payload.id}`, brokerId: payload.id, tradingName: String(data.tradingName), plan: String(data.plan), domain: String(data.domain ?? ""),
           supportEmail: String(data.supportEmail ?? ""), primaryColor: String(data.primaryColor), welcomeMessage: String(data.welcomeMessage ?? ""),
@@ -140,6 +211,9 @@ export async function PATCH(request: Request) {
           makerChecker: Boolean(controls.makerChecker), approvalThreshold: Number(controls.approvalThreshold), clientDailyLimit: Number(controls.clientDailyLimit),
           brokerageFeePct: Number(controls.brokerageFeePct), minimumFee: Number(controls.minimumFee), settlementCycle: String(controls.settlementCycle),
           allowedOrderTypes: controls.allowedOrderTypes as Prisma.InputJsonValue,
+          requireTermsAcceptance: Boolean(controls.requireTermsAcceptance),
+          discrepancyWindowDays: Number(controls.discrepancyWindowDays),
+          kycReviewMonths: Number(controls.kycReviewMonths),
         } }),
         audit(payload.id, "TENANT_CONFIGURATION_UPDATED", "broker", payload.id, `${String(data.tradingName)} configuration updated`, current, data),
       ]);
@@ -187,8 +261,93 @@ export async function POST(request: Request) {
   try {
     requirePlatformAdmin(request);
     const payload = await request.json() as { entity?: string; data?: Record<string, unknown> };
-    if (payload.entity !== "user" || !payload.data) return Response.json({ error: "Only user invitations are supported." }, { status: 400 });
+    if (!payload.data) return Response.json({ error: "Configuration data is required." }, { status: 400 });
     const data = payload.data;
+    if (payload.entity === "legal_document") {
+      const brokerId = String(data.brokerId ?? "");
+      const version = String(data.version ?? "").trim();
+      const titleText = String(data.title ?? "").trim();
+      const content = String(data.content ?? "").trim();
+      if (!brokerId || !version || !titleText || content.length < 40) {
+        return Response.json({ error: "Tenant, version, title, and complete legal text are required." }, { status: 400 });
+      }
+      const id = String(data.id ?? `legal_${brokerId}_${version.replaceAll(".", "_")}`);
+      await prisma.$transaction(async (tx) => {
+        await tx.legalDocument.updateMany({
+          where: { brokerId, documentType: "brokerage_terms", status: "published", id: { not: id } },
+          data: { status: "archived" },
+        });
+        await tx.legalDocument.upsert({
+          where: { id },
+          update: {
+            title: titleText,
+            version,
+            language: String(data.language ?? "en"),
+            summary: String(data.summary ?? ""),
+            content,
+            status: "published",
+            effectiveAt: dateOnly(String(data.effectiveAt)),
+            publishedAt: new Date(),
+            requiresReacceptance: data.requiresReacceptance !== false,
+          },
+          create: {
+            id,
+            brokerId,
+            documentType: "brokerage_terms",
+            title: titleText,
+            version,
+            language: String(data.language ?? "en"),
+            summary: String(data.summary ?? ""),
+            content,
+            status: "published",
+            effectiveAt: dateOnly(String(data.effectiveAt)),
+            publishedAt: new Date(),
+            requiresReacceptance: data.requiresReacceptance !== false,
+          },
+        });
+        await tx.auditLog.create({ data: {
+          id: crypto.randomUUID(), brokerId, actorId: null, action: "LEGAL_DOCUMENT_PUBLISHED",
+          entityType: "legal_document", entityId: id, summary: `${titleText} version ${version} published`,
+          newValue: JSON.stringify({ version, effectiveAt: data.effectiveAt }),
+        } });
+      });
+      return Response.json({ legalDocument: { id } }, { status: 201 });
+    }
+    if (payload.entity === "fee_schedule") {
+      const brokerId = String(data.brokerId ?? "");
+      const version = String(data.version ?? "").trim();
+      const rules = Array.isArray(data.rules) ? data.rules as Array<Record<string, unknown>> : [];
+      if (!brokerId || !version || !rules.length) return Response.json({ error: "Tenant, version, and at least one fee rule are required." }, { status: 400 });
+      const id = String(data.id ?? `fees_${brokerId}_${version.replaceAll(".", "_")}`);
+      await prisma.$transaction(async (tx) => {
+        await tx.feeSchedule.updateMany({ where: { brokerId, status: "published", id: { not: id } }, data: { status: "archived" } });
+        await tx.feeSchedule.upsert({
+          where: { id },
+          update: { name: String(data.name ?? "Standard fee schedule"), version, status: "published", effectiveFrom: dateOnly(String(data.effectiveFrom)), effectiveTo: null },
+          create: { id, brokerId, name: String(data.name ?? "Standard fee schedule"), version, status: "published", effectiveFrom: dateOnly(String(data.effectiveFrom)) },
+        });
+        await tx.feeRule.deleteMany({ where: { feeScheduleId: id } });
+        await tx.feeRule.createMany({ data: rules.map((rule) => ({
+          id: crypto.randomUUID(),
+          feeScheduleId: id,
+          assetClass: String(rule.assetClass),
+          marketSegment: String(rule.marketSegment ?? "main"),
+          brokeragePct: Number(rule.brokeragePct ?? 0),
+          regulatorPct: Number(rule.regulatorPct ?? 0),
+          exchangePct: Number(rule.exchangePct ?? 0),
+          csdPct: Number(rule.csdPct ?? 0),
+          minimumFee: Number(rule.minimumFee ?? 0),
+          maximumFee: rule.maximumFee === null || rule.maximumFee === "" || rule.maximumFee === undefined ? null : Number(rule.maximumFee),
+        })) });
+        await tx.auditLog.create({ data: {
+          id: crypto.randomUUID(), brokerId, actorId: null, action: "FEE_SCHEDULE_PUBLISHED",
+          entityType: "fee_schedule", entityId: id, summary: `${String(data.name ?? "Fee schedule")} version ${version} published`,
+          newValue: JSON.stringify({ version, rules }),
+        } });
+      });
+      return Response.json({ feeSchedule: { id } }, { status: 201 });
+    }
+    if (payload.entity !== "user") return Response.json({ error: "Unsupported configuration entity." }, { status: 400 });
     const id = String(data.id ?? `usr_${crypto.randomUUID().slice(0, 10)}`);
     const user = await prisma.user.create({ data: {
       id, brokerId: String(data.tenantId), email: String(data.email), fullName: String(data.name),

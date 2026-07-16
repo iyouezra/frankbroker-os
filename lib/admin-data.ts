@@ -1,6 +1,16 @@
 export type TenantStatus = "active" | "pilot" | "suspended";
 export type TenantPlan = "Enterprise" | "Growth" | "Pilot";
 export type FeatureKey = "investorPortal" | "selfDirected" | "roboPlans" | "bonds" | "fractionalOrders" | "recurringInvestments" | "institutionalAccounts" | "manualTradeCapture";
+export type AdminFeeRule = {
+  assetClass: "equity" | "bond";
+  marketSegment: string;
+  brokeragePct: number;
+  regulatorPct: number;
+  exchangePct: number;
+  csdPct: number;
+  minimumFee: number;
+  maximumFee: number | null;
+};
 
 export type TenantConfig = {
   id: string;
@@ -30,8 +40,58 @@ export type TenantConfig = {
     minimumFee: number;
     settlementCycle: "T+1" | "T+2" | "T+3";
     allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">;
+    requireTermsAcceptance: boolean;
+    discrepancyWindowDays: number;
+    kycReviewMonths: number;
+  };
+  legalDocument: {
+    id?: string;
+    title: string;
+    version: string;
+    language: string;
+    summary: string;
+    content: string;
+    status: "draft" | "published";
+    effectiveAt: string;
+    requiresReacceptance: boolean;
+  };
+  feeSchedule: {
+    id?: string;
+    name: string;
+    version: string;
+    status: "draft" | "published";
+    effectiveFrom: string;
+    rules: AdminFeeRule[];
   };
 };
+
+const defaultLegalDocument = (tradingName: string) => ({
+  title: `${tradingName} Brokerage Account Terms`,
+  version: "1.0",
+  language: "en",
+  summary: "Account operation, order handling, fees, confirmations, settlement, client responsibilities, and closure terms.",
+  content: "These demo brokerage terms explain how the account is opened and operated, how orders are accepted and reviewed, how fees are disclosed, how confirmations and discrepancies are handled, and how an account may be restricted or closed. Replace this text with counsel-approved tenant terms before production.",
+  status: "published" as const,
+  effectiveAt: "2026-07-14",
+  requiresReacceptance: true,
+});
+
+const defaultFeeSchedule = (brokeragePct: number, minimumFee: number) => ({
+  name: "Standard ESX fee schedule",
+  version: "1.0",
+  status: "published" as const,
+  effectiveFrom: "2026-07-14",
+  rules: (["equity", "bond"] as const).map((assetClass) => ({
+    assetClass,
+    marketSegment: "main",
+    brokeragePct,
+    regulatorPct: 0,
+    exchangePct: 0,
+    csdPct: 0,
+    minimumFee,
+    maximumFee: null,
+  })),
+});
 
 export type AdminInstrument = {
   id: string;
@@ -88,7 +148,9 @@ export const initialTenants: TenantConfig[] = [
     ordersToday: 84,
     assetsUnderAdministration: 184_500_000,
     features: { investorPortal: true, selfDirected: true, roboPlans: true, bonds: true, fractionalOrders: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true },
-    controls: { makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"] },
+    controls: { makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
+    legalDocument: defaultLegalDocument("Abyssinia Securities"),
+    feeSchedule: defaultFeeSchedule(.5, 25),
   },
   {
     id: "brk_blue_nile",
@@ -110,7 +172,9 @@ export const initialTenants: TenantConfig[] = [
     ordersToday: 21,
     assetsUnderAdministration: 46_800_000,
     features: { investorPortal: true, selfDirected: true, roboPlans: false, bonds: true, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true },
-    controls: { makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"] },
+    controls: { makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
+    legalDocument: defaultLegalDocument("Blue Nile Capital"),
+    feeSchedule: defaultFeeSchedule(.65, 30),
   },
   {
     id: "brk_sheba",
@@ -132,7 +196,9 @@ export const initialTenants: TenantConfig[] = [
     ordersToday: 0,
     assetsUnderAdministration: 8_250_000,
     features: { investorPortal: false, selfDirected: true, roboPlans: false, bonds: false, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true },
-    controls: { makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"] },
+    controls: { makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
+    legalDocument: defaultLegalDocument("Sheba Invest"),
+    feeSchedule: defaultFeeSchedule(.75, 35),
   },
 ];
 

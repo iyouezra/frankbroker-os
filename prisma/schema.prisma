@@ -8,13 +8,13 @@ datasource db {
 }
 
 model Broker {
-  id                    String                @id
+  id                    String                 @id
   name                  String
-  licenseNumber         String                @unique @map("license_number")
-  status                String                @default("active")
-  baseCurrency          String                @default("ETB") @map("base_currency")
-  createdAt             DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
+  licenseNumber         String                 @unique @map("license_number")
+  status                String                 @default("active")
+  baseCurrency          String                 @default("ETB") @map("base_currency")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
   users                 User[]
   clients               Client[]
   orders                Order[]
@@ -23,6 +23,9 @@ model Broker {
   settings              BrokerSettings?
   instrumentAccess      BrokerInstrument[]
   integrations          TenantIntegration[]
+  legalDocuments        LegalDocument[]
+  feeSchedules          FeeSchedule[]
+  serviceRequests       ClientServiceRequest[]
 
   @@map("brokers")
 }
@@ -55,25 +58,37 @@ model User {
 }
 
 model Client {
-  id                String    @id
-  brokerId          String    @map("broker_id")
-  clientCode        String    @unique @map("client_code")
-  fullName          String    @map("full_name")
-  clientType        String    @default("individual") @map("client_type")
-  phone             String?
-  email             String?
-  taxId             String?   @map("tax_id")
-  identityReference String?   @map("identity_reference")
-  faydaLast4        String?   @map("fayda_last4")
-  taxIdLast4        String?   @map("tax_id_last4")
-  kycConsentAt      DateTime? @map("kyc_consent_at")
-  kycStatus         String    @default("pending") @map("kyc_status")
-  riskRating        String    @default("standard") @map("risk_rating")
-  status            String    @default("active")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  broker            Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  accounts          Account[]
+  id                           String                 @id
+  brokerId                     String                 @map("broker_id")
+  clientCode                   String                 @unique @map("client_code")
+  fullName                     String                 @map("full_name")
+  clientType                   String                 @default("individual") @map("client_type")
+  phone                        String?
+  email                        String?
+  taxId                        String?                @map("tax_id")
+  identityReference            String?                @map("identity_reference")
+  faydaLast4                   String?                @map("fayda_last4")
+  taxIdLast4                   String?                @map("tax_id_last4")
+  kycConsentAt                 DateTime?              @map("kyc_consent_at")
+  address                      String?
+  proofOfAddressType           String?                @map("proof_of_address_type")
+  proofOfAddressReference      String?                @map("proof_of_address_reference")
+  proofOfAddressStatus         String                 @default("pending") @map("proof_of_address_status")
+  businessRegistrationNumber   String?                @map("business_registration_number")
+  authorizedRepresentativeName String?                @map("authorized_representative_name")
+  signatoryAuthorityConfirmed  Boolean                @default(false) @map("signatory_authority_confirmed")
+  beneficialOwners             Json?                  @map("beneficial_owners")
+  kycReviewDueAt               DateTime?              @map("kyc_review_due_at")
+  electronicDeliveryConsentAt  DateTime?              @map("electronic_delivery_consent_at")
+  kycStatus                    String                 @default("pending") @map("kyc_status")
+  riskRating                   String                 @default("standard") @map("risk_rating")
+  status                       String                 @default("active")
+  createdAt                    DateTime               @default(now()) @map("created_at")
+  updatedAt                    DateTime               @updatedAt @map("updated_at")
+  broker                       Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  accounts                     Account[]
+  consents                     ClientConsent[]
+  serviceRequests              ClientServiceRequest[]
 
   @@index([brokerId])
   @@map("clients")
@@ -91,6 +106,10 @@ model Account {
   unsettledCash           Decimal                 @default(0) @map("unsettled_cash") @db.Decimal(20, 4)
   version                 Int                     @default(0)
   status                  String                  @default("active")
+  restrictionReason       String?                 @map("restriction_reason")
+  restrictedAt            DateTime?               @map("restricted_at")
+  closureRequestedAt      DateTime?               @map("closure_requested_at")
+  closedAt                DateTime?               @map("closed_at")
   createdAt               DateTime                @default(now()) @map("created_at")
   updatedAt               DateTime                @updatedAt @map("updated_at")
   client                  Client                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
@@ -98,6 +117,7 @@ model Account {
   orders                  Order[]
   cashLedgerEntries       CashLedgerEntry[]
   securitiesLedgerEntries SecuritiesLedgerEntry[]
+  serviceRequests         ClientServiceRequest[]
 
   @@index([clientId])
   @@map("accounts")
@@ -108,6 +128,7 @@ model Instrument {
   symbol                  String                  @unique
   name                    String
   assetClass              String                  @map("asset_class")
+  marketSegment           String                  @default("main") @map("market_segment")
   issuer                  String
   tradingStatus           String                  @default("tradable") @map("trading_status")
   currency                String                  @default("ETB")
@@ -130,29 +151,108 @@ model Instrument {
 }
 
 model BrokerSettings {
-  id                String   @id
-  brokerId          String   @unique @map("broker_id")
-  tradingName       String   @map("trading_name")
-  plan              String   @default("Pilot")
-  domain            String?
-  supportEmail      String?  @map("support_email")
-  primaryColor      String   @default("#0C8189") @map("primary_color")
-  welcomeMessage    String?  @map("welcome_message")
-  timezone          String   @default("Africa/Addis_Ababa")
-  businessDate      DateTime @map("business_date") @db.Date
-  features          Json
-  makerChecker      Boolean  @default(true) @map("maker_checker")
-  approvalThreshold Decimal  @default(250000) @map("approval_threshold") @db.Decimal(20, 4)
-  clientDailyLimit  Decimal  @default(2500000) @map("client_daily_limit") @db.Decimal(20, 4)
-  brokerageFeePct   Decimal  @default(0.5) @map("brokerage_fee_pct") @db.Decimal(8, 4)
-  minimumFee        Decimal  @default(25) @map("minimum_fee") @db.Decimal(20, 4)
-  settlementCycle   String   @default("T+2") @map("settlement_cycle")
-  allowedOrderTypes Json     @map("allowed_order_types")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  broker            Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  id                     String   @id
+  brokerId               String   @unique @map("broker_id")
+  tradingName            String   @map("trading_name")
+  plan                   String   @default("Pilot")
+  domain                 String?
+  supportEmail           String?  @map("support_email")
+  primaryColor           String   @default("#0C8189") @map("primary_color")
+  welcomeMessage         String?  @map("welcome_message")
+  timezone               String   @default("Africa/Addis_Ababa")
+  businessDate           DateTime @map("business_date") @db.Date
+  features               Json
+  makerChecker           Boolean  @default(true) @map("maker_checker")
+  approvalThreshold      Decimal  @default(250000) @map("approval_threshold") @db.Decimal(20, 4)
+  clientDailyLimit       Decimal  @default(2500000) @map("client_daily_limit") @db.Decimal(20, 4)
+  brokerageFeePct        Decimal  @default(0.5) @map("brokerage_fee_pct") @db.Decimal(8, 4)
+  minimumFee             Decimal  @default(25) @map("minimum_fee") @db.Decimal(20, 4)
+  settlementCycle        String   @default("T+2") @map("settlement_cycle")
+  allowedOrderTypes      Json     @map("allowed_order_types")
+  requireTermsAcceptance Boolean  @default(true) @map("require_terms_acceptance")
+  discrepancyWindowDays  Int      @default(10) @map("discrepancy_window_days")
+  kycReviewMonths        Int      @default(12) @map("kyc_review_months")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  broker                 Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
 
   @@map("broker_settings")
+}
+
+model LegalDocument {
+  id                   String          @id
+  brokerId             String          @map("broker_id")
+  documentType         String          @default("brokerage_terms") @map("document_type")
+  title                String
+  version              String
+  language             String          @default("en")
+  summary              String
+  content              String
+  status               String          @default("draft")
+  effectiveAt          DateTime        @map("effective_at") @db.Date
+  publishedAt          DateTime?       @map("published_at")
+  requiresReacceptance Boolean         @default(true) @map("requires_reacceptance")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+  broker               Broker          @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  consents             ClientConsent[]
+
+  @@unique([brokerId, documentType, version, language])
+  @@index([brokerId, documentType, status])
+  @@map("legal_documents")
+}
+
+model ClientConsent {
+  id              String         @id
+  clientId        String         @map("client_id")
+  legalDocumentId String?        @map("legal_document_id")
+  consentType     String         @map("consent_type")
+  version         String
+  accepted        Boolean        @default(true)
+  channel         String         @default("investor_portal")
+  acceptedAt      DateTime       @default(now()) @map("accepted_at")
+  withdrawnAt     DateTime?      @map("withdrawn_at")
+  metadata        Json?
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  legalDocument   LegalDocument? @relation(fields: [legalDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, consentType, acceptedAt])
+  @@map("client_consents")
+}
+
+model FeeSchedule {
+  id            String    @id
+  brokerId      String    @map("broker_id")
+  name          String
+  version       String
+  status        String    @default("draft")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  broker        Broker    @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  rules         FeeRule[]
+
+  @@unique([brokerId, version])
+  @@index([brokerId, status, effectiveFrom])
+  @@map("fee_schedules")
+}
+
+model FeeRule {
+  id            String      @id
+  feeScheduleId String      @map("fee_schedule_id")
+  assetClass    String      @map("asset_class")
+  marketSegment String      @default("main") @map("market_segment")
+  brokeragePct  Decimal     @default(0) @map("brokerage_pct") @db.Decimal(8, 4)
+  regulatorPct  Decimal     @default(0) @map("regulator_pct") @db.Decimal(8, 4)
+  exchangePct   Decimal     @default(0) @map("exchange_pct") @db.Decimal(8, 4)
+  csdPct        Decimal     @default(0) @map("csd_pct") @db.Decimal(8, 4)
+  minimumFee    Decimal     @default(0) @map("minimum_fee") @db.Decimal(20, 4)
+  maximumFee    Decimal?    @map("maximum_fee") @db.Decimal(20, 4)
+  schedule      FeeSchedule @relation(fields: [feeScheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([feeScheduleId, assetClass, marketSegment])
+  @@map("fee_rules")
 }
 
 model BrokerInstrument {
@@ -209,55 +309,60 @@ model Holding {
 }
 
 model Order {
-  id                    String                  @id
-  brokerId              String                  @map("broker_id")
-  submissionReference   String?                 @map("submission_reference")
-  accountId             String                  @map("account_id")
-  instrumentId          String                  @map("instrument_id")
-  side                  String
-  quantity              Decimal                 @db.Decimal(24, 8)
-  price                 Decimal                 @db.Decimal(20, 6)
-  orderType             String                  @default("limit") @map("order_type")
-  validity              String                  @default("day")
-  estimatedGross        Decimal                 @map("estimated_gross") @db.Decimal(20, 4)
-  estimatedFees         Decimal                 @map("estimated_fees") @db.Decimal(20, 4)
-  estimatedNet          Decimal                 @map("estimated_net") @db.Decimal(20, 4)
-  filledQuantity        Decimal                 @default(0) @map("filled_quantity") @db.Decimal(24, 8)
-  remainingQuantity     Decimal                 @default(0) @map("remaining_quantity") @db.Decimal(24, 8)
-  averageFillPrice      Decimal?                @map("average_fill_price") @db.Decimal(20, 6)
-  executedGross         Decimal                 @default(0) @map("executed_gross") @db.Decimal(20, 4)
-  executedFees          Decimal                 @default(0) @map("executed_fees") @db.Decimal(20, 4)
-  executedNet           Decimal                 @default(0) @map("executed_net") @db.Decimal(20, 4)
-  blockedCash           Decimal                 @default(0) @map("blocked_cash") @db.Decimal(20, 4)
-  blockedQuantity       Decimal                 @default(0) @map("blocked_quantity") @db.Decimal(24, 8)
-  status                String                  @default("draft")
-  source                String                  @default("manual")
-  assignedTraderId      String?                 @map("assigned_trader_id")
-  riskFlag              String                  @default("none") @map("risk_flag")
-  notes                 String?
-  rejectionReason       String?                 @map("rejection_reason")
-  submittedAt           DateTime?               @map("submitted_at")
-  approvedAt            DateTime?               @map("approved_at")
-  approvedBy            String?                 @map("approved_by")
-  contractNoteNumber    String?                 @unique @map("contract_note_number")
-  contractNoteGeneratedAt DateTime?             @map("contract_note_generated_at")
-  contractNoteGeneratedBy String?               @map("contract_note_generated_by")
-  version               Int                     @default(0)
-  createdAt             DateTime                @default(now()) @map("created_at")
-  updatedAt             DateTime                @updatedAt @map("updated_at")
-  broker                Broker                  @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  account               Account                 @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  instrument            Instrument              @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
-  assignedTrader        User?                   @relation("AssignedTrader", fields: [assignedTraderId], references: [id], onDelete: SetNull)
-  approver              User?                   @relation("OrderApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
-  validations           OrderValidation[]
-  events                OrderEvent[]
-  trades                Trade[]
-  cashLedgerEntries     CashLedgerEntry[]
-  securityLedgerEntries SecuritiesLedgerEntry[]
+  id                      String                  @id
+  brokerId                String                  @map("broker_id")
+  submissionReference     String?                 @map("submission_reference")
+  accountId               String                  @map("account_id")
+  instrumentId            String                  @map("instrument_id")
+  side                    String
+  quantity                Decimal                 @db.Decimal(24, 8)
+  price                   Decimal                 @db.Decimal(20, 6)
+  orderType               String                  @default("limit") @map("order_type")
+  validity                String                  @default("day")
+  estimatedGross          Decimal                 @map("estimated_gross") @db.Decimal(20, 4)
+  estimatedFees           Decimal                 @map("estimated_fees") @db.Decimal(20, 4)
+  estimatedNet            Decimal                 @map("estimated_net") @db.Decimal(20, 4)
+  filledQuantity          Decimal                 @default(0) @map("filled_quantity") @db.Decimal(24, 8)
+  remainingQuantity       Decimal                 @default(0) @map("remaining_quantity") @db.Decimal(24, 8)
+  averageFillPrice        Decimal?                @map("average_fill_price") @db.Decimal(20, 6)
+  executedGross           Decimal                 @default(0) @map("executed_gross") @db.Decimal(20, 4)
+  executedFees            Decimal                 @default(0) @map("executed_fees") @db.Decimal(20, 4)
+  executedNet             Decimal                 @default(0) @map("executed_net") @db.Decimal(20, 4)
+  blockedCash             Decimal                 @default(0) @map("blocked_cash") @db.Decimal(20, 4)
+  blockedQuantity         Decimal                 @default(0) @map("blocked_quantity") @db.Decimal(24, 8)
+  status                  String                  @default("draft")
+  source                  String                  @default("manual")
+  assignedTraderId        String?                 @map("assigned_trader_id")
+  riskFlag                String                  @default("none") @map("risk_flag")
+  notes                   String?
+  rejectionReason         String?                 @map("rejection_reason")
+  submittedAt             DateTime?               @map("submitted_at")
+  approvedAt              DateTime?               @map("approved_at")
+  approvedBy              String?                 @map("approved_by")
+  contractNoteNumber      String?                 @unique @map("contract_note_number")
+  contractNoteGeneratedAt DateTime?               @map("contract_note_generated_at")
+  contractNoteGeneratedBy String?                 @map("contract_note_generated_by")
+  estimatedFeeBreakdown   Json?                   @map("estimated_fee_breakdown")
+  termsVersion            String?                 @map("terms_version")
+  disclosureVersion       String?                 @map("disclosure_version")
+  disclosureAcceptedAt    DateTime?               @map("disclosure_accepted_at")
+  version                 Int                     @default(0)
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+  broker                  Broker                  @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  account                 Account                 @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  instrument              Instrument              @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  assignedTrader          User?                   @relation("AssignedTrader", fields: [assignedTraderId], references: [id], onDelete: SetNull)
+  approver                User?                   @relation("OrderApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  validations             OrderValidation[]
+  events                  OrderEvent[]
+  trades                  Trade[]
+  cashLedgerEntries       CashLedgerEntry[]
+  securityLedgerEntries   SecuritiesLedgerEntry[]
+  serviceRequests         ClientServiceRequest[]
 
-  @@index([brokerId, status])
   @@unique([brokerId, submissionReference])
+  @@index([brokerId, status])
   @@index([accountId])
   @@index([instrumentId])
   @@map("orders")
@@ -301,6 +406,7 @@ model Trade {
   quantityFilled          Decimal                 @map("quantity_filled") @db.Decimal(24, 8)
   grossAmount             Decimal                 @map("gross_amount") @db.Decimal(20, 4)
   fees                    Decimal                 @db.Decimal(20, 4)
+  feeBreakdown            Json?                   @map("fee_breakdown")
   netAmount               Decimal                 @map("net_amount") @db.Decimal(20, 4)
   tradeDate               DateTime                @map("trade_date") @db.Date
   settlementDate          DateTime                @map("settlement_date") @db.Date
@@ -314,6 +420,34 @@ model Trade {
 
   @@index([orderId])
   @@map("trades")
+}
+
+model ClientServiceRequest {
+  id              String    @id
+  brokerId        String    @map("broker_id")
+  clientId        String    @map("client_id")
+  accountId       String?   @map("account_id")
+  orderId         String?   @map("order_id")
+  requestType     String    @map("request_type")
+  status          String    @default("open")
+  subject         String
+  description     String
+  submittedBy     String    @map("submitted_by")
+  assignedTo      String?   @map("assigned_to")
+  resolutionNotes String?   @map("resolution_notes")
+  resolvedBy      String?   @map("resolved_by")
+  submittedAt     DateTime  @default(now()) @map("submitted_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  broker          Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  account         Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  order           Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([brokerId, status, submittedAt])
+  @@index([clientId, status])
+  @@map("client_service_requests")
 }
 
 model Settlement {
@@ -335,26 +469,26 @@ model Settlement {
 }
 
 model CashLedgerEntry {
-  id             String   @id
-  accountId      String   @map("account_id")
-  orderId        String?  @map("order_id")
-  tradeId        String?  @map("trade_id")
-  entryType      String   @map("entry_type")
-  amount         Decimal  @db.Decimal(20, 4)
-  totalImpact    Decimal  @default(0) @map("total_impact") @db.Decimal(20, 4)
-  availableImpact Decimal @default(0) @map("available_impact") @db.Decimal(20, 4)
-  blockedImpact  Decimal  @default(0) @map("blocked_impact") @db.Decimal(20, 4)
-  unsettledImpact Decimal @default(0) @map("unsettled_impact") @db.Decimal(20, 4)
-  runningBalance Decimal  @map("running_balance") @db.Decimal(20, 4)
-  description    String
-  reason         String?
-  valueDate      DateTime @map("value_date") @db.Date
-  createdBy      String   @map("created_by")
-  createdAt      DateTime @default(now()) @map("created_at")
-  account        Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  trade          Trade?   @relation(fields: [tradeId], references: [id], onDelete: SetNull)
-  createdByUser  User     @relation("CashLedgerCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  id              String   @id
+  accountId       String   @map("account_id")
+  orderId         String?  @map("order_id")
+  tradeId         String?  @map("trade_id")
+  entryType       String   @map("entry_type")
+  amount          Decimal  @db.Decimal(20, 4)
+  totalImpact     Decimal  @default(0) @map("total_impact") @db.Decimal(20, 4)
+  availableImpact Decimal  @default(0) @map("available_impact") @db.Decimal(20, 4)
+  blockedImpact   Decimal  @default(0) @map("blocked_impact") @db.Decimal(20, 4)
+  unsettledImpact Decimal  @default(0) @map("unsettled_impact") @db.Decimal(20, 4)
+  runningBalance  Decimal  @map("running_balance") @db.Decimal(20, 4)
+  description     String
+  reason          String?
+  valueDate       DateTime @map("value_date") @db.Date
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  order           Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  trade           Trade?   @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  createdByUser   User     @relation("CashLedgerCreator", fields: [createdBy], references: [id], onDelete: Restrict)
 
   @@index([accountId, valueDate])
   @@index([orderId, createdAt])
@@ -371,9 +505,9 @@ model SecuritiesLedgerEntry {
   entryType       String     @map("entry_type")
   quantity        Decimal    @db.Decimal(24, 8)
   totalImpact     Decimal    @default(0) @map("total_impact") @db.Decimal(24, 8)
-  availableImpact Decimal   @default(0) @map("available_impact") @db.Decimal(24, 8)
-  blockedImpact  Decimal    @default(0) @map("blocked_impact") @db.Decimal(24, 8)
-  unsettledImpact Decimal   @default(0) @map("unsettled_impact") @db.Decimal(24, 8)
+  availableImpact Decimal    @default(0) @map("available_impact") @db.Decimal(24, 8)
+  blockedImpact   Decimal    @default(0) @map("blocked_impact") @db.Decimal(24, 8)
+  unsettledImpact Decimal    @default(0) @map("unsettled_impact") @db.Decimal(24, 8)
   runningQuantity Decimal    @map("running_quantity") @db.Decimal(24, 8)
   description     String
   reason          String?

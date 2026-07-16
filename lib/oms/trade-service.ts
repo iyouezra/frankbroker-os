@@ -1,6 +1,6 @@
 import { Prisma } from "../../app/generated/prisma/client";
-import { FEE_RATE, settlementDateFrom } from "../frank";
-import { computeCumulativeFillAmounts, D, money, toNum, ZERO } from "../money";
+import { settlementDateFrom } from "../frank";
+import { D, money, toNum, ZERO } from "../money";
 import { prisma } from "../prisma";
 import type { Actor } from "../server-auth";
 import { writeAudit, writeOrderEvent } from "./audit-service";
@@ -8,6 +8,13 @@ import { captureBuyFill, captureSellFill, type CashSnapshot, type SecuritySnapsh
 import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
 import { assertTransition, isExecutableStatus } from "./status";
 import { validateExecution, weightedAveragePrice } from "./validation-service";
+import {
+  addFeeBreakdowns,
+  computeCumulativeConfiguredFill,
+  feeBreakdownFromJson,
+  resolveFeePolicy,
+  serializeFeeBreakdown,
+} from "./fee-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -103,15 +110,18 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
       throw new Response(`Execution price must align to the ${order.instrument.tickSize.toString()} tick size.`, { status: 400 });
     }
 
-    const feeRate = settings ? settings.brokerageFeePct.div(100) : D(FEE_RATE);
-    const amounts = computeCumulativeFillAmounts(
+    const feePolicy = await resolveFeePolicy(tx, actor.brokerId, order.instrument, settings, dateOnly(input.tradeDate));
+    const priorFeeBreakdown = addFeeBreakdowns(order.trades.map((trade) => {
+      if (trade.feeBreakdown) return feeBreakdownFromJson(trade.feeBreakdown);
+      return { brokerage: trade.fees, regulator: ZERO, exchange: ZERO, csd: ZERO, total: trade.fees };
+    }));
+    const amounts = computeCumulativeConfiguredFill(
       order.side as "buy" | "sell",
       quantity,
       executionPrice,
       order.executedGross,
-      order.executedFees,
-      feeRate,
-      settings?.minimumFee,
+      priorFeeBreakdown,
+      feePolicy,
     );
     if (order.side === "sell" && amounts.net.lte(0)) throw new Response("Fees exceed sell proceeds.", { status: 409 });
 
@@ -242,6 +252,7 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
         quantityFilled: quantity,
         grossAmount: amounts.gross,
         fees: amounts.fees,
+        feeBreakdown: serializeFeeBreakdown(amounts.breakdown),
         netAmount: amounts.net,
         tradeDate: valueDate,
         settlementDate: dateOnly(settlementDate),
@@ -320,6 +331,8 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
         orderId,
         gross: toNum(amounts.gross),
         fees: toNum(amounts.fees),
+        feeBreakdown: serializeFeeBreakdown(amounts.breakdown),
+        feeScheduleVersion: feePolicy.scheduleVersion,
         net: toNum(amounts.net),
         settlementDate,
       },

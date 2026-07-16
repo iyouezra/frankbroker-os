@@ -16,7 +16,8 @@ type ReconException = { id: string; reference: string; exceptionType: string; ex
 type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
 type AuditEntry = { id?: string; time: string; actor: string; action: string; detail: string; entity: string };
 type BrokerInstrument = { id: string; symbol: string; name: string; asset: string; issuer: string; status: string; currency: string; lot: number; tick: number; cycle: string; price: number; coupon?: string; maturity?: string };
-type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[] };
+type TenantFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
+type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[]; feeRules: TenantFeeRule[] };
 type TenantFeatures = { manualTradeCapture: boolean; [key: string]: boolean };
 type TenantInfo = { name: string; license: string; primaryColor: string };
 type TenantApiInstrument = { id: string; symbol: string; name: string; assetClass: string; issuer: string; status: string; currency: string; price: number; lotSize: number; tickSize: number; settlementCycle: string };
@@ -30,6 +31,10 @@ const fallbackControls: TenantControls = {
   minimumFee: 25,
   settlementCycle: "T+2",
   allowedOrderTypes: ["Market", "Limit", "Stop-loss"],
+  feeRules: [
+    { assetClass: "equity", marketSegment: "main", brokeragePct: 0.5, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 25, maximumFee: null },
+    { assetClass: "bond", marketSegment: "main", brokeragePct: 0.5, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 25, maximumFee: null },
+  ],
 };
 const fallbackFeatures: TenantFeatures = { manualTradeCapture: true };
 const fallbackInstruments: BrokerInstrument[] = demoInstruments;
@@ -42,12 +47,18 @@ function normalizedOrderType(value: string) {
   return value.trim().toLowerCase().replaceAll("_", "-").replaceAll(" ", "-");
 }
 
-function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, price: number, feePct: number, minimumFee = 0) {
+function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, price: number, feePct: number, minimumFee = 0, feeRule?: TenantFeeRule) {
   const gross = quantity * price;
-  const percentageFee = Math.round(gross * (feePct / 100) * 100) / 100;
-  const fees = gross > 0 ? Math.max(minimumFee, percentageFee) : 0;
+  const brokeragePct = feeRule?.brokeragePct ?? feePct;
+  const brokerageMinimum = feeRule?.minimumFee ?? minimumFee;
+  const percentageFee = Math.round(gross * (brokeragePct / 100) * 100) / 100;
+  const brokerage = gross > 0 ? Math.min(feeRule?.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(brokerageMinimum, percentageFee)) : 0;
+  const regulator = gross * (feeRule?.regulatorPct ?? 0) / 100;
+  const exchange = gross * (feeRule?.exchangePct ?? 0) / 100;
+  const csd = gross * (feeRule?.csdPct ?? 0) / 100;
+  const fees = brokerage + regulator + exchange + csd;
   const net = side === "buy" ? gross + fees : gross - fees;
-  return { gross, fees, net };
+  return { gross, fees, net, brokerage, regulator, exchange, csd };
 }
 
 const navItems: { id: View; label: string; icon: string }[] = [
@@ -447,7 +458,8 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     const instrument = instruments.find((item) => item.id === newOrder.instrumentId);
     const quantity = Number(newOrder.quantity);
     const price = Number(newOrder.price);
-    const amounts = calculateConfiguredAmounts(newOrder.side, quantity, price, controls.brokerageFeePct, controls.minimumFee);
+    const assetClass = instrument?.asset.toLowerCase().includes("bond") ? "bond" : "equity";
+    const amounts = calculateConfiguredAmounts(newOrder.side, quantity, price, controls.brokerageFeePct, controls.minimumFee, controls.feeRules.find((rule) => rule.assetClass === assetClass));
     const owned = client && instrument ? client.holdings.find((holding) => holding.symbol === instrument.symbol)?.available ?? 0 : 0;
     const orderTypeAllowed = controls.allowedOrderTypes.some((item) => normalizedOrderType(item) === normalizedOrderType(newOrder.orderType));
     const results = [
@@ -716,12 +728,45 @@ function OrderTable({ orders, instruments, onOpen }: { orders: DemoOrder[]; inst
 function ClientsPage({ clients, selectedId, onSelect, orders, instruments, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; onOpenOrder: (order: DemoOrder) => void }) {
   const selected = clients.find((client) => client.id === selectedId) ?? clients[0];
   const clientOrders = orders.filter((order) => order.accountId === selected?.accountId).slice(0, 6);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [requestStatuses, setRequestStatuses] = useState<Record<string, string>>({});
+  const [statusOverride, setStatusOverride] = useState<Record<string, string>>({});
+  const act = async (action: "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request", requestId?: string) => {
+    if (!selected) return;
+    const key = requestId ?? action;
+    setBusy(key);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/clients/${encodeURIComponent(selected.id)}/action`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": "broker_admin" },
+        body: JSON.stringify({
+          action,
+          requestId,
+          reason: action === "restrict" ? "Restricted pending compliance review" : undefined,
+          resolutionNotes: action === "reject_request" ? "Request rejected after broker review." : "Reviewed and resolved by broker operations.",
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string; status?: string };
+      if (!response.ok) throw new Error(result.error ?? "Client action failed.");
+      if (requestId && result.status) setRequestStatuses((current) => ({ ...current, [requestId]: result.status! }));
+      if (!requestId && result.status) setStatusOverride((current) => ({ ...current, [selected.id]: result.status! }));
+      setMessage("Control action recorded in the client audit trail.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Client action failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
   return <>
     <SectionHeader eyebrow="CLIENT & ACCOUNT MANAGEMENT" title="Client accounts" copy="KYC, cash, holdings, and trading history in one controlled record." action={<span className="demo-control-badge">SYNTHETIC DEMO DATA</span>} />
-    <div className="client-grid">{clients.map((client) => <article className={`panel client-card ${selected?.id === client.id ? "selected" : ""}`} key={client.id}><div className="client-head"><span>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{client.name}</h3><p>{client.code} · {client.type.replaceAll("_", " ")}</p></div><span className={`status ${client.status === "active" ? "status-success" : "status-warning"}`}><i />{client.status}</span></div><div className="client-money"><span><small>Total cash</small><b>{etb(client.totalCash)}</b></span><span><small>Available</small><b>{etb(client.availableCash)}</b></span></div><div className="client-meta"><span>KYC <b>{client.kyc.replaceAll("_", " ")}</b></span><span>Risk <b>{client.risk}</b></span><span>Orders <b>{client.orderCount}</b></span></div><button onClick={() => onSelect(client.id)}>Open account <span>→</span></button></article>)}</div>
+    <div className="client-grid">{clients.map((client) => { const status = statusOverride[client.id] ?? client.status; return <article className={`panel client-card ${selected?.id === client.id ? "selected" : ""}`} key={client.id}><div className="client-head"><span>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{client.name}</h3><p>{client.code} · {client.type.replaceAll("_", " ")}</p></div><span className={`status ${status === "active" ? "status-success" : "status-warning"}`}><i />{status}</span></div><div className="client-money"><span><small>Total cash</small><b>{etb(client.totalCash)}</b></span><span><small>Available</small><b>{etb(client.availableCash)}</b></span></div><div className="client-meta"><span>KYC <b>{client.kyc.replaceAll("_", " ")}</b></span><span>Risk <b>{client.risk}</b></span><span>Requests <b>{client.serviceRequests?.filter((request) => ["open", "under_review"].includes(request.status)).length ?? 0}</b></span></div><button onClick={() => onSelect(client.id)}>Open account <span>→</span></button></article>; })}</div>
     {selected && <div className="account-workspace">
-      <section className="panel account-summary"><div className="panel-head"><div><span className="eyebrow">TRADING ACCOUNT</span><h2>{selected.name}</h2></div><span className="account-number">{selected.accountNumber}</span></div><div className="account-balance-grid"><span><small>Total cash</small><b>{etb(selected.totalCash)}</b></span><span><small>Available</small><b className="positive">{etb(selected.availableCash)}</b></span><span><small>Blocked</small><b>{etb(selected.blockedCash)}</b></span><span><small>Open orders</small><b>{clientOrders.filter((order) => !["settled", "cancelled", "rejected", "failed"].includes(order.status)).length}</b></span></div></section>
+      <section className="panel account-summary"><div className="panel-head"><div><span className="eyebrow">TRADING ACCOUNT</span><h2>{selected.name}</h2></div><span className="account-number">{selected.accountNumber}</span></div><div className="account-balance-grid"><span><small>Total cash</small><b>{etb(selected.totalCash)}</b></span><span><small>Available</small><b className="positive">{etb(selected.availableCash)}</b></span><span><small>Blocked</small><b>{etb(selected.blockedCash)}</b></span><span><small>Open orders</small><b>{clientOrders.filter((order) => !["settled", "cancelled", "rejected", "failed"].includes(order.status)).length}</b></span></div><div className="account-control-bar"><span><small>Account control</small><b>{selected.restrictionReason ?? "No active restriction"}</b></span>{(statusOverride[selected.id] ?? selected.status) === "active" ? <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => void act("restrict")}>Restrict account</button> : <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore")}>Restore account</button>}</div></section>
+      <section className="panel compliance-panel"><div className="panel-head"><div><span className="eyebrow">KYC & AUTHORITY</span><h2>Compliance record</h2></div><span className={`status ${selected.termsAcceptedVersion ? "status-success" : "status-warning"}`}><i />Terms {selected.termsAcceptedVersion ?? "missing"}</span></div><div className="compliance-grid"><span><small>Address</small><b>{selected.address ?? "Not recorded"}</b></span><span><small>Proof of address</small><b>{displayLabel(selected.proofOfAddressStatus ?? "pending")}{selected.proofOfAddressType ? ` · ${selected.proofOfAddressType}` : ""}</b></span><span><small>Representative</small><b>{selected.authorizedRepresentativeName ?? "Not applicable"}</b></span><span><small>Signatory authority</small><b>{selected.signatoryAuthorityConfirmed ? "Confirmed" : selected.type === "individual" ? "Not applicable" : "Evidence required"}</b></span><span><small>Business registration</small><b>{selected.businessRegistrationNumber ?? "Not applicable"}</b></span><span><small>Next KYC review</small><b>{selected.kycReviewDueAt ? new Date(selected.kycReviewDueAt).toLocaleDateString("en-GB") : "Not scheduled"}</b></span></div></section>
       <section className="panel holdings-panel"><div className="panel-head"><div><span className="eyebrow">CUSTODY POSITION</span><h2>Holdings</h2></div></div>{selected.holdings.length ? <div className="table-scroll"><table><thead><tr><th>Instrument</th><th className="num">Total</th><th className="num">Available</th><th className="num">Blocked</th><th className="num">Average cost</th></tr></thead><tbody>{selected.holdings.map((holding) => <tr key={holding.symbol}><td><b>{holding.symbol}</b><small>{holding.name}</small></td><td className="num">{fmt.format(holding.total)}</td><td className="num positive">{fmt.format(holding.available)}</td><td className="num">{fmt.format(holding.blocked)}</td><td className="num">{fmt.format(holding.averageCost)} ETB</td></tr>)}</tbody></table></div> : <EmptyState title="No securities positions" copy="This account currently holds cash only." />}</section>
+      <section className="panel request-panel"><div className="panel-head"><div><span className="eyebrow">CLIENT INSTRUCTIONS</span><h2>Requests and discrepancies</h2></div><span className="exception-count">{selected.serviceRequests?.filter((item) => ["open", "under_review"].includes(requestStatuses[item.id] ?? item.status)).length ?? 0} open</span></div>{selected.serviceRequests?.length ? selected.serviceRequests.map((item) => { const status = requestStatuses[item.id] ?? item.status; const open = ["open", "under_review"].includes(status); return <div className="client-request-row" key={item.id}><span><b>{item.subject}</b><small>{item.description}</small>{item.orderId && <em>{item.orderId}</em>}</span><strong>{displayLabel(status)}</strong>{open && <div>{item.requestType === "account_closure" && <button className="btn primary small" disabled={busy === item.id} onClick={() => void act("approve_closure", item.id)}>Approve closure</button>}<button className="btn secondary small" disabled={busy === item.id} onClick={() => void act("resolve_request", item.id)}>Resolve</button><button className="btn secondary small" disabled={busy === item.id} onClick={() => void act("reject_request", item.id)}>Reject</button></div>}</div>; }) : <EmptyState title="No client requests" copy="Discrepancies, profile corrections, and closure requests submitted through the investor portal appear here." />}{message && <p className="control-message">{message}</p>}</section>
       <section className="panel client-orders"><div className="panel-head"><div><span className="eyebrow">ORDER HISTORY</span><h2>Recent instructions</h2></div></div><OrderTable orders={clientOrders} instruments={instruments} onOpen={onOpenOrder} /></section>
       <section className="panel ledger-panel"><div className="panel-head"><div><span className="eyebrow">CASH LEDGER</span><h2>Recent account movements</h2></div></div>{selected.ledger.length ? <div className="table-scroll"><table><thead><tr><th>Value date</th><th>Reference</th><th>Type</th><th className="num">Amount</th><th className="num">Running balance</th></tr></thead><tbody>{selected.ledger.map((entry) => <tr key={entry.id}><td>{entry.valueDate}</td><td><b>{entry.reference}</b></td><td>{entry.type.replaceAll("_", " ")}</td><td className={`num ${entry.amount >= 0 ? "positive" : "negative"}`}>{fmt.format(entry.amount)}</td><td className="num"><b>{fmt.format(entry.runningBalance)}</b></td></tr>)}</tbody></table></div> : <EmptyState title="No posted cash movements" copy="Ledger entries appear when cash is reserved, released, traded, or settled." />}</section>
     </div>}
@@ -771,7 +816,9 @@ function AuditPage({ events }: { events: AuditEntry[] }) {
 function NewOrderForm({ value, setValue, clients, instruments, controls, checks, busy, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; clients: BrokerClient[]; instruments: BrokerInstrument[]; controls: TenantControls; checks: { label: string; passed: boolean; message: string }[] | null; busy: boolean; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {
   const client = clients.find((item) => item.accountId === value.accountId) ?? clients[0];
   const instrument = instruments.find((item) => item.id === value.instrumentId) ?? instruments[0];
-  const amounts = calculateConfiguredAmounts(value.side, Number(value.quantity) || 0, Number(value.price) || 0, controls.brokerageFeePct, controls.minimumFee);
+  const assetClass = instrument?.asset.toLowerCase().includes("bond") ? "bond" : "equity";
+  const feeRule = controls.feeRules.find((rule) => rule.assetClass === assetClass);
+  const amounts = calculateConfiguredAmounts(value.side, Number(value.quantity) || 0, Number(value.price) || 0, controls.brokerageFeePct, controls.minimumFee, feeRule);
   return <form onSubmit={onSubmit} className="drawer-content">
     <div className="drawer-title"><span className="eyebrow">MANUAL ORDER ENTRY</span><h2>Create client order</h2><p>Capture the instruction, run server-side controls, then submit for approval.</p></div>
     <div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div>
@@ -783,7 +830,7 @@ function NewOrderForm({ value, setValue, clients, instruments, controls, checks,
       <div className="field-row"><label>Order type<select value={value.orderType} disabled={!controls.allowedOrderTypes.length} onChange={(event) => setValue({ ...value, orderType: event.target.value })}>{controls.allowedOrderTypes.length ? controls.allowedOrderTypes.map((orderType) => <option key={orderType}>{orderType}</option>) : <option value="">No order types enabled</option>}</select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div>
       <label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label>
     </div>
-    <div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Estimated fees ({controls.brokerageFeePct.toFixed(2)}% · min {etb(controls.minimumFee)})</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div>
+    <div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Brokerage{feeRule ? ` (${feeRule.brokeragePct.toFixed(2)}%)` : ""}</small><b>{etb(amounts.brokerage)}</b></span>{amounts.regulator > 0 && <span><small>ECMA fee</small><b>{etb(amounts.regulator)}</b></span>}{amounts.exchange > 0 && <span><small>ESX fee</small><b>{etb(amounts.exchange)}</b></span>}{amounts.csd > 0 && <span><small>CSD fee</small><b>{etb(amounts.csd)}</b></span>}<span><small>Total estimated fees</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div>
     <div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, order-type, lot, and tick-size controls before submission.</p>}</div>
     <div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : "Submit for review"} <span>→</span></button></div>
   </form>;

@@ -39,7 +39,7 @@ async function main() {
       { id: "cli_wegagen", brokerId: "brk_abyssinia", clientCode: "CL-10008", fullName: "Wegagen Pension Fund", clientType: "institution", phone: "+251115000008", email: "ops@wegagen-pension.example", kycStatus: "approved", riskRating: "enhanced", status: "active" },
       { id: "cli_selam", brokerId: "brk_abyssinia", clientCode: "CL-10052", fullName: "Selamawit Tesfaye", clientType: "individual", phone: "+251911000052", email: "selam@example.et", kycStatus: "review_due", riskRating: "review", status: "restricted" },
       { id: "cli_blue", brokerId: "brk_abyssinia", clientCode: "CL-10017", fullName: "Blue Nile Trading PLC", clientType: "corporate", phone: "+251115000017", email: "finance@bluenile.example", kycStatus: "approved", riskRating: "standard", status: "active" },
-      { id: "cli_investor_demo", brokerId: "brk_abyssinia", clientCode: "CL-INV-001", fullName: "Selam Mekonnen", clientType: "individual", phone: "+251911000041", email: "selam.mekonnen@example.et", identityReference: "demo_seed_reference", faydaLast4: "9012", taxIdLast4: "4908", kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date("2026-07-14T08:00:00Z") },
+      { id: "cli_investor_demo", brokerId: "brk_abyssinia", clientCode: "CL-INV-001", fullName: "Selam Mekonnen", clientType: "individual", phone: "+251911000041", email: "selam.mekonnen@example.et", identityReference: "demo_seed_reference", faydaLast4: "9012", taxIdLast4: "4908", address: "Bole, Addis Ababa", proofOfAddressType: "Utility bill", proofOfAddressReference: "DEMO-POA-001", proofOfAddressStatus: "received", kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date("2026-07-14T08:00:00Z"), electronicDeliveryConsentAt: new Date("2026-07-14T08:00:00Z"), kycReviewDueAt: new Date("2027-07-14T08:00:00Z") },
     ],
     skipDuplicates: true,
   });
@@ -70,13 +70,50 @@ async function main() {
   });
 
   const tenantSettings = [
-    { id: "set_brk_abyssinia", brokerId: "brk_abyssinia", tradingName: "Abyssinia Securities", plan: "Enterprise", domain: "invest.abyssinia.et", supportEmail: "support@abyssinia.example", primaryColor: "#0C8189", welcomeMessage: "Invest in Ethiopia’s growth with clear guidance at every step.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, roboPlans: true, bonds: true, fractionalOrders: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"] },
-    { id: "set_brk_blue_nile", brokerId: "brk_blue_nile", tradingName: "Blue Nile Capital", plan: "Growth", domain: "invest.bluenile.example", supportEmail: "care@bluenile.example", primaryColor: "#2277C8", welcomeMessage: "A simpler way to own ESX companies and government bonds.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, roboPlans: false, bonds: true, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"] },
-    { id: "set_brk_sheba", brokerId: "brk_sheba", tradingName: "Sheba Invest", plan: "Pilot", domain: "sheba.frankbroker.demo", supportEmail: "operations@sheba.example", primaryColor: "#0E9F5B", welcomeMessage: "Start small, understand every step, and build from there.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: false, selfDirected: true, roboPlans: false, bonds: false, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"] },
+    { id: "set_brk_abyssinia", brokerId: "brk_abyssinia", tradingName: "Abyssinia Securities", plan: "Enterprise", domain: "invest.abyssinia.et", supportEmail: "support@abyssinia.example", primaryColor: "#0C8189", welcomeMessage: "Invest in Ethiopia’s growth with clear guidance at every step.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, roboPlans: true, bonds: true, fractionalOrders: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
+    { id: "set_brk_blue_nile", brokerId: "brk_blue_nile", tradingName: "Blue Nile Capital", plan: "Growth", domain: "invest.bluenile.example", supportEmail: "care@bluenile.example", primaryColor: "#2277C8", welcomeMessage: "A simpler way to own ESX companies and government bonds.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, roboPlans: false, bonds: true, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
+    { id: "set_brk_sheba", brokerId: "brk_sheba", tradingName: "Sheba Invest", plan: "Pilot", domain: "sheba.frankbroker.demo", supportEmail: "operations@sheba.example", primaryColor: "#0E9F5B", welcomeMessage: "Start small, understand every step, and build from there.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: false, selfDirected: true, roboPlans: false, bonds: false, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
   ];
   for (const settings of tenantSettings) {
     await prisma.brokerSettings.upsert({ where: { brokerId: settings.brokerId }, update: settings, create: settings });
   }
+
+  await prisma.legalDocument.createMany({
+    data: [
+      { id: "legal_brk_abyssinia_1_0", brokerId: "brk_abyssinia", documentType: "brokerage_terms", title: "Abyssinia Securities Brokerage Account Terms", version: "1.0", language: "en", summary: "Account operation, order handling, fees, confirmations, settlement, client responsibilities, discrepancies, restriction, and closure.", content: "These demonstration brokerage terms explain how the account is opened and operated, how orders are accepted and reviewed, how transaction fees are disclosed, how confirmations and discrepancies are handled, and how an account may be restricted or closed. Replace this text with counsel-approved tenant terms before production.", status: "published", effectiveAt: dateOnly("2026-07-14"), publishedAt: new Date("2026-07-14T07:00:00Z"), requiresReacceptance: true },
+      { id: "legal_brk_blue_nile_1_0", brokerId: "brk_blue_nile", documentType: "brokerage_terms", title: "Blue Nile Capital Brokerage Account Terms", version: "1.0", language: "en", summary: "Account operation, order handling, fees, confirmations, settlement, and closure.", content: "Demonstration terms only. Replace with tenant-approved brokerage terms before production use.", status: "published", effectiveAt: dateOnly("2026-07-14"), publishedAt: new Date("2026-07-14T07:00:00Z"), requiresReacceptance: true },
+    ],
+    skipDuplicates: true,
+  });
+
+  await prisma.feeSchedule.createMany({
+    data: [
+      { id: "fees_brk_abyssinia_1_0", brokerId: "brk_abyssinia", name: "Standard ESX fee schedule", version: "1.0", status: "published", effectiveFrom: dateOnly("2026-07-14") },
+      { id: "fees_brk_blue_nile_1_0", brokerId: "brk_blue_nile", name: "Standard ESX fee schedule", version: "1.0", status: "published", effectiveFrom: dateOnly("2026-07-14") },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.feeRule.createMany({
+    data: [
+      { id: "fee_aby_equity", feeScheduleId: "fees_brk_abyssinia_1_0", assetClass: "equity", marketSegment: "main", brokeragePct: .5, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 25 },
+      { id: "fee_aby_bond", feeScheduleId: "fees_brk_abyssinia_1_0", assetClass: "bond", marketSegment: "main", brokeragePct: .5, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 25 },
+      { id: "fee_blue_equity", feeScheduleId: "fees_brk_blue_nile_1_0", assetClass: "equity", marketSegment: "main", brokeragePct: .65, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 30 },
+      { id: "fee_blue_bond", feeScheduleId: "fees_brk_blue_nile_1_0", assetClass: "bond", marketSegment: "main", brokeragePct: .65, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 30 },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.clientConsent.createMany({
+    data: [
+      { id: "consent_investor_terms_1_0", clientId: "cli_investor_demo", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "investor_portal", acceptedAt: new Date("2026-07-14T08:00:00Z"), metadata: { electronicDeliveryConsent: true } },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.clientServiceRequest.createMany({
+    data: [
+      { id: "REQ-DEMO-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", requestType: "profile_correction", status: "open", subject: "Profile correction request", description: "Please review the spelling of my address before the next statement.", submittedBy: "investor_portal", submittedAt: new Date("2026-07-15T11:30:00Z") },
+    ],
+    skipDuplicates: true,
+  });
 
   const tenantInstrumentIds: Record<string, string[]> = {
     brk_abyssinia: ["ins_tele", "ins_awab", "ins_wgbx", "ins_gdab", "ins_abayb", "ins_goeb_2029", "ins_goeb_2031"],

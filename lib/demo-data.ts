@@ -110,6 +110,25 @@ export type BrokerClient = {
   blockedCash: number;
   accountId: string;
   accountNumber: string;
+  address?: string | null;
+  proofOfAddressStatus?: string;
+  proofOfAddressType?: string | null;
+  businessRegistrationNumber?: string | null;
+  authorizedRepresentativeName?: string | null;
+  signatoryAuthorityConfirmed?: boolean;
+  kycReviewDueAt?: string | null;
+  termsAcceptedVersion?: string | null;
+  restrictionReason?: string | null;
+  serviceRequests?: Array<{
+    id: string;
+    requestType: string;
+    status: string;
+    subject: string;
+    description: string;
+    orderId?: string | null;
+    submittedAt: string;
+    resolutionNotes?: string | null;
+  }>;
   holdings: Array<{ symbol: string; name: string; total: number; available: number; blocked: number; averageCost: number }>;
   ledger: Array<{ id: string; valueDate: string; reference: string; type: string; amount: number; runningBalance: number }>;
   orderCount: number;

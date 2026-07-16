@@ -1,7 +1,7 @@
 import { Prisma } from "../../app/generated/prisma/client";
 import type { Actor } from "../server-auth";
 import { prisma } from "../prisma";
-import { computeAmounts, D, toNum, ZERO } from "../money";
+import { D, toNum, ZERO } from "../money";
 import { normalizeOrderType } from "../order-input";
 import { writeAudit, writeOrderEvent } from "./audit-service";
 import {
@@ -15,6 +15,7 @@ import {
 import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
 import { assertTransition, isTerminalStatus } from "./status";
 import { validatePreTrade, validationPassed, type ValidationCheck } from "./validation-service";
+import { computeConfiguredAmounts, resolveFeePolicy, serializeFeeBreakdown } from "./fee-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -41,6 +42,9 @@ export type CreateOrderInput = {
   notes?: string;
   source?: string;
   submissionReference?: string;
+  termsVersion?: string;
+  disclosureVersion?: string;
+  disclosureAcceptedAt?: Date;
 };
 
 type SubmissionActor = Omit<Actor, "id"> & { id: string | null };
@@ -110,7 +114,8 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const quantity = D(input.quantity);
   const price = D(input.price);
   const orderType = normalizeOrderType(input.orderType ?? "limit");
-  const amounts = computeAmounts(input.side, quantity, price, settings?.brokerageFeePct.div(100), settings?.minimumFee);
+  const feePolicy = await resolveFeePolicy(prisma, actor.brokerId, instrument, settings);
+  const amounts = computeConfiguredAmounts(input.side, quantity, price, feePolicy);
   const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
     ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
     : ["Limit"];
@@ -207,6 +212,10 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         estimatedGross: amounts.gross,
         estimatedFees: amounts.fees,
         estimatedNet: amounts.net,
+        estimatedFeeBreakdown: serializeFeeBreakdown(amounts.breakdown),
+        termsVersion: input.termsVersion ?? null,
+        disclosureVersion: input.disclosureVersion ?? null,
+        disclosureAcceptedAt: input.disclosureAcceptedAt ?? null,
         filledQuantity: ZERO,
         remainingQuantity: quantity,
         blockedCash: cashBlock ? amounts.net : ZERO,
@@ -266,7 +275,14 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
       entityType: "order",
       entityId: id,
       summary: `${input.side.toUpperCase()} order created for ${account.client.fullName}: ${toNum(quantity)} ${instrument.symbol} at ${toNum(price)} ETB`,
-      newValue: { status: "draft", quantity: toNum(quantity), price: toNum(price), estimatedNet: toNum(amounts.net) },
+      newValue: {
+        status: "draft",
+        quantity: toNum(quantity),
+        price: toNum(price),
+        estimatedNet: toNum(amounts.net),
+        feeScheduleVersion: feePolicy.scheduleVersion,
+        disclosureVersion: input.disclosureVersion ?? null,
+      },
     });
     await writeAudit(tx, {
       brokerId: actor.brokerId,

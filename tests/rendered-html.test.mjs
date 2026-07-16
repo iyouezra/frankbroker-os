@@ -125,3 +125,34 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(omsMigration, /trades_financial_values_check/);
   assert.doesNotMatch(app + layout, /codex-preview|react-loading-skeleton/);
 });
+
+test("ships versioned terms, itemized fees, and controlled client requests", async () => {
+  const [investorApp, adminApp, brokerApp, investorApi, clientActionApi, feeService, schema, migration] = await Promise.all([
+    readFile(new URL("app/investor/investor-app.tsx", root), "utf8"),
+    readFile(new URL("app/admin/admin-console.tsx", root), "utf8"),
+    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readFile(new URL("app/api/investor/route.ts", root), "utf8"),
+    readFile(new URL("app/api/clients/[id]/action/route.ts", root), "utf8"),
+    readFile(new URL("lib/oms/fee-service.ts", root), "utf8"),
+    readFile(new URL("prisma/schema.prisma", root), "utf8"),
+    readFile(new URL("prisma/migrations/20260716130000_client_terms_fees_requests/migration.sql", root), "utf8"),
+  ]);
+  assert.match(investorApp, /Proof of address type/);
+  assert.match(investorApp, /Total estimated fees/);
+  assert.match(investorApp, /Report an order discrepancy/);
+  assert.match(adminApp, /VERSIONED FEE SCHEDULE/);
+  assert.match(adminApp, /Legal & consent/);
+  assert.match(brokerApp, /Requests and discrepancies/);
+  assert.match(brokerApp, /Signatory authority/);
+  assert.match(investorApi, /disclosureAccepted/);
+  assert.match(investorApi, /clientConsent\.create/);
+  assert.match(clientActionApi, /CLIENT_ACCOUNT_RESTRICTED/);
+  assert.match(clientActionApi, /approve_closure/);
+  assert.match(feeService, /computeCumulativeConfiguredFill/);
+  assert.match(schema, /model LegalDocument/);
+  assert.match(schema, /model FeeSchedule/);
+  assert.match(schema, /model ClientServiceRequest/);
+  assert.match(migration, /CREATE TABLE "legal_documents"/);
+  assert.match(migration, /CREATE TABLE "fee_schedules"/);
+  assert.match(migration, /CREATE TABLE "client_service_requests"/);
+});

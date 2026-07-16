@@ -11,6 +11,8 @@ export async function GET(request: Request) {
     const rows = await prisma.client.findMany({
       where: { brokerId: actor.brokerId },
       include: {
+        consents: { orderBy: { acceptedAt: "desc" } },
+        serviceRequests: { orderBy: { submittedAt: "desc" }, take: 20 },
         accounts: {
           include: {
             holdings: { include: { instrument: true }, orderBy: { instrument: { symbol: "asc" } } },
@@ -39,6 +41,25 @@ export async function GET(request: Request) {
           blockedCash: toNum(account?.blockedCash),
           accountId: account?.id ?? "",
           accountNumber: account?.accountNumber ?? "No trading account",
+          address: client.address,
+          proofOfAddressStatus: client.proofOfAddressStatus,
+          proofOfAddressType: client.proofOfAddressType,
+          businessRegistrationNumber: client.businessRegistrationNumber,
+          authorizedRepresentativeName: client.authorizedRepresentativeName,
+          signatoryAuthorityConfirmed: client.signatoryAuthorityConfirmed,
+          kycReviewDueAt: client.kycReviewDueAt?.toISOString() ?? null,
+          termsAcceptedVersion: client.consents.find((consent) => consent.consentType === "brokerage_terms" && consent.accepted && !consent.withdrawnAt)?.version ?? null,
+          restrictionReason: account?.restrictionReason ?? null,
+          serviceRequests: client.serviceRequests.map((item) => ({
+            id: item.id,
+            requestType: item.requestType,
+            status: item.status,
+            subject: item.subject,
+            description: item.description,
+            orderId: item.orderId,
+            submittedAt: item.submittedAt.toISOString(),
+            resolutionNotes: item.resolutionNotes,
+          })),
           orderCount: account?._count.orders ?? 0,
           holdings: (account?.holdings ?? []).map((holding) => ({
             symbol: holding.instrument.symbol,

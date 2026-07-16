@@ -214,6 +214,17 @@
 .menuCard button span { flex: 1; font-size: 14px; font-weight: 550; }
 .menuCard button svg { color: var(--investor-ink-300); }
 .license { margin-top: 18px; color: var(--investor-ink-400); font-size: 10px; line-height: 1.55; text-align: center; }
+.complianceCard dl { margin: 0; }
+.complianceCard dl > div { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.complianceCard dl > div:last-child { border-bottom: 0; }
+.complianceCard dt { color: var(--investor-ink-500); font-size: 10px; }
+.complianceCard dd { margin: 0; max-width: 58%; font-size: 10.5px; font-weight: 650; text-align: right; }
+.requestCard > div:not(.cardHeader) { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.requestCard > div:last-child { border-bottom: 0; }
+.requestCard span { display: flex; flex-direction: column; }
+.requestCard b { font-size: 11px; }
+.requestCard small { margin-top: 3px; color: var(--investor-ink-400); font-size: 9px; }
+.requestCard em { padding: 5px 8px; border-radius: 999px; background: var(--investor-ink-50); color: var(--investor-teal-700); font-size: 9px; font-style: normal; font-weight: 700; text-transform: capitalize; }
 
 .detailScreen { height: 100%; overflow-y: auto; padding: 0 20px 102px; scrollbar-width: none; }
 .detailBody { padding-bottom: 12px; }
@@ -257,6 +268,10 @@
 .confirmDialog p { margin: 10px 0 18px; color: var(--investor-ink-600); font-size: 13px; line-height: 1.55; }
 .confirmDialog p b { color: var(--investor-ink-900); font-family: var(--font-mono); }
 .confirmDialog > div { display: flex; justify-content: flex-end; gap: 9px; }
+.termsCard { margin-bottom: 12px; padding: 12px 14px; background: var(--investor-ink-50); box-shadow: none; }
+.termsCard small { color: var(--investor-teal-700); font-size: 8.5px; font-weight: 800; letter-spacing: .07em; }
+.termsCard b { display: block; margin-top: 5px; font-size: 11.5px; }
+.termsCard p { margin: 5px 0 0; color: var(--investor-ink-500); font-size: 9.5px; line-height: 1.45; }
 
 .onboarding { height: 100%; display: flex; flex-direction: column; padding: 18px 20px 24px; background: white; }
 .kycProgress { margin: 0 0 4px; }

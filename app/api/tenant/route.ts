@@ -13,6 +13,12 @@ export async function GET(request: Request) {
       include: {
         settings: true,
         instrumentAccess: { where: { enabled: true }, include: { instrument: true } },
+        feeSchedules: {
+          where: { status: "published" },
+          include: { rules: true },
+          orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+          take: 1,
+        },
       },
     });
     if (!broker) return Response.json({ error: "Tenant not found." }, { status: 404 });
@@ -35,6 +41,16 @@ export async function GET(request: Request) {
           makerChecker: broker.settings?.makerChecker ?? true,
           approvalThreshold: broker.settings ? toNum(broker.settings.approvalThreshold) : 0,
           clientDailyLimit: broker.settings ? toNum(broker.settings.clientDailyLimit) : 0,
+          feeRules: (broker.feeSchedules[0]?.rules ?? []).map((rule) => ({
+            assetClass: rule.assetClass,
+            marketSegment: rule.marketSegment,
+            brokeragePct: toNum(rule.brokeragePct),
+            regulatorPct: toNum(rule.regulatorPct),
+            exchangePct: toNum(rule.exchangePct),
+            csdPct: toNum(rule.csdPct),
+            minimumFee: toNum(rule.minimumFee),
+            maximumFee: rule.maximumFee ? toNum(rule.maximumFee) : null,
+          })),
         },
       },
       instruments: broker.instrumentAccess.map(({ instrument }) => ({
