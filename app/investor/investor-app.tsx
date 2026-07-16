@@ -283,7 +283,7 @@ export default function InvestorApp() {
   };
   const placeOrder = async (order: InvestorOrderInput): Promise<PlaceResult> => {
     try {
-      const result = await postInvestor({ action: "order", ...order });
+      const result = await postInvestor({ action: "order", ...order, submissionReference: crypto.randomUUID() });
       const failed = (result.checks ?? []).filter((check) => !check.passed);
       if (result.order?.status === "validation_failed") {
         notify(failed[0] ? `Order held: ${failed[0].message}` : "Order held for review.");

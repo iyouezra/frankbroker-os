@@ -89,6 +89,7 @@ model Account {
   availableCash           Decimal                 @default(0) @map("available_cash") @db.Decimal(20, 4)
   blockedCash             Decimal                 @default(0) @map("blocked_cash") @db.Decimal(20, 4)
   unsettledCash           Decimal                 @default(0) @map("unsettled_cash") @db.Decimal(20, 4)
+  version                 Int                     @default(0)
   status                  String                  @default("active")
   createdAt               DateTime                @default(now()) @map("created_at")
   updatedAt               DateTime                @updatedAt @map("updated_at")
@@ -196,6 +197,7 @@ model Holding {
   blockedQuantity   Decimal    @default(0) @map("blocked_quantity") @db.Decimal(24, 8)
   unsettledQuantity Decimal    @default(0) @map("unsettled_quantity") @db.Decimal(24, 8)
   averageCost       Decimal    @default(0) @map("average_cost") @db.Decimal(20, 6)
+  version           Int        @default(0)
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
   account           Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -209,6 +211,7 @@ model Holding {
 model Order {
   id                    String                  @id
   brokerId              String                  @map("broker_id")
+  submissionReference   String?                 @map("submission_reference")
   accountId             String                  @map("account_id")
   instrumentId          String                  @map("instrument_id")
   side                  String
@@ -219,6 +222,14 @@ model Order {
   estimatedGross        Decimal                 @map("estimated_gross") @db.Decimal(20, 4)
   estimatedFees         Decimal                 @map("estimated_fees") @db.Decimal(20, 4)
   estimatedNet          Decimal                 @map("estimated_net") @db.Decimal(20, 4)
+  filledQuantity        Decimal                 @default(0) @map("filled_quantity") @db.Decimal(24, 8)
+  remainingQuantity     Decimal                 @default(0) @map("remaining_quantity") @db.Decimal(24, 8)
+  averageFillPrice      Decimal?                @map("average_fill_price") @db.Decimal(20, 6)
+  executedGross         Decimal                 @default(0) @map("executed_gross") @db.Decimal(20, 4)
+  executedFees          Decimal                 @default(0) @map("executed_fees") @db.Decimal(20, 4)
+  executedNet           Decimal                 @default(0) @map("executed_net") @db.Decimal(20, 4)
+  blockedCash           Decimal                 @default(0) @map("blocked_cash") @db.Decimal(20, 4)
+  blockedQuantity       Decimal                 @default(0) @map("blocked_quantity") @db.Decimal(24, 8)
   status                String                  @default("draft")
   source                String                  @default("manual")
   assignedTraderId      String?                 @map("assigned_trader_id")
@@ -228,6 +239,10 @@ model Order {
   submittedAt           DateTime?               @map("submitted_at")
   approvedAt            DateTime?               @map("approved_at")
   approvedBy            String?                 @map("approved_by")
+  contractNoteNumber    String?                 @unique @map("contract_note_number")
+  contractNoteGeneratedAt DateTime?             @map("contract_note_generated_at")
+  contractNoteGeneratedBy String?               @map("contract_note_generated_by")
+  version               Int                     @default(0)
   createdAt             DateTime                @default(now()) @map("created_at")
   updatedAt             DateTime                @updatedAt @map("updated_at")
   broker                Broker                  @relation(fields: [brokerId], references: [id], onDelete: Restrict)
@@ -242,6 +257,7 @@ model Order {
   securityLedgerEntries SecuritiesLedgerEntry[]
 
   @@index([brokerId, status])
+  @@unique([brokerId, submissionReference])
   @@index([accountId])
   @@index([instrumentId])
   @@map("orders")
@@ -279,6 +295,7 @@ model OrderEvent {
 
 model Trade {
   id                      String                  @id
+  captureReference        String?                 @unique @map("capture_reference")
   orderId                 String                  @map("order_id")
   executionPrice          Decimal                 @map("execution_price") @db.Decimal(20, 6)
   quantityFilled          Decimal                 @map("quantity_filled") @db.Decimal(24, 8)
@@ -324,8 +341,13 @@ model CashLedgerEntry {
   tradeId        String?  @map("trade_id")
   entryType      String   @map("entry_type")
   amount         Decimal  @db.Decimal(20, 4)
+  totalImpact    Decimal  @default(0) @map("total_impact") @db.Decimal(20, 4)
+  availableImpact Decimal @default(0) @map("available_impact") @db.Decimal(20, 4)
+  blockedImpact  Decimal  @default(0) @map("blocked_impact") @db.Decimal(20, 4)
+  unsettledImpact Decimal @default(0) @map("unsettled_impact") @db.Decimal(20, 4)
   runningBalance Decimal  @map("running_balance") @db.Decimal(20, 4)
   description    String
+  reason         String?
   valueDate      DateTime @map("value_date") @db.Date
   createdBy      String   @map("created_by")
   createdAt      DateTime @default(now()) @map("created_at")
@@ -335,6 +357,8 @@ model CashLedgerEntry {
   createdByUser  User     @relation("CashLedgerCreator", fields: [createdBy], references: [id], onDelete: Restrict)
 
   @@index([accountId, valueDate])
+  @@index([orderId, createdAt])
+  @@index([tradeId, createdAt])
   @@map("cash_ledger_entries")
 }
 
@@ -346,8 +370,13 @@ model SecuritiesLedgerEntry {
   tradeId         String?    @map("trade_id")
   entryType       String     @map("entry_type")
   quantity        Decimal    @db.Decimal(24, 8)
+  totalImpact     Decimal    @default(0) @map("total_impact") @db.Decimal(24, 8)
+  availableImpact Decimal   @default(0) @map("available_impact") @db.Decimal(24, 8)
+  blockedImpact  Decimal    @default(0) @map("blocked_impact") @db.Decimal(24, 8)
+  unsettledImpact Decimal   @default(0) @map("unsettled_impact") @db.Decimal(24, 8)
   runningQuantity Decimal    @map("running_quantity") @db.Decimal(24, 8)
   description     String
+  reason          String?
   valueDate       DateTime   @map("value_date") @db.Date
   createdBy       String     @map("created_by")
   createdAt       DateTime   @default(now()) @map("created_at")
@@ -358,6 +387,8 @@ model SecuritiesLedgerEntry {
   createdByUser   User       @relation("SecuritiesLedgerCreator", fields: [createdBy], references: [id], onDelete: Restrict)
 
   @@index([accountId, instrumentId, valueDate])
+  @@index([orderId, createdAt])
+  @@index([tradeId, createdAt])
   @@map("securities_ledger_entries")
 }
 
@@ -409,6 +440,7 @@ model AuditLog {
   entityType    String   @map("entity_type")
   entityId      String?  @map("entity_id")
   summary       String
+  reason        String?
   previousValue String?  @map("previous_value")
   newValue      String?  @map("new_value")
   ipAddress     String?  @map("ip_address")

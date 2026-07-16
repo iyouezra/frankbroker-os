@@ -21,6 +21,12 @@ export function isDatabaseOffline(error: unknown): boolean {
 
 export function apiError(error: unknown): Response {
   if (error instanceof Response) return error;
+  if (error && typeof error === "object" && "code" in error && String((error as { code?: unknown }).code) === "P2002") {
+    return Response.json({ error: "This request was already recorded. Refresh to view the existing record." }, { status: 409 });
+  }
+  if (error instanceof Error && ["InvalidOrderTransitionError", "LedgerIntegrityError"].includes(error.name)) {
+    return Response.json({ error: error.message }, { status: 409 });
+  }
   if (isDatabaseOffline(error)) {
     return Response.json(
       { error: "Read-only demo mode: connect a database (set DATABASE_URL) to record this action.", offline: true },

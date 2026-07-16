@@ -14,13 +14,12 @@ export type OrderStatus =
   | "pending_broker_review"
   | "approved"
   | "rejected"
-  | "sent_to_esx_manually"
   | "partially_filled"
   | "filled"
   | "cancelled"
-  | "expired"
   | "settlement_pending"
-  | "settled";
+  | "settled"
+  | "failed";
 
 export type ValidationResult = {
   code: string;

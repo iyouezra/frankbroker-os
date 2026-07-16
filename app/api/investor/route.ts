@@ -1,8 +1,9 @@
 import { prisma } from "../../../lib/prisma";
-import { computeAmounts, D, toNum } from "../../../lib/money";
+import { toNum } from "../../../lib/money";
 import { resolveInvestorContext } from "../../../lib/server-auth";
 import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
+import { createSubmittedOrder } from "../../../lib/oms/order-service";
 
 export const runtime = "nodejs";
 
@@ -106,69 +107,46 @@ export async function POST(request: Request) {
     }
 
     if (payload.action === "order") {
-      const [client, instrument, settings, entitlement] = await Promise.all([
-        prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: { include: { holdings: true } } } }),
+      const [client, instrument] = await Promise.all([
+        prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true } }),
         prisma.instrument.findUnique({ where: { symbol: String(payload.symbol ?? "") } }),
-        prisma.brokerSettings.findUnique({ where: { brokerId } }),
-        prisma.brokerInstrument.findFirst({ where: { brokerId, instrument: { symbol: String(payload.symbol ?? "") }, enabled: true } }),
       ]);
       const account = client?.accounts[0];
       if (!client || !account) return Response.json({ error: "Investor account not found." }, { status: 404 });
-      if (!instrument || !entitlement) return Response.json({ error: "This instrument is not enabled for the tenant." }, { status: 404 });
+      if (!instrument) return Response.json({ error: "Instrument not found." }, { status: 404 });
 
       const side = parseOrderSide(payload.side);
       const quantityInput = parsePositiveFiniteNumber(payload.quantity);
       const priceInput = parsePositiveFiniteNumber(payload.price ?? toNum(instrument.lastPrice));
-      if (!side || quantityInput === null || priceInput === null) {
-        return Response.json({ error: "A buy/sell side, positive quantity, and positive price are required." }, { status: 400 });
+      const submissionReference = typeof payload.submissionReference === "string" ? payload.submissionReference.trim() : "";
+      if (!side || quantityInput === null || priceInput === null || !submissionReference || submissionReference.length > 120) {
+        return Response.json({ error: "A buy/sell side, positive quantity, positive price, and valid submission reference are required." }, { status: 400 });
       }
-      const quantity = D(quantityInput);
-      const price = D(priceInput);
-      const features = (settings?.features ?? {}) as Record<string, unknown>;
-      const fractionalAllowed = features.fractionalOrders === true;
       const orderType = normalizeOrderType(payload.orderType, "market");
-      const allowedTypes = Array.isArray(settings?.allowedOrderTypes)
-        ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
-        : ["Market", "Limit"];
-      const feeRate = settings ? settings.brokerageFeePct.div(100) : undefined;
-      const amounts = computeAmounts(side, quantity, price, feeRate, settings?.minimumFee);
-      const holding = account.holdings.find((item) => item.instrumentId === instrument.id);
-      const startOfDay = new Date();
-      startOfDay.setUTCHours(0, 0, 0, 0);
-      const dayAgg = await prisma.order.aggregate({ where: { accountId: account.id, submittedAt: { gte: startOfDay }, status: { notIn: ["rejected", "validation_failed", "cancelled"] } }, _sum: { estimatedGross: true } });
-      const projectedToday = (dayAgg._sum.estimatedGross ?? D(0)).plus(amounts.gross);
-      const checks = [
-        { code: "KYC_APPROVED", passed: client.kycStatus === "approved", message: "Investor KYC must be approved" },
-        { code: "ACCOUNT_ACTIVE", passed: account.status === "active" && client.status === "active", message: "Investor account must be active" },
-        { code: "TENANT_INSTRUMENT", passed: entitlement.enabled && instrument.tradingStatus === "tradable", message: "Instrument must be enabled and tradable" },
-        { code: "ORDER_TYPE", passed: allowedTypes.some((item) => normalizeOrderType(item) === orderType), message: "Order type must be enabled by the tenant" },
-        { code: "QUANTITY_VALID", passed: quantity.gt(0) && (fractionalAllowed || quantity.mod(instrument.lotSize).isZero()), message: fractionalAllowed ? "Quantity must be positive" : `Quantity must be a multiple of ${instrument.lotSize}` },
-        { code: "PRICE_VALID", passed: price.gt(0) && price.div(instrument.tickSize).isInteger(), message: `Price must align to the ${instrument.tickSize.toString()} tick size` },
-        side === "buy"
-          ? { code: "SUFFICIENT_CASH", passed: account.availableCash.gte(amounts.net), message: "Sufficient available cash is required" }
-          : { code: "SUFFICIENT_HOLDINGS", passed: Boolean(holding?.availableQuantity.gte(quantity)), message: "Sufficient available holdings are required" },
-        { code: "DAILY_LIMIT", passed: !settings?.clientDailyLimit || projectedToday.lte(settings.clientDailyLimit), message: settings?.clientDailyLimit ? `Within the ${toNum(settings.clientDailyLimit).toLocaleString()} ETB daily limit` : "No daily limit configured" },
-      ];
-      const valid = checks.every((check) => check.passed);
-      const id = `ORD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
-      const now = new Date();
-      const status = valid ? "pending_broker_review" : "validation_failed";
-      const riskFlag = settings && amounts.net.gte(settings.approvalThreshold) ? "review" : "none";
-      await prisma.$transaction([
-        prisma.order.create({ data: {
-          id, brokerId, accountId: account.id, instrumentId: instrument.id, side, quantity, price,
-          orderType, validity: "day", estimatedGross: amounts.gross, estimatedFees: amounts.fees, estimatedNet: amounts.net,
-          status, source: "investor_portal", riskFlag, submittedAt: now,
-          validations: { create: checks.map((check) => ({ id: crypto.randomUUID(), ruleCode: check.code, label: check.code.replaceAll("_", " "), result: check.passed ? "passed" : "failed", message: check.message })) },
-          events: { create: { id: crypto.randomUUID(), toStatus: status, actorId: null, reason: valid ? "Investor order passed pre-trade validation" : "Investor order failed pre-trade validation", detail: JSON.stringify({ checks }) } },
-        } }),
-        prisma.auditLog.create({ data: {
-          id: crypto.randomUUID(), brokerId, actorId: null, action: "INVESTOR_ORDER_SUBMITTED", entityType: "order", entityId: id,
-          summary: `${side.toUpperCase()} ${toNum(quantity)} ${instrument.symbol} submitted from investor portal`,
-          newValue: JSON.stringify({ status, gross: toNum(amounts.gross), fees: toNum(amounts.fees), net: toNum(amounts.net) }),
-        } }),
-      ]);
-      return Response.json({ order: { id, status, gross: toNum(amounts.gross), fees: toNum(amounts.fees), net: toNum(amounts.net) }, checks }, { status: 201 });
+      const result = await createSubmittedOrder(
+        { id: null, email: "investor-portal", role: "broker_admin", brokerId },
+        {
+          accountId: account.id,
+          instrumentId: instrument.id,
+          side,
+          quantity: quantityInput,
+          price: priceInput,
+          orderType,
+          validity: "day",
+          source: "investor_portal",
+          submissionReference,
+        },
+      );
+      return Response.json({
+        order: {
+          id: result.order.id,
+          status: result.order.status,
+          gross: result.order.estimatedGross,
+          fees: result.order.estimatedFees,
+          net: result.order.estimatedNet,
+        },
+        checks: result.checks,
+      }, { status: 201 });
     }
 
     return Response.json({ error: "Unsupported investor action." }, { status: 400 });

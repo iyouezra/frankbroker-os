@@ -10,8 +10,8 @@ import { computeBrokerAnalytics, PERIODS, type Period } from "../lib/broker-anal
 
 type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
 type Drawer = "new" | "detail" | "trade" | "contract" | null;
-type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string };
-type TradeValue = { quantity: string; price: string; tradeDate: string };
+type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string };
+type TradeValue = { quantity: string; price: string; tradeDate: string; captureReference: string };
 type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
 type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
 type AuditEntry = { id?: string; time: string; actor: string; action: string; detail: string; entity: string };
@@ -129,13 +129,12 @@ const statusLabels: Record<OrderStatus, string> = {
   pending_broker_review: "Pending review",
   approved: "Approved",
   rejected: "Rejected",
-  sent_to_esx_manually: "Sent to ESX",
   partially_filled: "Partially filled",
   filled: "Filled",
   cancelled: "Cancelled",
-  expired: "Expired",
   settlement_pending: "Settlement pending",
   settled: "Settled",
+  failed: "Failed",
 };
 
 const statusTone: Record<OrderStatus, string> = {
@@ -145,13 +144,12 @@ const statusTone: Record<OrderStatus, string> = {
   pending_broker_review: "warning",
   approved: "brand",
   rejected: "danger",
-  sent_to_esx_manually: "info",
   partially_filled: "purple",
   filled: "success",
   cancelled: "neutral",
-  expired: "neutral",
   settlement_pending: "warning",
   settled: "success",
+  failed: "danger",
 };
 
 const fmt = new Intl.NumberFormat("en-ET", { maximumFractionDigits: 2 });
@@ -189,6 +187,16 @@ function EmptyState({ title, copy }: { title: string; copy: string }) {
 
 const BROKER_TENANT_ID = "brk_abyssinia";
 
+function hydrateOrders(rows: Array<Omit<DemoOrder, "time">>) {
+  return rows.map((order) => ({
+    ...order,
+    time: new Date(order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
+    orderType: displayLabel(order.orderType),
+    source: order.source.charAt(0).toUpperCase() + order.source.slice(1),
+    trader: order.trader ?? "Unassigned",
+  })) as DemoOrder[];
+}
+
 export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [view, setView] = useState<View>("dashboard");
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -202,7 +210,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [reconBatch, setReconBatch] = useState<ReconBatch>(fallbackReconBatch);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [newOrder, setNewOrder] = useState({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy" as "buy" | "sell", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "" });
+  const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID() });
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [controls, setControls] = useState<TenantControls>(fallbackControls);
   const [features, setFeatures] = useState<TenantFeatures>(fallbackFeatures);
@@ -211,7 +219,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
-  const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14" });
+  const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
   const pendingOrderCount = orders.filter((order) => order.status === "pending_broker_review").length;
 
   useEffect(() => {
@@ -221,14 +229,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Order API unavailable")))
       .then((result: { orders?: Array<Omit<DemoOrder, "time">> }) => {
         if (!result.orders) return;
-        const persisted = result.orders.map((order) => ({
-          ...order,
-          time: new Date(order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
-          orderType: displayLabel(order.orderType),
-          source: order.source.charAt(0).toUpperCase() + order.source.slice(1),
-          trader: order.trader ?? "Unassigned",
-        })) as DemoOrder[];
-        setOrders(persisted);
+        setOrders(hydrateOrders(result.orders));
       })
       .catch(() => {
         // Keep the static demonstration surface available before a database is connected.
@@ -323,20 +324,52 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   };
 
   const persistAction = async (id: string, payload: Record<string, unknown>) => {
-      return apiRequest<{ status: OrderStatus; trade?: { id: string; tradeDate: string; settlementDate: string; quantity: number; executionPrice: number; gross: number; fees: number; net: number; cashStatus: string; securitiesStatus: string; capturedBy: string }; filledQuantity?: number; remainingQuantity?: number }>(`/api/orders/${encodeURIComponent(id)}/action`, {
+      return apiRequest<{ status: OrderStatus; contractNoteNumber?: string; trade?: { id: string; tradeDate: string; settlementDate: string; quantity: number; executionPrice: number; gross: number; fees: number; net: number; cashStatus: string; securitiesStatus: string; capturedBy: string }; filledQuantity?: number; remainingQuantity?: number; averageFillPrice?: number; executedGross?: number; executedFees?: number; executedNet?: number; blockedCash?: number; blockedQuantity?: number }>(`/api/orders/${encodeURIComponent(id)}/action`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-frank-demo-role": role },
         body: JSON.stringify(payload),
       });
   };
 
-  const actionOrder = async (action: "approve" | "reject" | "cancel" | "settle") => {
-    const permission = action === "settle" ? "settle" : action === "cancel" ? "create" : action;
+  const refreshOrders = async () => {
+    const result = await apiRequest<{ orders: Array<Omit<DemoOrder, "time">> }>("/api/orders", {
+      headers: { "x-frank-demo-role": role },
+    });
+    setOrders(hydrateOrders(result.orders));
+  };
+
+  const refreshOmsData = async () => {
+    try {
+      const [, clientResult, auditResult] = await Promise.all([
+        refreshOrders(),
+        apiRequest<{ clients: BrokerClient[] }>("/api/clients", { headers: { "x-frank-demo-role": role } }),
+        apiRequest<{ events: AuditEntry[] }>("/api/audit", { headers: { "x-frank-demo-role": role } }),
+      ]);
+      setClients(clientResult.clients);
+      setAuditEntries(auditResult.events);
+    } catch {
+      // The workflow response remains authoritative even if a follow-up refresh fails.
+    }
+  };
+
+  const actionOrder = async (action: "approve" | "reject" | "cancel" | "settle" | "fail") => {
+    const permission = action === "settle" ? "settle" : action === "cancel" ? "create" : action === "fail" ? "adjust" : action;
     if (!hasPermission(role, permission)) return notify(`${roleLabels[role]} cannot ${action} orders.`, "error");
     setBusyAction(action);
     try {
-      const result = await persistAction(selected.id, { action, reason: action === "reject" ? "Rejected after compliance review" : action === "cancel" ? "Cancelled by broker" : undefined });
+      const result = await persistAction(selected.id, {
+        action,
+        tradeId: action === "settle" ? selected.trades?.find((trade) => trade.settlementStatus !== "settled")?.id ?? selected.tradeId : undefined,
+        reason: action === "reject"
+          ? "Rejected after compliance review"
+          : action === "cancel"
+            ? "Cancelled by broker"
+            : action === "fail"
+              ? "Operational failure recorded by broker"
+              : undefined,
+      });
       updateStatus(selected.id, result.status);
+      await refreshOmsData();
       notify(`${selected.id} marked ${statusLabels[result.status].toLowerCase()}. Audit event recorded.`);
       setDrawer(null);
     } catch (error) {
@@ -350,7 +383,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     if (!features.manualTradeCapture) return notify("Manual trade capture is disabled for this tenant in the admin console.", "error");
     if (!hasPermission(role, "trade")) return notify(`${roleLabels[role]} cannot capture trades.`, "error");
     setSelectedId(order.id);
-    setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: new Date().toISOString().slice(0, 10) });
+    setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: new Date().toISOString().slice(0, 10), captureReference: crypto.randomUUID() });
     setDrawer("trade");
   };
 
@@ -362,7 +395,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
     if (!quantity || !price || quantity > remaining) return notify(`Enter a quantity up to the remaining ${fmt.format(remaining)} units.`, "error");
     setBusyAction("execute");
     try {
-      const result = await persistAction(selected.id, { action: "execute", executionPrice: price, quantityFilled: quantity, tradeDate: tradeForm.tradeDate });
+      const result = await persistAction(selected.id, { action: "execute", executionPrice: price, quantityFilled: quantity, tradeDate: tradeForm.tradeDate, captureReference: tradeForm.captureReference });
       updateStatus(selected.id, result.status, {
         tradeId: result.trade?.id,
         capturedBy: result.trade?.capturedBy,
@@ -377,11 +410,33 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         securitiesStatus: result.trade?.securitiesStatus,
         filledQuantity: result.filledQuantity,
         remainingQuantity: result.remainingQuantity,
+        averageFillPrice: result.averageFillPrice,
+        executedGross: result.executedGross,
+        executedFees: result.executedFees,
+        executedNet: result.executedNet,
+        blockedCash: result.blockedCash,
+        blockedQuantity: result.blockedQuantity,
       });
+      await refreshOmsData();
       setDrawer(null);
       notify(`${result.trade?.id ?? "Trade"} captured. Settlement is due ${result.trade?.settlementDate}.`);
     } catch (error) {
       notify(error instanceof Error ? error.message : "Trade capture failed.", "error");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const printContractNote = async () => {
+    if (!selected.tradeId && !(selected.trades?.length)) return;
+    setBusyAction("contract_note");
+    try {
+      const result = await persistAction(selected.id, { action: "contract_note" });
+      updateStatus(selected.id, result.status, { contractNoteNumber: result.contractNoteNumber });
+      await refreshOmsData();
+      window.print();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Contract note generation failed.", "error");
     } finally {
       setBusyAction(null);
     }
@@ -424,6 +479,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
       const failed = result.checks?.filter((item) => !item.passed) ?? [];
       const created = { ...result.order, orderType: displayLabel(result.order.orderType), time: new Date(result.order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), trader: "Unassigned" };
       setOrders((current) => [created, ...current]);
+      await refreshOmsData();
       if (result.order.status === "validation_failed") {
         setView("orders");
         notify(failed[0] ? `${created.id} held — ${failed[0].message}` : `${created.id} held: pre-trade checks failed.`, "error");
@@ -455,6 +511,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const openNewOrder = () => {
     if (!hasPermission(role, "create")) return notify(`${roleLabels[role]} has read-only access.`, "error");
     setChecks(null);
+    setNewOrder((current) => ({ ...current, submissionReference: crypto.randomUUID() }));
     setDrawer("new");
   };
 
@@ -582,9 +639,9 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
         <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
           <button className="drawer-close" onClick={() => setDrawer(null)} aria-label="Close">×</button>
           {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={clients} instruments={instruments} controls={controls} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
-          {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} manualTradeCapture={features.manualTradeCapture} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
+          {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} manualTradeCapture={features.manualTradeCapture} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onFail={() => actionOrder("fail")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
           {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} controls={controls} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
-          {drawer === "contract" && <ContractNote order={selected} instruments={instruments} tenantInfo={tenantInfo} settlementCycle={controls.settlementCycle} onPrint={() => window.print()} />}
+          {drawer === "contract" && <ContractNote order={selected} instruments={instruments} tenantInfo={tenantInfo} settlementCycle={controls.settlementCycle} busy={busyAction === "contract_note"} onPrint={printContractNote} />}
         </aside>
       </div>}
       {toast && <div className={`toast${toast.tone === "error" ? " toast-error" : ""}`}><span>{toast.tone === "error" ? "!" : "✓"}</span>{toast.message}</div>}
@@ -623,7 +680,7 @@ function OrdersPage({ orders, instruments, onOpen, onNewOrder, onExport }: { ord
     || (statusFilter === "review" && order.status === "pending_broker_review")
     || (statusFilter === "approved" && order.status === "approved")
     || (statusFilter === "executed" && ["partially_filled", "filled", "settlement_pending", "settled"].includes(order.status))
-    || (statusFilter === "exceptions" && ["validation_failed", "rejected"].includes(order.status));
+    || (statusFilter === "exceptions" && ["validation_failed", "rejected", "failed"].includes(order.status));
   const filtered = orders
     .filter((order) => statusMatches(order) && (sideFilter === "all" || order.side === sideFilter) && (riskFilter === "all" || order.riskFlag !== "none"))
     .sort((left, right) => sort === "value" ? right.estimatedNet - left.estimatedNet : sort === "oldest" ? left.createdAt.localeCompare(right.createdAt) : right.createdAt.localeCompare(left.createdAt));
@@ -663,16 +720,16 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, onOpe
     <SectionHeader eyebrow="CLIENT & ACCOUNT MANAGEMENT" title="Client accounts" copy="KYC, cash, holdings, and trading history in one controlled record." action={<span className="demo-control-badge">SYNTHETIC DEMO DATA</span>} />
     <div className="client-grid">{clients.map((client) => <article className={`panel client-card ${selected?.id === client.id ? "selected" : ""}`} key={client.id}><div className="client-head"><span>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{client.name}</h3><p>{client.code} · {client.type.replaceAll("_", " ")}</p></div><span className={`status ${client.status === "active" ? "status-success" : "status-warning"}`}><i />{client.status}</span></div><div className="client-money"><span><small>Total cash</small><b>{etb(client.totalCash)}</b></span><span><small>Available</small><b>{etb(client.availableCash)}</b></span></div><div className="client-meta"><span>KYC <b>{client.kyc.replaceAll("_", " ")}</b></span><span>Risk <b>{client.risk}</b></span><span>Orders <b>{client.orderCount}</b></span></div><button onClick={() => onSelect(client.id)}>Open account <span>→</span></button></article>)}</div>
     {selected && <div className="account-workspace">
-      <section className="panel account-summary"><div className="panel-head"><div><span className="eyebrow">TRADING ACCOUNT</span><h2>{selected.name}</h2></div><span className="account-number">{selected.accountNumber}</span></div><div className="account-balance-grid"><span><small>Total cash</small><b>{etb(selected.totalCash)}</b></span><span><small>Available</small><b className="positive">{etb(selected.availableCash)}</b></span><span><small>Blocked</small><b>{etb(selected.blockedCash)}</b></span><span><small>Open orders</small><b>{clientOrders.filter((order) => !["settled", "cancelled", "rejected"].includes(order.status)).length}</b></span></div></section>
+      <section className="panel account-summary"><div className="panel-head"><div><span className="eyebrow">TRADING ACCOUNT</span><h2>{selected.name}</h2></div><span className="account-number">{selected.accountNumber}</span></div><div className="account-balance-grid"><span><small>Total cash</small><b>{etb(selected.totalCash)}</b></span><span><small>Available</small><b className="positive">{etb(selected.availableCash)}</b></span><span><small>Blocked</small><b>{etb(selected.blockedCash)}</b></span><span><small>Open orders</small><b>{clientOrders.filter((order) => !["settled", "cancelled", "rejected", "failed"].includes(order.status)).length}</b></span></div></section>
       <section className="panel holdings-panel"><div className="panel-head"><div><span className="eyebrow">CUSTODY POSITION</span><h2>Holdings</h2></div></div>{selected.holdings.length ? <div className="table-scroll"><table><thead><tr><th>Instrument</th><th className="num">Total</th><th className="num">Available</th><th className="num">Blocked</th><th className="num">Average cost</th></tr></thead><tbody>{selected.holdings.map((holding) => <tr key={holding.symbol}><td><b>{holding.symbol}</b><small>{holding.name}</small></td><td className="num">{fmt.format(holding.total)}</td><td className="num positive">{fmt.format(holding.available)}</td><td className="num">{fmt.format(holding.blocked)}</td><td className="num">{fmt.format(holding.averageCost)} ETB</td></tr>)}</tbody></table></div> : <EmptyState title="No securities positions" copy="This account currently holds cash only." />}</section>
       <section className="panel client-orders"><div className="panel-head"><div><span className="eyebrow">ORDER HISTORY</span><h2>Recent instructions</h2></div></div><OrderTable orders={clientOrders} instruments={instruments} onOpen={onOpenOrder} /></section>
-      <section className="panel ledger-panel"><div className="panel-head"><div><span className="eyebrow">CASH LEDGER</span><h2>Recent account movements</h2></div></div>{selected.ledger.length ? <div className="table-scroll"><table><thead><tr><th>Value date</th><th>Reference</th><th>Type</th><th className="num">Amount</th><th className="num">Running balance</th></tr></thead><tbody>{selected.ledger.map((entry) => <tr key={entry.id}><td>{entry.valueDate}</td><td><b>{entry.reference}</b></td><td>{entry.type.replaceAll("_", " ")}</td><td className={`num ${entry.amount >= 0 ? "positive" : "negative"}`}>{fmt.format(entry.amount)}</td><td className="num"><b>{fmt.format(entry.runningBalance)}</b></td></tr>)}</tbody></table></div> : <EmptyState title="No posted cash movements" copy="Ledger entries appear after settlement is confirmed." />}</section>
+      <section className="panel ledger-panel"><div className="panel-head"><div><span className="eyebrow">CASH LEDGER</span><h2>Recent account movements</h2></div></div>{selected.ledger.length ? <div className="table-scroll"><table><thead><tr><th>Value date</th><th>Reference</th><th>Type</th><th className="num">Amount</th><th className="num">Running balance</th></tr></thead><tbody>{selected.ledger.map((entry) => <tr key={entry.id}><td>{entry.valueDate}</td><td><b>{entry.reference}</b></td><td>{entry.type.replaceAll("_", " ")}</td><td className={`num ${entry.amount >= 0 ? "positive" : "negative"}`}>{fmt.format(entry.amount)}</td><td className="num"><b>{fmt.format(entry.runningBalance)}</b></td></tr>)}</tbody></table></div> : <EmptyState title="No posted cash movements" copy="Ledger entries appear when cash is reserved, released, traded, or settled." />}</section>
     </div>}
   </>;
 }
 
 function SettlementPage({ orders, onOpen, onExport }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void; onExport: () => void }) {
-  const queue = orders.filter((order) => ["settlement_pending", "partially_filled", "settled"].includes(order.status));
+  const queue = orders.filter((order) => ["settlement_pending", "partially_filled", "settled"].includes(order.status) || order.trades?.some((trade) => trade.settlementStatus !== "settled"));
   const settledCash = queue.filter((order) => (order.cashStatus ?? (order.status === "settled" ? "settled" : "pending")) === "settled").length;
   const settledSecurities = queue.filter((order) => (order.securitiesStatus ?? (order.status === "settled" ? "settled" : "pending")) === "settled").length;
   return <><SectionHeader eyebrow="POST-TRADE CONTROL" title="Settlement tracking" copy="Confirm cash and securities legs, value dates, and operational exceptions." action={<button className="btn secondary" onClick={onExport}>Export queue</button>} /><section className="metric-grid settlement-metrics"><Metric label="Settlement records" value={String(queue.length)} note={`${queue.filter((order) => order.status !== "settled").length} awaiting completion`} tone="warning" /><Metric label="Cash confirmed" value={`${settledCash} / ${queue.length}`} note={`${queue.length - settledCash} awaiting confirmation`} tone="success" /><Metric label="Securities confirmed" value={`${settledSecurities} / ${queue.length}`} note={`${queue.length - settledSecurities} awaiting confirmation`} tone="purple" /><Metric label="Exceptions" value={String(queue.filter((order) => order.cashStatus === "exception" || order.securitiesStatus === "exception").length)} note="From settlement records" tone="danger" /></section><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Client</th><th>Instrument</th><th>Value date</th><th className="num">Net amount</th><th>Cash</th><th>Securities</th><th>Overall</th></tr></thead><tbody>{queue.map((order) => { const cash = order.cashStatus ?? (order.status === "settled" ? "settled" : "pending"); const securities = order.securitiesStatus ?? (order.status === "settled" ? "settled" : "pending"); return <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.tradeId ?? "Trade pending"}</b><small>{order.id}</small></td><td><b>{order.client}</b></td><td><b>{order.symbol}</b><small>{order.side.toUpperCase()} {fmt.format(order.tradeQuantity ?? order.quantity)}</small></td><td><b>{order.settlementDate ?? "Pending"}</b></td><td className="num"><b>{fmt.format(order.tradeNet ?? order.estimatedNet)}</b><small>ETB</small></td><td><span className={`leg ${cash === "settled" ? "done" : "pending"}`}>{displayLabel(cash)}</span></td><td><span className={`leg ${securities === "settled" ? "done" : "pending"}`}>{displayLabel(securities)}</span></td><td><StatusBadge status={order.status} /></td></tr>; })}</tbody></table></div></section></>;
@@ -832,8 +889,16 @@ function PerformancePage({ orders, clients, period, setPeriod, onOpen }: { order
   </>;
 }
 
-function OrderDetail({ order, role, busy, controls, manualTradeCapture, onApprove, onReject, onCancel, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; controls: TenantControls; manualTradeCapture: boolean; onApprove: () => void; onReject: () => void; onCancel: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
+function OrderDetail({ order, role, busy, controls, manualTradeCapture, onApprove, onReject, onCancel, onFail, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; controls: TenantControls; manualTradeCapture: boolean; onApprove: () => void; onReject: () => void; onCancel: () => void; onFail: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
   const remaining = order.remainingQuantity ?? order.quantity;
+  const filled = order.filledQuantity ?? 0;
+  const actions = new Set(order.availableActions ?? (
+    order.status === "pending_broker_review" ? ["approve", "reject", "cancel", "fail"]
+      : order.status === "approved" ? ["execute", "cancel", "fail"]
+        : order.status === "partially_filled" ? ["execute", "settle", "cancel", "fail"]
+          : ["filled", "settlement_pending"].includes(order.status) ? ["settle", "contract_note", "fail"]
+            : order.status === "settled" ? ["contract_note"] : []
+  ));
   const events = order.events?.length ? order.events : [
     { id: `${order.id}-created`, fromStatus: null, toStatus: "submitted", reason: "Order created and pre-trade controls recorded", actor: "Mekdes Tadesse", createdAt: order.createdAt },
     { id: `${order.id}-current`, fromStatus: null, toStatus: order.status, reason: statusLabels[order.status], actor: order.trader, createdAt: order.createdAt },
@@ -845,40 +910,52 @@ function OrderDetail({ order, role, busy, controls, manualTradeCapture, onApprov
   return <div className="drawer-content">
     <div className="drawer-title"><span className="eyebrow">ORDER CONTROL</span><h2>{order.id}</h2><div className="title-badges"><StatusBadge status={order.status} /><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></div></div>
     <div className="order-hero"><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · {order.accountId.replace("acc_", "TRD-").toUpperCase()}</span></div><strong>{fmt.format(order.quantity)} <small>{order.symbol}</small></strong><p>@ {fmt.format(order.price)} ETB · {order.orderType}</p></div>
-    {(order.filledQuantity ?? 0) > 0 && <div className="fill-progress"><span><b>{fmt.format(order.filledQuantity ?? 0)}</b> filled</span><span><b>{fmt.format(remaining)}</b> remaining</span><i><em style={{ width: `${Math.min(100, ((order.filledQuantity ?? 0) / order.quantity) * 100)}%` }} /></i></div>}
-    <dl className="detail-grid"><div><dt>Gross consideration</dt><dd>{etb(order.estimatedGross)}</dd></div><div><dt>Estimated fees</dt><dd>{etb(order.estimatedFees)}</dd></div><div className="total"><dt>Estimated net</dt><dd>{etb(order.estimatedNet)}</dd></div><div><dt>Source</dt><dd>{order.source}</dd></div><div><dt>Assigned trader</dt><dd>{order.trader}</dd></div><div><dt>Risk flag</dt><dd>{order.riskFlag === "none" ? "No flags" : "Enhanced review"}</dd></div></dl>
+    <div className="fill-progress"><span><b>{fmt.format(filled)}</b> filled</span><span><b>{fmt.format(remaining)}</b> remaining</span><i><em style={{ width: `${Math.min(100, (filled / order.quantity) * 100)}%` }} /></i></div>
+    <dl className="detail-grid">
+      <div><dt>Original quantity</dt><dd>{fmt.format(order.quantity)}</dd></div><div><dt>Filled quantity</dt><dd>{fmt.format(filled)}</dd></div><div><dt>Remaining quantity</dt><dd>{fmt.format(remaining)}</dd></div>
+      <div><dt>Average fill price</dt><dd>{order.averageFillPrice ? `${fmt.format(order.averageFillPrice)} ETB` : "—"}</dd></div><div><dt>Estimated value</dt><dd>{etb(order.estimatedNet)}</dd></div><div className="total"><dt>Final executed value</dt><dd>{filled ? etb(order.executedNet ?? order.tradeNet ?? 0) : "—"}</dd></div>
+      <div><dt>Blocked cash</dt><dd>{etb(order.blockedCash ?? 0)}</dd></div><div><dt>Blocked securities</dt><dd>{fmt.format(order.blockedQuantity ?? 0)} {order.symbol}</dd></div><div><dt>Assigned trader</dt><dd>{order.trader}</dd></div>
+    </dl>
+    <div className="workflow-card oms-records"><h3>Related trades</h3>{order.trades?.length ? <div className="table-scroll"><table><thead><tr><th>Trade</th><th className="num">Quantity</th><th className="num">Price</th><th className="num">Net</th><th>Settlement</th></tr></thead><tbody>{order.trades.map((trade) => <tr key={trade.id}><td><b>{trade.id}</b><small>{trade.tradeDate} · {trade.capturedBy}</small></td><td className="num">{fmt.format(trade.quantity)}</td><td className="num">{fmt.format(trade.executionPrice)}</td><td className="num">{etb(trade.net)}</td><td>{displayLabel(trade.settlementStatus)}</td></tr>)}</tbody></table></div> : <p>No execution has been captured.</p>}</div>
+    <div className="workflow-card oms-records"><h3>Order ledger entries</h3>{order.ledgerEntries?.length ? <div className="table-scroll"><table><thead><tr><th>Ledger / type</th><th className="num">Amount / quantity</th><th className="num">Available impact</th><th className="num">Blocked impact</th></tr></thead><tbody>{order.ledgerEntries.map((entry) => <tr key={entry.id}><td><b>{displayLabel(entry.ledger)} · {displayLabel(entry.entryType)}</b><small>{entry.description}</small></td><td className="num">{entry.ledger === "cash" ? etb(entry.amount ?? 0) : `${fmt.format(entry.quantity ?? 0)} ${entry.symbol ?? order.symbol}`}</td><td className="num">{fmt.format(entry.availableImpact)}</td><td className="num">{fmt.format(entry.blockedImpact)}</td></tr>)}</tbody></table></div> : <p>Ledger entries will appear when assets are blocked or a trade is captured.</p>}</div>
     <div className="workflow-card"><h3>Workflow history</h3><ol>{events.map((event, index) => <li className={index === events.length - 1 ? "current" : "done"} key={event.id}><i>{index === events.length - 1 ? index + 1 : "✓"}</i><div><b>{statusLabels[event.toStatus as OrderStatus] ?? event.toStatus.replaceAll("_", " ")}</b><small>{new Date(event.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {event.actor}{event.reason ? ` · ${event.reason}` : ""}</small></div></li>)}</ol></div>
+    <div className="workflow-card"><h3>Audit trail</h3>{order.auditTrail?.length ? <ol>{order.auditTrail.map((entry, index) => <li className={index === order.auditTrail!.length - 1 ? "current" : "done"} key={entry.id}><i>{index === order.auditTrail!.length - 1 ? index + 1 : "✓"}</i><div><b>{displayLabel(entry.action)}</b><small>{new Date(entry.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {entry.actor} · {entry.summary}{entry.reason ? ` · ${entry.reason}` : ""}</small></div></li>)}</ol> : <p>No persisted audit records are available in demo fallback mode.</p>}</div>
     {role === "management" && <div className="permission-note">Read-only management mode: workflow actions are disabled.</div>}
     {order.status === "pending_broker_review" && requiresFourEyes && <div className="permission-note">{`Four-eyes control: at or above ${etb(controls.approvalThreshold)} the maker${maker ? ` (${maker})` : ""} cannot approve this order — a second authorized approver is required.`}</div>}
     {order.status === "pending_broker_review" && !requiresFourEyes && <div className="permission-note" style={{ background: "#e8f8f2", borderColor: "#bfe6d5", color: "#17765b" }}>Below the four-eyes threshold — a single authorized approver may release this order.</div>}
     {!manualTradeCapture && ["approved", "partially_filled"].includes(order.status) && <div className="permission-note">Manual execution capture is disabled for this tenant by platform administration.</div>}
     <div className="drawer-actions stacked">
-      {order.status === "pending_broker_review" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel</button><button className="btn danger" onClick={onReject} disabled={Boolean(busy) || !hasPermission(role, "reject")}>Reject</button><button className="btn primary" onClick={onApprove} disabled={Boolean(busy) || !hasPermission(role, "approve")}>{busy === "approve" ? "Approving…" : "Approve & block assets"}</button></>}
-      {order.status === "approved" && <><button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>Cancel & release</button><button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !manualTradeCapture || !hasPermission(role, "trade")}>Capture execution <span>→</span></button></>}
-      {order.status === "partially_filled" && <><button className="btn secondary" onClick={onContract}>Contract note</button>{remaining > 0 && <button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !manualTradeCapture || !hasPermission(role, "trade")}>Capture remaining fill</button>}{order.tradeId && <button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>Settle next fill</button>}</>}
-      {order.status === "settlement_pending" && <><button className="btn secondary" onClick={onContract}>Contract note</button><button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>{busy === "settle" ? "Settling…" : "Confirm next settlement"}</button></>}
-      {order.status === "settled" && <button className="btn secondary full" onClick={onContract}>View contract note</button>}
+      {actions.has("contract_note") && <button className="btn secondary" onClick={onContract}>Contract note</button>}
+      {actions.has("cancel") && <button className="btn secondary" onClick={onCancel} disabled={Boolean(busy) || !hasPermission(role, "create")}>{filled ? "Cancel remainder & release" : "Cancel & release"}</button>}
+      {actions.has("reject") && <button className="btn danger" onClick={onReject} disabled={Boolean(busy) || !hasPermission(role, "reject")}>Reject</button>}
+      {actions.has("fail") && <button className="btn danger" onClick={onFail} disabled={Boolean(busy) || !hasPermission(role, "adjust")}>Mark failed</button>}
+      {actions.has("approve") && <button className="btn primary" onClick={onApprove} disabled={Boolean(busy) || !hasPermission(role, "approve")}>{busy === "approve" ? "Approving…" : "Approve reserved order"}</button>}
+      {actions.has("execute") && remaining > 0 && <button className="btn primary" onClick={onTrade} disabled={Boolean(busy) || !manualTradeCapture || !hasPermission(role, "trade")}>{filled ? "Capture remaining fill" : "Capture execution"} <span>→</span></button>}
+      {actions.has("settle") && order.tradeId && <button className="btn primary" onClick={onSettle} disabled={Boolean(busy) || !hasPermission(role, "settle")}>{busy === "settle" ? "Settling…" : "Confirm next settlement"}</button>}
     </div>
   </div>;
 }
 
 function TradeForm({ order, value, setValue, controls, busy, onSubmit, onCancel }: { order: DemoOrder; value: TradeValue; setValue: (value: TradeValue) => void; controls: TenantControls; busy: boolean; onSubmit: (event: FormEvent) => void; onCancel: () => void }) {
-  const effectiveFeePct = order.estimatedGross > 0 ? (order.estimatedFees / order.estimatedGross) * 100 : controls.brokerageFeePct;
-  const amount = calculateConfiguredAmounts(order.side, Number(value.quantity) || 0, Number(value.price) || 0, effectiveFeePct);
+  const fillGross = (Number(value.quantity) || 0) * (Number(value.price) || 0);
+  const cumulativeFeeTarget = fillGross > 0 ? Math.max(controls.minimumFee, ((order.executedGross ?? 0) + fillGross) * (controls.brokerageFeePct / 100)) : 0;
+  const fillFees = Math.max(0, cumulativeFeeTarget - (order.executedFees ?? 0));
+  const amount = { gross: fillGross, fees: fillFees, net: order.side === "buy" ? fillGross + fillFees : fillGross - fillFees };
   const remaining = order.remainingQuantity ?? order.quantity;
   return <form onSubmit={onSubmit} className="drawer-content"><div className="drawer-title"><span className="eyebrow">MANUAL TRADE CAPTURE</span><h2>Record execution</h2><p>Link a full or partial fill to {order.id}. No ESX message will be sent.</p></div><div className="manual-callout"><span>MANUAL</span><p>Confirm these details against the official external execution record before capture.</p></div><div className="order-reference"><span>{order.side.toUpperCase()}</span><div><b>{fmt.format(remaining)} {order.symbol} remaining</b><small>{order.client} · Limit {fmt.format(order.price)} ETB</small></div></div><div className="form-section"><div className="field-row"><label>Quantity filled<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /><small>Maximum remaining {fmt.format(remaining)}</small></label><label>Execution price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div><label>Trade date<input type="date" value={value.tradeDate} onChange={(event) => setValue({ ...value, tradeDate: event.target.value })} /></label></div><div className="estimate-card"><span><small>Gross amount</small><b>{etb(amount.gross)}</b></span><span><small>Fees</small><b>{etb(amount.fees)}</b></span><span><small>Net amount</small><strong>{etb(amount.net)}</strong></span></div><div className="drawer-actions"><button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>Cancel</button><button type="submit" className="btn primary" disabled={busy}>{busy ? "Capturing…" : "Capture trade & open settlement"}</button></div></form>;
 }
 
-function ContractNote({ order, instruments, tenantInfo, settlementCycle, onPrint }: { order: DemoOrder; instruments: BrokerInstrument[]; tenantInfo: TenantInfo; settlementCycle: string; onPrint: () => void }) {
+function ContractNote({ order, instruments, tenantInfo, settlementCycle, busy, onPrint }: { order: DemoOrder; instruments: BrokerInstrument[]; tenantInfo: TenantInfo; settlementCycle: string; busy: boolean; onPrint: () => void }) {
   const instrument = instruments.find((item) => item.id === order.instrumentId);
-  const quantity = order.tradeQuantity ?? order.quantity;
-  const price = order.executionPrice ?? order.price;
-  const gross = order.tradeGross ?? order.estimatedGross;
-  const fees = order.tradeFees ?? order.estimatedFees;
-  const net = order.tradeNet ?? order.estimatedNet;
+  const quantity = order.filledQuantity ?? order.tradeQuantity ?? 0;
+  const price = order.averageFillPrice ?? order.executionPrice ?? order.price;
+  const gross = order.executedGross ?? order.tradeGross ?? 0;
+  const fees = order.executedFees ?? order.tradeFees ?? 0;
+  const net = order.executedNet ?? order.tradeNet ?? 0;
   const tradeDate = order.tradeDate ?? order.createdAt.slice(0, 10);
   const parsedTradeDate = new Date(`${tradeDate}T00:00:00.000Z`);
   const displayTradeDate = Number.isNaN(parsedTradeDate.getTime()) ? tradeDate : parsedTradeDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-  const noteNumber = order.tradeId ? `CN-${order.tradeId}` : `DRAFT-${order.id}`;
-  return <div className="drawer-content contract-wrapper"><div className="contract-toolbar"><div><span className="eyebrow">PRINTABLE CONTRACT NOTE</span><h2>{order.tradeId ?? "Trade pending"}</h2></div><button className="btn primary" onClick={onPrint} disabled={!order.tradeId}>Print / Save PDF</button></div>{!order.tradeId && <div className="permission-note">A final contract note is available only after an execution has been captured.</div>}<article className="contract-note"><header><div className="contract-brand"><img src="/frankscore-icon.png" alt="" /><span><b>{tenantInfo.name}</b><small>Licensed securities broker{tenantInfo.license ? ` · ${tenantInfo.license}` : ""}</small></span></div><div><b>CONTRACT NOTE</b><small>{order.tradeId ? "Original · Client copy" : "Draft preview"}</small></div></header><section><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · Addis Ababa, Ethiopia</span></div><div><small>CONTRACT NOTE NO.</small><b>{noteNumber}</b><span>Trade date · {displayTradeDate}</span></div></section><table><thead><tr><th>Security</th><th>Side</th><th className="num">Quantity</th><th className="num">Execution price (ETB)</th><th className="num">Gross (ETB)</th></tr></thead><tbody><tr><td><b>{order.symbol}</b><small>{instrument?.name ?? "Tenant instrument"}</small></td><td>{order.side.toUpperCase()}</td><td className="num">{fmt.format(quantity)}</td><td className="num">{fmt.format(price)}</td><td className="num"><b>{fmt.format(gross)}</b></td></tr></tbody></table><div className="contract-totals"><span><small>Gross consideration</small><b>{etb(gross)}</b></span><span><small>Brokerage & market fees</small><b>{etb(fees)}</b></span><span><small>{order.side === "buy" ? "Amount payable" : "Net proceeds"}</small><strong>{etb(net)}</strong></span></div><div className="contract-meta"><span><small>ORDER ID</small><b>{order.id}</b></span><span><small>TRADE ID</small><b>{order.tradeId ?? "Pending"}</b></span><span><small>SETTLEMENT DATE</small><b>{order.settlementDate ?? "Pending"}</b></span><span><small>SETTLEMENT CYCLE</small><b>{settlementCycle || instrument?.cycle}</b></span></div><footer><p>This contract note records a manually captured execution in FrankBroker OS. It is subject to confirmation against the broker’s official books and external market records.</p><div><span>Captured by</span><b>{order.capturedBy ?? order.trader}</b><small>Authorized broker user</small></div></footer></article></div>;
+  const hasTrade = quantity > 0;
+  const noteNumber = order.contractNoteNumber ?? (hasTrade ? `CN-${order.id}` : `DRAFT-${order.id}`);
+  return <div className="drawer-content contract-wrapper"><div className="contract-toolbar"><div><span className="eyebrow">PRINTABLE CONTRACT NOTE</span><h2>{order.tradeId ?? "Trade pending"}</h2></div><button className="btn primary" onClick={onPrint} disabled={!hasTrade || busy}>{busy ? "Recording…" : "Print / Save PDF"}</button></div>{!hasTrade && <div className="permission-note">A final contract note is available only after an execution has been captured.</div>}<article className="contract-note"><header><div className="contract-brand"><img src="/frankscore-icon.png" alt="" /><span><b>{tenantInfo.name}</b><small>Licensed securities broker{tenantInfo.license ? ` · ${tenantInfo.license}` : ""}</small></span></div><div><b>CONTRACT NOTE</b><small>{hasTrade ? "Original · Client copy" : "Draft preview"}</small></div></header><section><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · Addis Ababa, Ethiopia</span></div><div><small>CONTRACT NOTE NO.</small><b>{noteNumber}</b><span>Trade date · {displayTradeDate}</span></div></section><table><thead><tr><th>Security</th><th>Side</th><th className="num">Quantity</th><th className="num">Average execution price (ETB)</th><th className="num">Gross (ETB)</th></tr></thead><tbody><tr><td><b>{order.symbol}</b><small>{instrument?.name ?? "Tenant instrument"}</small></td><td>{order.side.toUpperCase()}</td><td className="num">{fmt.format(quantity)}</td><td className="num">{fmt.format(price)}</td><td className="num"><b>{fmt.format(gross)}</b></td></tr></tbody></table><div className="contract-totals"><span><small>Gross consideration</small><b>{etb(gross)}</b></span><span><small>Brokerage & market fees</small><b>{etb(fees)}</b></span><span><small>{order.side === "buy" ? "Amount payable" : "Net proceeds"}</small><strong>{etb(net)}</strong></span></div><div className="contract-meta"><span><small>ORDER ID</small><b>{order.id}</b></span><span><small>FILLS</small><b>{order.trades?.length ?? (order.tradeId ? 1 : 0)}</b></span><span><small>SETTLEMENT DATE</small><b>{order.settlementDate ?? "Pending"}</b></span><span><small>SETTLEMENT CYCLE</small><b>{settlementCycle || instrument?.cycle}</b></span></div><footer><p>This contract note records manually captured execution data in FrankBroker OS and is backed by the order’s trade, ledger, and audit records.</p><div><span>Captured by</span><b>{order.capturedBy ?? order.trader}</b><small>Authorized broker user</small></div></footer></article></div>;
 }
