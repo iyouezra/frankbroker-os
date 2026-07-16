@@ -113,7 +113,11 @@ export async function POST(request: Request) {
   try {
     const actor = requirePermission(request, "create");
     const payload = await request.json() as Partial<CreateClientInput>;
-    const clientType = payload.clientType === "institution" ? "institution" : "individual";
+    const clientType = payload.clientType === "institution"
+      ? "institution"
+      : payload.clientType === "corporate"
+        ? "corporate"
+        : "individual";
     const result = await createClientForApproval(actor, {
       clientType,
       fullName: String(payload.fullName ?? ""),

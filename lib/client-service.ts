@@ -5,7 +5,7 @@ import type { Actor } from "./server-auth";
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
 export type CreateClientInput = {
-  clientType: "individual" | "institution";
+  clientType: "individual" | "corporate" | "institution";
   fullName: string;
   phone: string;
   email?: string;
@@ -38,8 +38,9 @@ function validateCreateInput(input: CreateClientInput) {
   if (tin.length < 10 || tin.length > 12) return "TIN must contain 10 to 12 digits.";
   if (input.address.trim().length < 4) return "A current or registered address is required.";
   if (input.proofOfAddressType.trim().length < 3 || input.proofOfAddressReference.trim().length < 4) return "Proof-of-address type and reference are required.";
-  if (input.clientType === "institution") {
-    if ((input.businessRegistrationNumber?.trim().length ?? 0) < 4) return "Business registration is required for an institution.";
+  const organization = input.clientType === "institution" || input.clientType === "corporate";
+  if (organization) {
+    if ((input.businessRegistrationNumber?.trim().length ?? 0) < 4) return "Business registration is required for an organization.";
     if ((input.authorizedRepresentativeName?.trim().length ?? 0) < 3) return "An authorized representative is required.";
     if ((input.beneficialOwnerName?.trim().length ?? 0) < 3) return "A beneficial owner or controller must be declared.";
     if (!input.signatoryAuthorityConfirmed) return "Signatory authority must be confirmed.";
@@ -91,7 +92,7 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         businessRegistrationNumber: input.businessRegistrationNumber?.trim() || null,
         authorizedRepresentativeName: input.authorizedRepresentativeName?.trim() || null,
         signatoryAuthorityConfirmed: input.clientType === "individual" || Boolean(input.signatoryAuthorityConfirmed),
-        beneficialOwners: input.clientType === "institution" && input.beneficialOwnerName
+        beneficialOwners: input.clientType !== "individual" && input.beneficialOwnerName
           ? [{ name: input.beneficialOwnerName.trim(), status: "declared" }]
           : undefined,
         electronicDeliveryConsentAt: input.electronicDeliveryConsent ? now : null,
@@ -179,7 +180,7 @@ export async function approveClient(actor: Actor, clientId: string) {
     if ((settings?.makerChecker ?? true) && client.createdBy === actor.id) {
       throw new Response("Four-eyes control: the client creator cannot approve this onboarding record.", { status: 409 });
     }
-    const institutional = client.clientType === "institution";
+    const institutional = client.clientType === "institution" || client.clientType === "corporate";
     const documentReady = client.proofOfAddressStatus === "received"
       && Boolean(client.identityReference && client.faydaLast4 && client.taxIdLast4)
       && (!institutional || Boolean(client.businessRegistrationNumber && client.authorizedRepresentativeName && client.signatoryAuthorityConfirmed && client.beneficialOwners));

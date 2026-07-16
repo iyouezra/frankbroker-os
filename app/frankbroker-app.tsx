@@ -13,7 +13,7 @@ type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | 
 type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string };
 type NewClientValue = {
-  clientType: "individual" | "institution";
+  clientType: "individual" | "corporate" | "institution";
   fullName: string;
   phone: string;
   email: string;
@@ -30,6 +30,14 @@ type NewClientValue = {
   riskRating: "standard" | "enhanced" | "review";
   termsAccepted: boolean;
   electronicDeliveryConsent: boolean;
+};
+type ClientDirectoryResponse = {
+  clients: BrokerClient[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  facets: {
+    types: { all: number; individual: number; corporate: number; institution: number };
+    statuses: Record<string, number>;
+  };
 };
 type TradeValue = { quantity: string; price: string; tradeDate: string; captureReference: string };
 type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
@@ -827,8 +835,26 @@ function OrderTable({ orders, instruments, onOpen }: { orders: DemoOrder[]; inst
 }
 
 function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role, onNewClient, onRefresh, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; role: Role; onNewClient: () => void; onRefresh: () => Promise<void>; onOpenOrder: (order: DemoOrder) => void }) {
-  const selected = clients.find((client) => client.id === selectedId) ?? clients[0];
-  const fallbackOrders = orders.filter((order) => order.accountId === selected?.accountId);
+  const [directoryRows, setDirectoryRows] = useState<BrokerClient[]>(clients);
+  const [directorySelection, setDirectorySelection] = useState<BrokerClient | null>(null);
+  const [directoryQuery, setDirectoryQuery] = useState("");
+  const [debouncedDirectoryQuery, setDebouncedDirectoryQuery] = useState("");
+  const [clientTypeFilter, setClientTypeFilter] = useState<"all" | "individual" | "corporate" | "institution">("all");
+  const [clientStatusFilter, setClientStatusFilter] = useState("all");
+  const [clientKycFilter, setClientKycFilter] = useState("all");
+  const [clientSort, setClientSort] = useState<"name" | "newest">("name");
+  const [directoryPage, setDirectoryPage] = useState(1);
+  const [directoryPageSize, setDirectoryPageSize] = useState(25);
+  const [directoryMeta, setDirectoryMeta] = useState<ClientDirectoryResponse["pagination"]>({ page: 1, pageSize: 25, total: clients.length, pageCount: 1 });
+  const [directoryFacets, setDirectoryFacets] = useState<ClientDirectoryResponse["facets"]>({
+    types: {
+      all: clients.length,
+      individual: clients.filter((client) => client.type.toLowerCase() === "individual").length,
+      corporate: clients.filter((client) => client.type.toLowerCase() === "corporate").length,
+      institution: clients.filter((client) => client.type.toLowerCase() === "institution").length,
+    },
+    statuses: {},
+  });
   const [tab, setTab] = useState<Client360Tab>("overview");
   const [detail, setDetail] = useState<Client360Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -836,6 +862,68 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
   const [refreshKey, setRefreshKey] = useState(0);
   const [noteText, setNoteText] = useState("");
   const [noteCategory, setNoteCategory] = useState("general");
+  const selected = directoryRows.find((client) => client.id === selectedId)
+    ?? clients.find((client) => client.id === selectedId)
+    ?? (directorySelection?.id === selectedId ? directorySelection : null)
+    ?? directoryRows[0]
+    ?? clients[0];
+  const fallbackOrders = orders.filter((order) => order.accountId === selected?.accountId);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedDirectoryQuery(directoryQuery.trim());
+      setDirectoryPage(1);
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [directoryQuery]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      page: String(directoryPage),
+      pageSize: String(directoryPageSize),
+      sort: clientSort,
+    });
+    if (debouncedDirectoryQuery) params.set("query", debouncedDirectoryQuery);
+    if (clientTypeFilter !== "all") params.set("type", clientTypeFilter);
+    if (clientStatusFilter !== "all") params.set("status", clientStatusFilter);
+    if (clientKycFilter !== "all") params.set("kyc", clientKycFilter);
+    void fetch(`/api/clients/directory?${params.toString()}`, {
+      headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role },
+      signal: controller.signal,
+    })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((result: ClientDirectoryResponse) => {
+        setDirectoryRows(result.clients);
+        setDirectoryMeta(result.pagination);
+        setDirectoryFacets(result.facets);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        const needle = debouncedDirectoryQuery.toLowerCase();
+        const filtered = clients
+          .filter((client) => clientTypeFilter === "all" || client.type.toLowerCase() === clientTypeFilter)
+          .filter((client) => clientStatusFilter === "all" || client.status === clientStatusFilter)
+          .filter((client) => clientKycFilter === "all" || client.kyc === clientKycFilter)
+          .filter((client) => !needle || [client.name, client.code, client.accountNumber].some((value) => value.toLowerCase().includes(needle)))
+          .sort((left, right) => clientSort === "newest"
+            ? (right.submittedAt ?? "").localeCompare(left.submittedAt ?? "")
+            : left.name.localeCompare(right.name));
+        const pageCount = Math.max(1, Math.ceil(filtered.length / directoryPageSize));
+        const safePage = Math.min(directoryPage, pageCount);
+        const fallbackTypes = { all: clients.length, individual: 0, corporate: 0, institution: 0 };
+        const fallbackStatuses: Record<string, number> = {};
+        clients.forEach((client) => {
+          const type = client.type.toLowerCase();
+          if (type === "individual" || type === "corporate" || type === "institution") fallbackTypes[type] += 1;
+          fallbackStatuses[client.status] = (fallbackStatuses[client.status] ?? 0) + 1;
+        });
+        setDirectoryRows(filtered.slice((safePage - 1) * directoryPageSize, safePage * directoryPageSize));
+        setDirectoryMeta({ page: safePage, pageSize: directoryPageSize, total: filtered.length, pageCount });
+        setDirectoryFacets({ types: fallbackTypes, statuses: fallbackStatuses });
+      });
+    return () => controller.abort();
+  }, [clientKycFilter, clientSort, clientStatusFilter, clientTypeFilter, clients, debouncedDirectoryQuery, directoryPage, directoryPageSize, refreshKey, role]);
 
   useEffect(() => {
     if (!selected) return;
@@ -973,8 +1061,27 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
   ];
 
   return <>
-    <SectionHeader eyebrow="CLIENT 360" title="Client accounts" copy="A complete operational view of readiness, assets, orders, trades, settlement, documents, and control history." action={<><span className="demo-control-badge">{detail ? "CONTROLLED BROKER VIEW" : "DEMO FALLBACK VIEW"}</span>{hasPermission(role, "create") && <button className="btn primary" onClick={onNewClient}>＋ Add client</button>}</>} />
-    <div className="client-picker">{clients.map((client) => <button className={client.id === selected.id ? "active" : ""} key={client.id} onClick={() => { onSelect(client.id); setTab("overview"); setMessage(""); setDetail(null); }}><span>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><b>{client.name}</b><small>{client.code} · {displayLabel(client.kyc)}</small></div><i className={client.status === "active" ? "ready" : "warning"} /></button>)}</div>
+    <SectionHeader eyebrow="CLIENT DIRECTORY" title="Clients & accounts" copy="Search and segment the full client book, then open a controlled Client 360 workspace." action={<><span className="demo-control-badge">{directoryMeta.total.toLocaleString("en-US")} CLIENTS</span>{hasPermission(role, "create") && <button className="btn primary" onClick={onNewClient}>＋ Add client</button>}</>} />
+    <section className="panel client-directory">
+      <div className="client-directory-tabs" role="tablist" aria-label="Client type">
+        {([
+          ["all", "All clients"],
+          ["individual", "Individual"],
+          ["corporate", "Corporate"],
+          ["institution", "Institutional"],
+        ] as const).map(([id, label]) => <button role="tab" aria-selected={clientTypeFilter === id} className={clientTypeFilter === id ? "active" : ""} key={id} onClick={() => { setClientTypeFilter(id); setDirectoryPage(1); }}>{label}<b>{directoryFacets.types[id]}</b></button>)}
+      </div>
+      <div className="client-directory-controls">
+        <label className="client-directory-search"><Icon name="search" size={16} /><input aria-label="Search client directory" placeholder="Search name, client code, or account…" value={directoryQuery} onChange={(event) => setDirectoryQuery(event.target.value)} /></label>
+        <label>Status<select value={clientStatusFilter} onChange={(event) => { setClientStatusFilter(event.target.value); setDirectoryPage(1); }}><option value="all">All statuses</option><option value="active">Active</option><option value="pending_approval">Pending approval</option><option value="restricted">Restricted</option><option value="rejected">Rejected</option></select></label>
+        <label>KYC<select value={clientKycFilter} onChange={(event) => { setClientKycFilter(event.target.value); setDirectoryPage(1); }}><option value="all">All KYC states</option><option value="approved">Approved</option><option value="pending_review">Pending review</option><option value="review_due">Review due</option><option value="rejected">Rejected</option></select></label>
+        <label>Sort<select value={clientSort} onChange={(event) => { setClientSort(event.target.value as "name" | "newest"); setDirectoryPage(1); }}><option value="name">Name A–Z</option><option value="newest">Newest first</option></select></label>
+      </div>
+      <div className="client-directory-summary"><span>{directoryMeta.total.toLocaleString("en-US")} matching clients</span><span>Active <b>{directoryFacets.statuses.active ?? 0}</b></span><span>Pending approval <b>{directoryFacets.statuses.pending_approval ?? 0}</b></span><span>Restricted <b>{directoryFacets.statuses.restricted ?? 0}</b></span></div>
+      {directoryRows.length ? <div className="table-scroll"><table className="client-directory-table"><thead><tr><th>Client</th><th>Category</th><th>Trading account</th><th>KYC</th><th>Account status</th><th className="num">Available cash</th><th className="num">Holdings</th><th className="num">Orders</th><th /></tr></thead><tbody>{directoryRows.map((client) => <tr className={client.id === selected.id ? "selected" : ""} key={client.id} onClick={() => { setDirectorySelection(client); onSelect(client.id); setTab("overview"); setMessage(""); setDetail(null); }}><td><span className="directory-client-cell"><i>{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><span><b>{client.name}</b><small>{client.code}</small></span></span></td><td><span className={`client-type-badge type-${client.type.toLowerCase()}`}>{displayLabel(client.type)}</span></td><td><b>{client.accountNumber}</b><small>{client.accountId ? "Cash brokerage account" : "No account"}</small></td><td><span className={`directory-state ${client.kyc === "approved" ? "ready" : client.kyc === "rejected" ? "blocked" : "review"}`}><i />{displayLabel(client.kyc)}</span></td><td><span className={`directory-state ${client.status === "active" ? "ready" : client.status === "rejected" ? "blocked" : "review"}`}><i />{displayLabel(client.status)}</span></td><td className="num"><b>{etb(client.availableCash)}</b><small>{client.blockedCash ? `${etb(client.blockedCash)} blocked` : "No cash blocked"}</small></td><td className="num"><b>{client.holdingCount ?? client.holdings.length}</b></td><td className="num"><b>{client.orderCount}</b></td><td><button className="directory-open" onClick={(event) => { event.stopPropagation(); setDirectorySelection(client); onSelect(client.id); setTab("overview"); setMessage(""); setDetail(null); }}>Open →</button></td></tr>)}</tbody></table></div> : <EmptyState title="No clients match these filters" copy="Try a different category, status, KYC state, or search term." />}
+      <footer className="client-directory-pagination"><label>Rows<select value={directoryPageSize} onChange={(event) => { setDirectoryPageSize(Number(event.target.value)); setDirectoryPage(1); }}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label><span>Page {directoryMeta.page} of {directoryMeta.pageCount}</span><div><button disabled={directoryMeta.page <= 1} onClick={() => setDirectoryPage((page) => Math.max(1, page - 1))}>Previous</button><button disabled={directoryMeta.page >= directoryMeta.pageCount} onClick={() => setDirectoryPage((page) => Math.min(directoryMeta.pageCount, page + 1))}>Next</button></div></footer>
+    </section>
+    <div className="client-workspace-label"><span>CLIENT 360 WORKSPACE</span><b>{selected.name}</b><small>{selected.code} · {displayLabel(selected.type)}</small></div>
     <section className="panel client-360-hero">
       <div className="client-360-identity"><span>{model.client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><small>{displayLabel(model.client.type)} · {model.client.code}</small><h2>{model.client.name}</h2><p>{model.client.phone ?? "Phone not recorded"} · {model.client.email ?? "Email not recorded"}</p></div></div>
       <div className="client-360-statuses"><span className={`status ${model.readiness.canTrade ? "status-success" : "status-danger"}`}><i />{model.readiness.canTrade ? "Trade ready" : "Not trade ready"}</span><span className={`status ${model.client.kycStatus === "approved" ? "status-success" : "status-warning"}`}><i />KYC {displayLabel(model.client.kycStatus)}</span><span className={`status ${model.client.accountStatus === "active" ? "status-success" : "status-warning"}`}><i />{displayLabel(model.client.accountStatus)}</span></div>
@@ -1051,7 +1158,7 @@ function AuditPage({ events }: { events: AuditEntry[] }) {
 }
 
 function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: NewClientValue; setValue: (value: NewClientValue) => void; busy: boolean; onCancel: () => void; onSubmit: (event: FormEvent) => void }) {
-  const institution = value.clientType === "institution";
+  const organization = value.clientType === "institution" || value.clientType === "corporate";
   const faydaValid = /^\d{12}$/.test(value.faydaId);
   const tinValid = /^\d{10,12}$/.test(value.tin.replace(/\D/g, ""));
   const ready = value.fullName.trim().length >= 3
@@ -1061,7 +1168,7 @@ function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: N
     && value.address.trim().length >= 4
     && value.proofOfAddressReference.trim().length >= 4
     && value.termsAccepted
-    && (!institution || (
+    && (!organization || (
       value.businessRegistrationNumber.trim().length >= 4
       && value.authorizedRepresentativeName.trim().length >= 3
       && value.beneficialOwnerName.trim().length >= 3
@@ -1073,19 +1180,19 @@ function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: N
     <div className="stepper"><span className="active">1 <b>Client record</b></span><i /><span className={ready ? "active" : ""}>2 <b>Approval</b></span><i /><span>3 <b>Trading active</b></span></div>
     <section className="form-section">
       <h3>Account owner</h3>
-      <div className="segmented"><button type="button" className={value.clientType === "individual" ? "active buy" : ""} onClick={() => set("clientType", "individual")}>INDIVIDUAL</button><button type="button" className={value.clientType === "institution" ? "active buy" : ""} onClick={() => set("clientType", "institution")}>INSTITUTION</button></div>
-      <label>{institution ? "Legal organization name" : "Full legal name"}<input value={value.fullName} onChange={(event) => set("fullName", event.target.value)} placeholder="As shown on official records" /></label>
+      <div className="segmented three"><button type="button" className={value.clientType === "individual" ? "active buy" : ""} onClick={() => set("clientType", "individual")}>INDIVIDUAL</button><button type="button" className={value.clientType === "corporate" ? "active buy" : ""} onClick={() => set("clientType", "corporate")}>CORPORATE</button><button type="button" className={value.clientType === "institution" ? "active buy" : ""} onClick={() => set("clientType", "institution")}>INSTITUTIONAL</button></div>
+      <label>{organization ? "Legal organization name" : "Full legal name"}<input value={value.fullName} onChange={(event) => set("fullName", event.target.value)} placeholder="As shown on official records" /></label>
       <div className="field-row"><label>Phone<input value={value.phone} onChange={(event) => set("phone", event.target.value.replace(/[^0-9+]/g, ""))} placeholder="+251…" /></label><label>Email<input type="email" value={value.email} onChange={(event) => set("email", event.target.value)} placeholder="client@example.et" /></label></div>
-      <label>{institution ? "Registered address" : "Current address"}<input value={value.address} onChange={(event) => set("address", event.target.value)} placeholder="City, sub-city, and locality" /></label>
+      <label>{organization ? "Registered address" : "Current address"}<input value={value.address} onChange={(event) => set("address", event.target.value)} placeholder="City, sub-city, and locality" /></label>
     </section>
     <section className="form-section">
       <h3>Identity and tax</h3>
-      <div className="field-row"><label>{institution ? "Representative Fayda FIN" : "Fayda FIN"}<input inputMode="numeric" maxLength={12} value={value.faydaId} onChange={(event) => set("faydaId", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digits" /><small>{value.faydaId && !faydaValid ? "FIN must contain 12 digits." : "Only a masked reference is retained."}</small></label><label>TIN<input inputMode="numeric" value={value.tin} onChange={(event) => set("tin", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="10–12 digits" /><small>{value.tin && !tinValid ? "Enter a valid TIN." : "Used for tax and account records."}</small></label></div>
+      <div className="field-row"><label>{organization ? "Representative Fayda FIN" : "Fayda FIN"}<input inputMode="numeric" maxLength={12} value={value.faydaId} onChange={(event) => set("faydaId", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digits" /><small>{value.faydaId && !faydaValid ? "FIN must contain 12 digits." : "Only a masked reference is retained."}</small></label><label>TIN<input inputMode="numeric" value={value.tin} onChange={(event) => set("tin", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="10–12 digits" /><small>{value.tin && !tinValid ? "Enter a valid TIN." : "Used for tax and account records."}</small></label></div>
       <div className="field-row"><label>Proof of address<select value={value.proofOfAddressType} onChange={(event) => set("proofOfAddressType", event.target.value)}><option>Bank letter</option><option>Utility bill</option><option>Government correspondence</option><option>Business license</option><option>Lease agreement</option></select></label><label>Document reference<input value={value.proofOfAddressReference} onChange={(event) => set("proofOfAddressReference", event.target.value)} placeholder="Internal document reference" /></label></div>
       <label>CSD account/reference <span className="optional-label">optional</span><input value={value.csdReference} onChange={(event) => set("csdReference", event.target.value)} placeholder="Record when available" /></label>
     </section>
-    {institution && <section className="form-section">
-      <h3>Institutional authority</h3>
+    {organization && <section className="form-section">
+      <h3>{value.clientType === "corporate" ? "Corporate authority" : "Institutional authority"}</h3>
       <label>Business registration number<input value={value.businessRegistrationNumber} onChange={(event) => set("businessRegistrationNumber", event.target.value)} /></label>
       <div className="field-row"><label>Authorized representative<input value={value.authorizedRepresentativeName} onChange={(event) => set("authorizedRepresentativeName", event.target.value)} /></label><label>Beneficial owner / controller<input value={value.beneficialOwnerName} onChange={(event) => set("beneficialOwnerName", event.target.value)} /></label></div>
       <label className="control-checkbox"><input type="checkbox" checked={value.signatoryAuthorityConfirmed} onChange={(event) => set("signatoryAuthorityConfirmed", event.target.checked)} /><i>{value.signatoryAuthorityConfirmed ? "✓" : ""}</i><span><b>Signatory authority confirmed</b><small>The representative is authorized to open and operate the account.</small></span></label>

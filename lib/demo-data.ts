@@ -139,6 +139,7 @@ export type BrokerClient = {
     resolutionNotes?: string | null;
   }>;
   holdings: Array<{ symbol: string; name: string; total: number; available: number; blocked: number; averageCost: number }>;
+  holdingCount?: number;
   ledger: Array<{ id: string; valueDate: string; reference: string; type: string; amount: number; runningBalance: number }>;
   orderCount: number;
 };

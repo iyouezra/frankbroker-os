@@ -149,3 +149,30 @@ test("broker onboarding is wired through approval into the New Order client list
   assert.match(styles, /select:not\(\[multiple\]\)/);
   assert.match(migration, /clients_created_by_fkey/);
 });
+
+test("client accounts use a paginated directory with distinct client categories", async () => {
+  const root = new URL("../", import.meta.url);
+  const [ui, directoryRoute, service, styles] = await Promise.all([
+    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readFile(new URL("app/api/clients/directory/route.ts", root), "utf8"),
+    readFile(new URL("lib/client-service.ts", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+  assert.match(ui, /CLIENT DIRECTORY/);
+  assert.match(ui, /Search name, client code, or account/);
+  assert.match(ui, /All clients/);
+  assert.match(ui, /Individual/);
+  assert.match(ui, /Corporate/);
+  assert.match(ui, /Institutional/);
+  assert.match(ui, /Rows<select/);
+  assert.doesNotMatch(ui, /className="client-picker"/);
+  assert.match(directoryRoute, /pageSize/);
+  assert.match(directoryRoute, /skip: \(page - 1\) \* pageSize/);
+  assert.match(directoryRoute, /take: pageSize/);
+  assert.match(directoryRoute, /accountNumber: \{ contains: query/);
+  assert.match(directoryRoute, /clientType: requestedType/);
+  assert.match(service, /"individual" \| "corporate" \| "institution"/);
+  assert.match(styles, /\.client-directory-table/);
+  assert.match(styles, /\.client-type-badge\.type-corporate/);
+  assert.match(styles, /\.segmented\.three/);
+});
