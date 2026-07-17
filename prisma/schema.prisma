@@ -618,6 +618,7 @@ model AuditLog {
 
 model Notification {
   id         String    @id
+  dedupeKey  String?   @unique @map("dedupe_key") // set for scheduled reminders so re-runs don't duplicate
   brokerId   String?   @map("broker_id")
   scope      String    // "broker" | "investor" | "platform"
   roles      String?   // comma-separated broker roles; null = all broker staff

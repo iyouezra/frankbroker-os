@@ -22,6 +22,8 @@ const demoBroker: Array<NotificationItem & { roles: string[] }> = [
   { id: "ntf_b4", roles: ["broker_admin", "settlement", "operations"], category: "trade", severity: "info", title: "Trade captured · GB2029", body: "25,000 GB2029 filled at 99.85 ETB. Settlement due 2026-07-16.", entityType: "order", entityId: "ORD-2026-1046", createdAt: "2026-07-14T09:58:00Z", read: false },
   { id: "ntf_b5", roles: ["broker_admin", "settlement", "operations"], category: "reconciliation", severity: "critical", title: "Reconciliation exception opened", body: "Cash variance of 18,250.00 ETB on TRD-2026-0759 needs resolution.", entityType: "reconciliation", entityId: "REC-2026-0714-A", createdAt: "2026-07-14T09:15:00Z", read: true },
   { id: "ntf_b6", roles: ["broker_admin", "operations"], category: "settlement", severity: "success", title: "Settlement confirmed · GB2031", body: "TRD-2026-0768 for order ORD-2026-1045 settled (303,309.00 ETB).", entityType: "order", entityId: "ORD-2026-1045", createdAt: "2026-07-14T09:34:00Z", read: true },
+  { id: "ntf_b7", roles: ["broker_admin", "settlement", "operations"], category: "settlement", severity: "warning", title: "Settlement due today · GB2029", body: "TRD-2026-0772 for order ORD-2026-1046 (2,508,731.25 ETB) is due for settlement today.", entityType: "order", entityId: "ORD-2026-1046", createdAt: "2026-07-14T07:05:00Z", read: false },
+  { id: "ntf_b8", roles: ["broker_admin", "compliance"], category: "kyc", severity: "info", title: "KYC review due soon · Meron Bekele", body: "Periodic KYC review for CL-10041 is due 2026-07-20.", entityType: "client", entityId: "cli_meron", createdAt: "2026-07-14T07:05:00Z", read: false },
 ];
 
 const demoInvestor: NotificationItem[] = [
@@ -29,6 +31,7 @@ const demoInvestor: NotificationItem[] = [
   { id: "ntf_i2", category: "order", severity: "success", title: "Order approved", body: "Your buy order for 120 TELE was approved by your broker.", entityType: "order", entityId: "ORD-2026-1050", createdAt: "2026-07-14T10:24:00Z", read: false },
   { id: "ntf_i3", category: "trade", severity: "success", title: "Order executed", body: "120 TELE bought at 305.00 ETB. Settlement is due 2026-07-16.", entityType: "order", entityId: "ORD-2026-1050", createdAt: "2026-07-14T11:02:00Z", read: false },
   { id: "ntf_i4", category: "system", severity: "info", title: "Dividend season is coming", body: "TELE has historically paid in September. You hold 120 shares.", createdAt: "2026-07-13T14:30:00Z", read: true },
+  { id: "ntf_i5", category: "settlement", severity: "info", title: "Settlement due today", body: "Your buy of TELE is settling today.", entityType: "order", entityId: "ORD-2026-1050", createdAt: "2026-07-14T07:05:00Z", read: false },
 ];
 
 const demoPlatform: NotificationItem[] = [

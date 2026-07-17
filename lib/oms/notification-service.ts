@@ -1,4 +1,5 @@
 import type { Prisma } from "../../app/generated/prisma/client";
+import { prisma } from "../prisma";
 
 /**
  * In-app notifications. Written inside the same transaction as the audit/order
@@ -29,25 +30,47 @@ export type NotifyInput = {
   entityType?: string;
   entityId?: string;
   link?: string;
+  dedupeKey?: string | null;
 };
 
+function notificationData(input: NotifyInput) {
+  return {
+    id: crypto.randomUUID(),
+    dedupeKey: input.dedupeKey ?? null,
+    scope: input.scope,
+    brokerId: input.brokerId ?? null,
+    roles: input.roles && input.roles.length ? input.roles.join(",") : null,
+    clientId: input.clientId ?? null,
+    category: input.category,
+    severity: input.severity ?? "info",
+    title: input.title,
+    body: input.body,
+    entityType: input.entityType ?? null,
+    entityId: input.entityId ?? null,
+    link: input.link ?? null,
+  };
+}
+
 export async function writeNotification(tx: Prisma.TransactionClient, input: NotifyInput) {
-  return tx.notification.create({
-    data: {
-      id: crypto.randomUUID(),
-      scope: input.scope,
-      brokerId: input.brokerId ?? null,
-      roles: input.roles && input.roles.length ? input.roles.join(",") : null,
-      clientId: input.clientId ?? null,
-      category: input.category,
-      severity: input.severity ?? "info",
-      title: input.title,
-      body: input.body,
-      entityType: input.entityType ?? null,
-      entityId: input.entityId ?? null,
-      link: input.link ?? null,
-    },
-  });
+  return tx.notification.create({ data: notificationData(input) });
+}
+
+/**
+ * Create a notification only if one with the same `dedupeKey` does not already
+ * exist. Used by the scheduled sweep so re-running the daily job (or running it
+ * more than once a day) never produces duplicate reminders. Returns true when a
+ * new notification was created.
+ */
+export async function createNotificationOnce(input: NotifyInput & { dedupeKey: string }): Promise<boolean> {
+  try {
+    await prisma.notification.create({ data: notificationData(input) });
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "P2002") {
+      return false; // reminder already sent for this key
+    }
+    throw error;
+  }
 }
 
 /** True when a broker user with `role` should see a broker-scoped notification. */
