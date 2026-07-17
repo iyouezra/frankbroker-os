@@ -17,6 +17,7 @@ import {
   type TenantIntegration,
 } from "../../lib/admin-data";
 import styles from "./admin.module.css";
+import { demoPlatformNotifications, timeAgo, type NotificationItem } from "../../lib/notifications-demo";
 
 type View = "overview" | "tenants" | "instruments" | "users" | "controls" | "integrations" | "audit";
 type ConfigTab = "identity" | "features" | "branding" | "legal";
@@ -43,6 +44,7 @@ const ICON_PATHS: Record<string, string> = {
   collapse: "M9 3v18 M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
   moon: "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z",
   sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4",
+  bell: "M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
 };
 
 function Icon({ name, size = 19 }: { name: string; size?: number }) {
@@ -191,6 +193,8 @@ export default function AdminConsole() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [bellOpen, setBellOpen] = useState(false);
   const [toast, setToast] = useState("");
   const tenant = tenants.find((item) => item.id === tenantId) ?? tenants[0];
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
@@ -199,6 +203,30 @@ export default function AdminConsole() {
     setTheme(next);
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem("frank-theme", next); } catch { /* storage unavailable */ }
+  };
+  const platformHeaders = { "x-frank-demo-role": "super_admin" };
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/notifications", { headers: platformHeaders, signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
+      .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
+      .catch(() => setNotifications(demoPlatformNotifications()));
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const unreadNotifs = notifications.filter((item) => !item.read).length;
+  const markAllNotifsRead = () => {
+    setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+    void fetch("/api/notifications", { method: "PATCH", headers: { ...platformHeaders, "content-type": "application/json" }, body: JSON.stringify({ all: true }) }).catch(() => undefined);
+  };
+  const openNotification = (item: NotificationItem) => {
+    setNotifications((current) => current.map((row) => row.id === item.id ? { ...row, read: true } : row));
+    void fetch("/api/notifications", { method: "PATCH", headers: { ...platformHeaders, "content-type": "application/json" }, body: JSON.stringify({ id: item.id }) }).catch(() => undefined);
+    setBellOpen(false);
+    if (item.entityType === "tenant" && item.entityId && tenants.some((tenant) => tenant.id === item.entityId)) {
+      setTenantId(item.entityId);
+      setView("tenants");
+    }
   };
   const updateTenant = (next: TenantConfig) => setTenants((current) => current.map((item) => item.id === next.id ? next : item));
   const request = async (method: "POST" | "PATCH", body: unknown) => {
@@ -250,5 +278,5 @@ export default function AdminConsole() {
   };
   const enabledFeatures = useMemo(() => Object.values(tenant.features).filter(Boolean).length, [tenant.features]);
 
-  return <main className={styles.adminShell}><aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ""}`}><div className={styles.brand}><span><Image src="/frankscore-icon.png" width={32} height={32} alt="" /></span><div><b>FrankBroker</b><small>PLATFORM ADMIN</small></div><button className={styles.sidebarToggle} onClick={() => setCollapsed((current) => !current)} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand" : "Collapse"}><Icon name="collapse" size={18} /></button></div><nav aria-label="Admin navigation">{navItems.map((item) => <button key={item.id} className={view === item.id ? styles.navActive : ""} onClick={() => setView(item.id)} title={item.label}><i><Icon name={item.icon} size={19} /></i><span>{item.label}</span>{item.id === "tenants" && <em>{tenants.length}</em>}</button>)}</nav><div className={styles.sidebarFoot}><span><i /><b>Shared platform</b></span><small>Database-backed when connected</small></div></aside><section className={styles.workspace}><header className={styles.topbar}><div className={styles.mobileBrand}><Image src="/frankscore-icon.png" width={27} height={27} alt="" /><b>FrankBroker Admin</b></div><label className={styles.contextSelect}><small>TENANT CONTEXT</small><select value={tenantId} onChange={(event) => setTenantId(event.target.value)}>{tenants.map((item) => <option key={item.id} value={item.id}>{item.tradingName}</option>)}</select></label><span className={styles.contextMeta}><Status value={tenant.status} /><b>{enabledFeatures}/8 features</b></span><button className={styles.themeToggle} onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className={styles.adminUser}><span>FY</span><div><b>Fikru Yilma</b><small>Platform administrator</small></div></div></header><div className={styles.content}>{view === "overview" ? <Overview tenants={tenants} activity={auditEvents} onTenant={setTenantId} onConfigure={() => setView("tenants")} /> : view === "tenants" ? <TenantSettings tenant={tenant} tenants={tenants} tab={configTab} setTab={setConfigTab} onSelect={setTenantId} onUpdate={updateTenant} onSave={save} /> : view === "instruments" ? <Instruments tenant={tenant} instruments={instruments} onToggleTenant={toggleTenantInstrument} onToggleStatus={toggleInstrumentStatus} /> : view === "users" ? <Users tenant={tenant} users={users} onInvite={() => setInviteOpen(true)} onToggle={toggleUser} /> : view === "controls" ? <Controls tenant={tenant} onUpdate={updateTenant} onSave={save} /> : view === "integrations" ? <Integrations tenant={tenant} integrations={integrations} onChange={changeIntegration} /> : <Audit tenantId={tenant.id} events={auditEvents} />}</div></section>{inviteOpen && <InviteDialog tenant={tenant} onClose={() => setInviteOpen(false)} onInvite={inviteUser} />}{toast && <div className={styles.toast} role="status"><i>✓</i><span><b>Change recorded</b><small>{toast}</small></span></div>}</main>;
+  return <main className={styles.adminShell}><aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ""}`}><div className={styles.brand}><span><Image src="/frankscore-icon.png" width={32} height={32} alt="" /></span><div><b>FrankBroker</b><small>PLATFORM ADMIN</small></div><button className={styles.sidebarToggle} onClick={() => setCollapsed((current) => !current)} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand" : "Collapse"}><Icon name="collapse" size={18} /></button></div><nav aria-label="Admin navigation">{navItems.map((item) => <button key={item.id} className={view === item.id ? styles.navActive : ""} onClick={() => setView(item.id)} title={item.label}><i><Icon name={item.icon} size={19} /></i><span>{item.label}</span>{item.id === "tenants" && <em>{tenants.length}</em>}</button>)}</nav><div className={styles.sidebarFoot}><span><i /><b>Shared platform</b></span><small>Database-backed when connected</small></div></aside><section className={styles.workspace}><header className={styles.topbar}><div className={styles.mobileBrand}><Image src="/frankscore-icon.png" width={27} height={27} alt="" /><b>FrankBroker Admin</b></div><label className={styles.contextSelect}><small>TENANT CONTEXT</small><select value={tenantId} onChange={(event) => setTenantId(event.target.value)}>{tenants.map((item) => <option key={item.id} value={item.id}>{item.tradingName}</option>)}</select></label><span className={styles.contextMeta}><Status value={tenant.status} /><b>{enabledFeatures}/8 features</b></span><button className={styles.themeToggle} onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className={styles.notifWrap}><button className={styles.themeToggle} aria-label="Notifications" onClick={() => setBellOpen((value) => !value)}><Icon name="bell" size={18} />{unreadNotifs > 0 && <em>{unreadNotifs > 9 ? "9+" : unreadNotifs}</em>}</button>{bellOpen && <><div className={styles.notifScrim} onClick={() => setBellOpen(false)} /><div className={styles.notifPanel} role="dialog" aria-label="Notifications"><div className={styles.notifHead}><b>Platform activity</b>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <div className={styles.notifEmpty}>Nothing new right now.</div> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></div></>}</div><div className={styles.adminUser}><span>FY</span><div><b>Fikru Yilma</b><small>Platform administrator</small></div></div></header><div className={styles.content}>{view === "overview" ? <Overview tenants={tenants} activity={auditEvents} onTenant={setTenantId} onConfigure={() => setView("tenants")} /> : view === "tenants" ? <TenantSettings tenant={tenant} tenants={tenants} tab={configTab} setTab={setConfigTab} onSelect={setTenantId} onUpdate={updateTenant} onSave={save} /> : view === "instruments" ? <Instruments tenant={tenant} instruments={instruments} onToggleTenant={toggleTenantInstrument} onToggleStatus={toggleInstrumentStatus} /> : view === "users" ? <Users tenant={tenant} users={users} onInvite={() => setInviteOpen(true)} onToggle={toggleUser} /> : view === "controls" ? <Controls tenant={tenant} onUpdate={updateTenant} onSave={save} /> : view === "integrations" ? <Integrations tenant={tenant} integrations={integrations} onChange={changeIntegration} /> : <Audit tenantId={tenant.id} events={auditEvents} />}</div></section>{inviteOpen && <InviteDialog tenant={tenant} onClose={() => setInviteOpen(false)} onInvite={inviteUser} />}{toast && <div className={styles.toast} role="status"><i>✓</i><span><b>Change recorded</b><small>{toast}</small></span></div>}</main>;
 }

@@ -4,6 +4,7 @@ import { D, money, toNum, ZERO } from "../money";
 import { prisma } from "../prisma";
 import type { Actor } from "../server-auth";
 import { writeAudit, writeOrderEvent } from "./audit-service";
+import { writeNotification, SETTLEMENT } from "./notification-service";
 import { captureBuyFill, captureSellFill, type CashSnapshot, type SecuritySnapshot } from "./ledger-service";
 import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
 import { assertTransition, isExecutableStatus } from "./status";
@@ -370,6 +371,29 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
         newValue: { status: "settlement_pending" },
       });
     }
+
+    await writeNotification(tx, {
+      scope: "broker",
+      brokerId: actor.brokerId,
+      roles: SETTLEMENT,
+      category: "trade",
+      severity: "info",
+      title: `Trade captured · ${order.instrument.symbol}`,
+      body: `${toNum(quantity)} ${order.instrument.symbol} filled at ${toNum(executionPrice)} ETB. Settlement due ${settlementDate}.`,
+      entityType: "order",
+      entityId: orderId,
+    });
+    await writeNotification(tx, {
+      scope: "investor",
+      brokerId: actor.brokerId,
+      clientId: order.account.clientId,
+      category: "trade",
+      severity: "success",
+      title: "Order executed",
+      body: `${toNum(quantity)} ${order.instrument.symbol} ${order.side === "buy" ? "bought" : "sold"} at ${toNum(executionPrice)} ETB. Settlement is due ${settlementDate}.`,
+      entityType: "order",
+      entityId: orderId,
+    });
 
     return {
       status: finalStatus,

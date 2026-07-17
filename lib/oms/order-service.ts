@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { D, toNum, ZERO } from "../money";
 import { normalizeOrderType } from "../order-input";
 import { writeAudit, writeOrderEvent } from "./audit-service";
+import { writeNotification, APPROVERS, TRADERS } from "./notification-service";
 import {
   blockBuyCash,
   blockSellSecurities,
@@ -338,6 +339,36 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         newValue: { blockedQuantity: toNum(quantity) },
       });
     }
+    // Notify the broker roles who must review/approve this instruction.
+    if (valid) {
+      await writeNotification(tx, {
+        scope: "broker",
+        brokerId: actor.brokerId,
+        roles: APPROVERS,
+        category: "order",
+        severity: riskFlag === "review" ? "warning" : "info",
+        title: `Order awaiting review · ${instrument.symbol}`,
+        body: `${input.side.toUpperCase()} ${toNum(quantity)} ${instrument.symbol} for ${account.client.fullName} · ${toNum(amounts.net)} ETB${riskFlag === "review" ? " — flagged for enhanced review" : ""}.`,
+        entityType: "order",
+        entityId: id,
+      });
+    }
+    // Keep the investor informed about their own submission.
+    if (input.source === "investor_portal") {
+      await writeNotification(tx, {
+        scope: "investor",
+        brokerId: actor.brokerId,
+        clientId: account.clientId,
+        category: "order",
+        severity: valid ? "info" : "warning",
+        title: valid ? "Order submitted" : "Order needs attention",
+        body: valid
+          ? `Your ${input.side} order for ${toNum(quantity)} ${instrument.symbol} was submitted for broker review.`
+          : `Your ${input.side} order for ${instrument.symbol} was held: ${checks.filter((check) => !check.passed).map((check) => check.message)[0] ?? "pre-trade checks did not pass"}.`,
+        entityType: "order",
+        entityId: id,
+      });
+    }
   }, transactionOptions);
 
   return {
@@ -462,6 +493,28 @@ export async function approveOrder(actor: Actor, orderId: string) {
       previousValue: { status: order.status },
       newValue: { status: "approved" },
     });
+    await writeNotification(tx, {
+      scope: "broker",
+      brokerId: actor.brokerId,
+      roles: TRADERS,
+      category: "order",
+      severity: "info",
+      title: `Order approved · ${order.instrument.symbol}`,
+      body: `${order.side.toUpperCase()} ${toNum(order.quantity)} ${order.instrument.symbol} for ${order.account.client.fullName} is approved and ready to execute.`,
+      entityType: "order",
+      entityId: orderId,
+    });
+    await writeNotification(tx, {
+      scope: "investor",
+      brokerId: actor.brokerId,
+      clientId: order.account.clientId,
+      category: "order",
+      severity: "success",
+      title: "Order approved",
+      body: `Your ${order.side} order for ${toNum(order.quantity)} ${order.instrument.symbol} was approved by your broker.`,
+      entityType: "order",
+      entityId: orderId,
+    });
     return { status: "approved" as const };
   }, transactionOptions);
 }
@@ -469,7 +522,7 @@ export async function approveOrder(actor: Actor, orderId: string) {
 export async function rejectOrder(actor: Actor, orderId: string, reason: string) {
   return prisma.$transaction(async (tx) => {
     await lockOrder(tx, orderId);
-    const order = await tx.order.findUnique({ where: { id: orderId } });
+    const order = await tx.order.findUnique({ where: { id: orderId }, include: { account: { include: { client: true } }, instrument: true } });
     if (!order || order.brokerId !== actor.brokerId) throw new Response("Order not found for this tenant.", { status: 404 });
     assertTransition(order.status, "rejected");
     await releaseOrderReservation(tx, actor, order, reason);
@@ -488,6 +541,17 @@ export async function rejectOrder(actor: Actor, orderId: string, reason: string)
       previousValue: { status: order.status, blockedCash: toNum(order.blockedCash), blockedQuantity: toNum(order.blockedQuantity) },
       newValue: { status: "rejected", blockedCash: 0, blockedQuantity: 0 },
       reason,
+    });
+    await writeNotification(tx, {
+      scope: "investor",
+      brokerId: actor.brokerId,
+      clientId: order.account.clientId,
+      category: "order",
+      severity: "warning",
+      title: "Order rejected",
+      body: `Your ${order.side} order for ${order.instrument.symbol} was not approved: ${reason}`,
+      entityType: "order",
+      entityId: orderId,
     });
     return { status: "rejected" as const };
   }, transactionOptions);

@@ -1,6 +1,7 @@
 import { Prisma } from "../app/generated/prisma/client";
 import { prisma } from "./prisma";
 import type { Actor } from "./server-auth";
+import { writeNotification, COMPLIANCE } from "./oms/notification-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -153,6 +154,17 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         },
       ],
     });
+    await writeNotification(tx, {
+      scope: "broker",
+      brokerId: actor.brokerId,
+      roles: COMPLIANCE,
+      category: "kyc",
+      severity: "warning",
+      title: "New client awaiting KYC review",
+      body: `${client.fullName} (${clientCode}) was submitted for onboarding and KYC approval.`,
+      entityType: "client",
+      entityId: clientId,
+    });
     return { id: clientId, clientCode, accountId, accountNumber, status: client.status, kycStatus: client.kycStatus };
   }, transactionOptions);
 }
@@ -218,6 +230,17 @@ export async function approveClient(actor: Actor, clientId: string) {
         newValue: JSON.stringify({ status: "active", kycStatus: "approved", accountStatus: "active" }),
       },
     });
+    await writeNotification(tx, {
+      scope: "investor",
+      brokerId: actor.brokerId,
+      clientId: client.id,
+      category: "kyc",
+      severity: "success",
+      title: "You're approved to invest",
+      body: "Your account is active. You can now buy and sell shares and bonds on the ESX.",
+      entityType: "client",
+      entityId: client.id,
+    });
     return { status: "active", kycStatus: "approved" };
   }, transactionOptions);
 }
@@ -252,6 +275,17 @@ export async function rejectClient(actor: Actor, clientId: string, reason: strin
         newValue: JSON.stringify({ status: "rejected", kycStatus: "rejected" }),
         reason: rejectionReason,
       },
+    });
+    await writeNotification(tx, {
+      scope: "investor",
+      brokerId: actor.brokerId,
+      clientId: client.id,
+      category: "kyc",
+      severity: "warning",
+      title: "Onboarding needs attention",
+      body: `Your onboarding could not be approved: ${rejectionReason}`,
+      entityType: "client",
+      entityId: client.id,
     });
     return { status: "rejected", kycStatus: "rejected" };
   }, transactionOptions);

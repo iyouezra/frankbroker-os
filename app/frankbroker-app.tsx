@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { demoAudit, demoClients, demoInstruments, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
 import { hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
 import { computeBrokerAnalytics, PERIODS, type Period } from "../lib/broker-analytics";
+import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/notifications-demo";
+import { buildReports, feesEarned, downloadCsv, type Report } from "../lib/broker-reports";
 import { isOrderEligibleClient } from "../lib/client-readiness";
 
 type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
@@ -302,6 +304,8 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const [instruments, setInstruments] = useState<BrokerInstrument[]>(fallbackInstruments);
   const [collapsed, setCollapsed] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [bellOpen, setBellOpen] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
@@ -396,6 +400,35 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
   const openDetail = (order: DemoOrder) => {
     setSelectedId(order.id);
     setDrawer("detail");
+  };
+
+  // Notifications are role-aware: switching the demo role reloads the feed so
+  // approvers, traders, and settlement each see what they must act on.
+  const notifyHeaders = { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role };
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/notifications", { signal: controller.signal, headers: notifyHeaders })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
+      .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
+      .catch(() => setNotifications(demoBrokerNotifications(role)));
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+  const unreadCount = notifications.filter((item) => !item.read).length;
+  const markAllRead = () => {
+    setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+    void fetch("/api/notifications", { method: "PATCH", headers: { "content-type": "application/json", ...notifyHeaders }, body: JSON.stringify({ all: true }) }).catch(() => undefined);
+  };
+  const openNotification = (item: NotificationItem) => {
+    setNotifications((current) => current.map((row) => row.id === item.id ? { ...row, read: true } : row));
+    void fetch("/api/notifications", { method: "PATCH", headers: { "content-type": "application/json", ...notifyHeaders }, body: JSON.stringify({ id: item.id }) }).catch(() => undefined);
+    setBellOpen(false);
+    if (item.entityType === "order" && item.entityId) {
+      const order = orders.find((row) => row.id === item.entityId);
+      if (order) { openDetail(order); return; }
+      setView("orders");
+    } else if (item.entityType === "client") setView("clients");
+    else if (item.entityType === "reconciliation") setView("reconciliation");
   };
 
   const updateStatus = (id: string, status: OrderStatus, extra: Partial<DemoOrder> = {}) => {
@@ -738,7 +771,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
           <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
           <label className="search"><span><Icon name="search" size={17} /></span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
-          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><button className="icon-button" aria-label="Notifications"><Icon name="bell" size={18} /><em>3</em></button><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
+          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => setBellOpen((value) => !value)}><Icon name="bell" size={18} />{unreadCount > 0 && <em>{unreadCount > 9 ? "9+" : unreadCount}</em>}</button>{bellOpen && <><div className="notif-scrim" onClick={() => setBellOpen(false)} /><div className="notif-panel" role="dialog" aria-label="Notifications"><div className="notif-head"><b>Notifications</b>{unreadCount > 0 && <button onClick={markAllRead}>Mark all read</button>}</div><div className="notif-list">{notifications.length === 0 ? <div className="notif-empty">You&apos;re all caught up.</div> : notifications.map((item) => <button key={item.id} className={`notif-item${item.read ? "" : " unread"}`} onClick={() => openNotification(item)}><i className={`notif-dot sev-${item.severity}`} /><div><b>{item.title}</b><p>{item.body}</p><small>{item.category} · {timeAgo(item.createdAt)}</small></div></button>)}</div></div></>}</div><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
         </header>
 
         <main>
@@ -748,7 +781,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
-          {view === "reports" && <ReportsPage onExport={exportOrders} />}
+          {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} onDownloaded={(name) => notify(`${name} exported as CSV.`)} />}
           {view === "audit" && <AuditPage events={auditEntries} />}
         </main>
 
@@ -1142,9 +1175,13 @@ function ReconciliationPage({ batch, busy, onFile, onDownload, onResolve, resolv
   </>;
 }
 
-function ReportsPage({ onExport }: { onExport: () => void }) {
-  const reports = ["Daily order report", "Daily trade report", "Pending approvals", "Pending settlement", "Client cash", "Client holdings", "Fees report", "Audit log report"];
-  return <><SectionHeader eyebrow="CONTROL REPORTING" title="Reports" copy="Operational, client asset, fee, and audit exports for management and oversight." /><div className="report-grid">{reports.map((report, index) => <button className="panel report-card" key={report} onClick={onExport}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{report}</h3><p>{index < 2 ? "Business date · 14 Jul 2026" : index < 4 ? "Open items as of now" : "All active accounts"}</p></div><em>CSV <b>↓</b></em></button>)}</div><section className="panel fee-summary"><div><span className="eyebrow">MONTH TO DATE</span><h2>Brokerage fee summary</h2><p>Indicative demo calculation; fee rules remain configurable.</p></div><strong>ETB 184,620.50<small>+12.4% vs previous period</small></strong></section></>;
+function ReportsPage({ orders, clients, audit, onDownloaded }: { orders: DemoOrder[]; clients: BrokerClient[]; audit: AuditEntry[]; onDownloaded: (name: string) => void }) {
+  const reports = useMemo(() => buildReports(orders, clients, audit), [orders, clients, audit]);
+  const totalFees = useMemo(() => feesEarned(orders), [orders]);
+  const download = (report: Report) => { downloadCsv(report); onDownloaded(report.name); };
+  return <><SectionHeader eyebrow="CONTROL REPORTING" title="Reports" copy="Operational, client asset, fee, and audit exports generated from the current book." />
+    <div className="report-grid">{reports.map((report, index) => <button className="panel report-card" key={report.id} onClick={() => download(report)} disabled={report.rows.length === 0}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{report.name}</h3><p>{report.description}</p></div><em>{report.rows.length} {report.rows.length === 1 ? "row" : "rows"} · CSV <b>↓</b></em></button>)}</div>
+    <section className="panel fee-summary"><div><span className="eyebrow">EXECUTED THIS PERIOD</span><h2>Brokerage fees earned</h2><p>Sum of fees on executed orders in the current book.</p></div><strong>{etb(totalFees)}<small>{reports.find((report) => report.id === "fees")?.rows.length ?? 0} executed orders</small></strong></section></>;
 }
 
 function AuditPage({ events }: { events: AuditEntry[] }) {

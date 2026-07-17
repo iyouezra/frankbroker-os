@@ -3,6 +3,7 @@ import { toNum } from "../money";
 import { prisma } from "../prisma";
 import type { Actor } from "../server-auth";
 import { writeAudit, writeOrderEvent } from "./audit-service";
+import { writeNotification, OPS } from "./notification-service";
 import { settleBuySecurities, settleSellCash, type CashSnapshot, type SecuritySnapshot } from "./ledger-service";
 import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
 import { assertTransition } from "./status";
@@ -23,6 +24,7 @@ export async function settleNextTrade(actor: Actor, orderId: string, requestedTr
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: {
+        instrument: true,
         trades: { include: { settlement: true }, orderBy: { capturedAt: "asc" } },
       },
     });
@@ -151,6 +153,28 @@ export async function settleNextTrade(actor: Actor, orderId: string, requestedTr
         securitiesStatus: trade.settlement.securitiesStatus,
       },
       newValue: { status: "settled", cashStatus: "settled", securitiesStatus: "settled" },
+    });
+    await writeNotification(tx, {
+      scope: "investor",
+      brokerId: actor.brokerId,
+      clientId: account.clientId,
+      category: "settlement",
+      severity: "success",
+      title: "Settlement confirmed",
+      body: `${order.side === "buy" ? "Purchase" : "Sale"} of ${order.instrument.symbol} has settled — cash and securities confirmed.`,
+      entityType: "order",
+      entityId: orderId,
+    });
+    await writeNotification(tx, {
+      scope: "broker",
+      brokerId: actor.brokerId,
+      roles: OPS,
+      category: "settlement",
+      severity: "info",
+      title: `Settlement confirmed · ${order.instrument.symbol}`,
+      body: `${trade.id} for order ${orderId} settled (${toNum(trade.netAmount)} ETB).`,
+      entityType: "order",
+      entityId: orderId,
     });
     return { status: nextStatus, tradeId: trade.id };
   }, transactionOptions);
