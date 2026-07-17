@@ -192,7 +192,8 @@ export default function AdminConsole() {
   const [auditEvents, setAuditEvents] = useState(adminAudit);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
-  const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  useEffect(() => setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light"), []);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const [toast, setToast] = useState("");

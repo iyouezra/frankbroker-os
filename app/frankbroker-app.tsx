@@ -5,13 +5,13 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { demoAudit, demoClients, demoInstruments, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
-import { hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
+import { hasPermission, roleLabels, workflowPermissions, type OrderStatus, type Role } from "../lib/frank";
 import { computeBrokerAnalytics, PERIODS, type Period } from "../lib/broker-analytics";
 import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/notifications-demo";
 import { buildReports, feesEarned, downloadCsv, type Report } from "../lib/broker-reports";
 import { isOrderEligibleClient } from "../lib/client-readiness";
 
-type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit";
+type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit" | "settings";
 type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string };
 type NewClientValue = {
@@ -132,24 +132,31 @@ function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, pric
   return { gross, fees, net, brokerage, regulator, exchange, csd };
 }
 
-type NavItem = { id: View; label: string; icon: string };
+// `roles` limits which roles see a tab (undefined = everyone). super_admin and
+// management are oversight and see everything (handled in navVisible below).
+type NavItem = { id: View; label: string; icon: string; roles?: Role[] };
 const navGroups: { label: string; items: NavItem[] }[] = [
   { label: "Overview", items: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-    { id: "performance", label: "Performance", icon: "performance" },
+    { id: "performance", label: "Performance", icon: "performance", roles: ["broker_admin"] },
   ] },
   { label: "Operations", items: [
     { id: "orders", label: "Order log", icon: "orders" },
-    { id: "clients", label: "Clients & accounts", icon: "clients" },
-    { id: "settlement", label: "Settlement", icon: "settlement" },
-    { id: "reconciliation", label: "Reconciliation", icon: "reconciliation" },
+    { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance"] },
+    { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
+    { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations"] },
   ] },
   { label: "Records", items: [
     { id: "reports", label: "Reports", icon: "reports" },
-    { id: "audit", label: "Audit trail", icon: "audit" },
+    { id: "audit", label: "Audit trail", icon: "audit", roles: ["broker_admin", "compliance"] },
+  ] },
+  { label: "Administration", items: [
+    { id: "settings", label: "Settings", icon: "settings", roles: ["broker_admin"] },
   ] },
 ];
 const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
+// Oversight roles (management, super_admin) see every tab read-only.
+const navVisible = (item: NavItem, role: Role) => role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role);
 
 // Demo identity per role, reusing the seeded broker staff (Dawit A. the trader, etc.).
 const roleNames: Record<Role, string> = {
@@ -173,6 +180,7 @@ const ICON_PATHS: Record<string, string> = {
   reports: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z M14 2v4a2 2 0 0 0 2 2h4 M16 13H8 M16 17H8 M10 9H8",
   audit: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2",
   performance: "M3 3v16a2 2 0 0 0 2 2h16 M18 17V9 M13 17V5 M8 17v-3",
+  settings: "M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7V20a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M21 21l-4.3-4.3",
   bell: "M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
   collapse: "M9 3v18 M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
@@ -323,7 +331,8 @@ export default function FrankBrokerApp() {
   const [features, setFeatures] = useState<TenantFeatures>(fallbackFeatures);
   const [instruments, setInstruments] = useState<BrokerInstrument[]>(fallbackInstruments);
   const [collapsed, setCollapsed] = useState(true);
-  const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  useEffect(() => setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light"), []);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
@@ -432,6 +441,12 @@ export default function FrankBrokerApp() {
       .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
       .catch(() => setNotifications(demoBrokerNotifications(role)));
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+  // If the active role can't see the current view, fall back to the dashboard.
+  useEffect(() => {
+    const current = navItems.find((item) => item.id === view);
+    if (current && !navVisible(current, role)) setView("dashboard");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
   const unreadCount = notifications.filter((item) => !item.read).length;
@@ -780,10 +795,14 @@ export default function FrankBrokerApp() {
           <button className="sidebar-toggle" onClick={() => setCollapsed((current) => !current)} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand" : "Collapse"}><Icon name="collapse" size={18} /></button>
         </div>
         <nav aria-label="Main navigation">
-          {navGroups.map((group) => <div className="nav-group" key={group.label}>
-            <span className="nav-label">{group.label}</span>
-            {group.items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
-          </div>)}
+          {navGroups.map((group) => {
+            const items = group.items.filter((item) => navVisible(item, role));
+            if (!items.length) return null;
+            return <div className="nav-group" key={group.label}>
+              <span className="nav-label">{group.label}</span>
+              {items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
+            </div>;
+          })}
         </nav>
         <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Active role">{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select><i>⌄</i></div></div></div></div>
       </aside>
@@ -805,9 +824,10 @@ export default function FrankBrokerApp() {
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} onDownloaded={(name) => notify(`${name} exported as CSV.`)} />}
           {view === "audit" && <AuditPage events={auditEntries} />}
+          {view === "settings" && <SettingsPage />}
         </main>
 
-        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
+        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.filter((item) => navVisible(item, role)).slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
       </div>
 
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
@@ -1194,6 +1214,57 @@ function ReconciliationPage({ batch, busy, onFile, onDownload, onResolve, resolv
       const difference = Math.abs(expected - actual);
       return <div className="exception-row" key={exception.id}><span className={`queue-icon ${exception.exceptionType === "cash_variance" ? "danger" : "warning"}`}>!</span><div><b>{exception.exceptionType.replaceAll("_", " ")} · {exception.reference}</b><small>{exception.expectedValue === null ? "No internal trade matched this reference" : `Expected ${fmt.format(expected)} · File ${fmt.format(actual)}`}</small></div><strong>{exception.expectedValue === null ? "Unmatched" : exception.exceptionType === "cash_variance" ? `${etb(difference)}` : `${fmt.format(difference)} units`}</strong><button className="btn secondary small" disabled={resolvingId === exception.id} onClick={() => onResolve(exception.id)}>{resolvingId === exception.id ? "Resolving…" : "Resolve"}</button></div>;
     }) : <EmptyState title="Reconciliation is clear" copy="Every uploaded record matched the internal trade book." />}</section>
+  </>;
+}
+
+type SettingsControls = { brokerageFeePct: number; minimumFee: number; approvalThreshold: number; clientDailyLimit: number; makerChecker: boolean; allowedOrderTypes: string[]; settlementCycle: string };
+const STAFF_ROLES: Role[] = ["broker_admin", "trader", "operations", "compliance", "settlement", "management"];
+const PERMISSION_COLUMNS: [string, string][] = [["create", "Create"], ["approve", "Approve"], ["reject", "Reject"], ["trade", "Trade"], ["settle", "Settle"], ["adjust", "Adjust"], ["report", "Report"]];
+const FEATURE_LABELS: Record<string, string> = { investorPortal: "Investor portal", selfDirected: "Self-directed investing", roboPlans: "Frank investment plans", bonds: "Government bonds", fractionalOrders: "Amount-based orders", recurringInvestments: "Recurring investments", institutionalAccounts: "Institutional accounts", manualTradeCapture: "Manual trade capture" };
+
+function SettingsPage() {
+  const [tenant, setTenant] = useState<{ name: string; license: string; controls: SettingsControls | null; features: Record<string, boolean> } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
+      .then((data: { tenant?: { tradingName?: string; name?: string; licenseNumber?: string; controls?: SettingsControls; features?: Record<string, boolean> } }) => {
+        if (data.tenant) setTenant({ name: data.tenant.tradingName ?? data.tenant.name ?? "Abyssinia Securities", license: data.tenant.licenseNumber ?? "ESCA-BR-004", controls: data.tenant.controls ?? null, features: data.tenant.features ?? {} });
+      })
+      .catch(() => setTenant({ name: "Abyssinia Securities", license: "ESCA-BR-004", controls: { brokerageFeePct: 0.5, minimumFee: 25, approvalThreshold: 250000, clientDailyLimit: 2500000, makerChecker: true, allowedOrderTypes: ["Market", "Limit"], settlementCycle: "T+2" }, features: { investorPortal: true, selfDirected: true, roboPlans: true, bonds: true, fractionalOrders: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true } }));
+    return () => controller.abort();
+  }, []);
+  const controls = tenant?.controls;
+  const features = tenant?.features ?? {};
+  return <>
+    <SectionHeader eyebrow="WORKSPACE" title="Settings" copy="Your tenant configuration and team. Platform-level controls are set by Frank." />
+    <div className="settings-banner"><span>PLATFORM MANAGED</span><p>Fees, limits, features, and instrument access are configured by your Frank platform administrator. Contact them to request a change.</p></div>
+    <section className="panel"><div className="panel-head"><div><span className="eyebrow">TENANT POLICY</span><h2>Trading controls</h2></div></div>
+      <dl className="detail-grid settings-grid">
+        <div><dt>Trading name</dt><dd>{tenant?.name ?? "—"}</dd></div>
+        <div><dt>License</dt><dd>{tenant?.license || "—"}</dd></div>
+        <div><dt>Brokerage fee</dt><dd>{controls ? `${controls.brokerageFeePct}%` : "—"}</dd></div>
+        <div><dt>Minimum fee</dt><dd>{controls ? etb(controls.minimumFee) : "—"}</dd></div>
+        <div><dt>Approval threshold</dt><dd>{controls ? etb(controls.approvalThreshold) : "—"}</dd></div>
+        <div><dt>Client daily limit</dt><dd>{controls ? etb(controls.clientDailyLimit) : "—"}</dd></div>
+        <div><dt>Maker-checker</dt><dd>{controls ? (controls.makerChecker ? "Required" : "Off") : "—"}</dd></div>
+        <div><dt>Settlement cycle</dt><dd>{controls?.settlementCycle ?? "—"}</dd></div>
+      </dl>
+    </section>
+    <section className="panel"><div className="panel-head"><div><span className="eyebrow">CAPABILITIES</span><h2>Feature access</h2></div></div>
+      <div className="feature-list">{Object.entries(FEATURE_LABELS).map(([key, label]) => <span key={key} className={features[key] ? "on" : "off"}><i />{label}</span>)}</div>
+    </section>
+    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">ACCESS</span><h2>Team &amp; roles</h2></div></div>
+      <div className="table-scroll"><table><thead><tr><th>User</th><th>Role</th><th className="num">Permissions</th><th>Status</th></tr></thead><tbody>
+        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleNames[staffRole]}</b></td><td>{roleLabels[staffRole]}</td><td className="num">{workflowPermissions[staffRole].length} of {PERMISSION_COLUMNS.length}</td><td><span className="status status-success"><i />Active</span></td></tr>)}
+      </tbody></table></div>
+      <div className="settings-note">New users are currently provisioned by your Frank platform administrator.</div>
+    </section>
+    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL MATRIX</span><h2>Roles &amp; permissions</h2></div></div>
+      <div className="table-scroll"><table><thead><tr><th>Role</th>{PERMISSION_COLUMNS.map(([key, label]) => <th key={key} className="num">{label}</th>)}</tr></thead><tbody>
+        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleLabels[staffRole]}</b></td>{PERMISSION_COLUMNS.map(([key]) => <td key={key} className="num">{workflowPermissions[staffRole].includes(key) ? <span className="perm-yes">✓</span> : <span className="perm-no">–</span>}</td>)}</tr>)}
+      </tbody></table></div>
+    </section>
   </>;
 }
 

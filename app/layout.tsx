@@ -24,7 +24,9 @@ const themeInit = `(function(){try{var t=localStorage.getItem('frank-theme');if(
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    // The theme script sets data-theme on <html> before hydration to avoid a
+    // flash; suppressHydrationWarning stops React flagging that intended mismatch.
+    <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeInit }} /></head>
       <body>{children}</body>
     </html>
