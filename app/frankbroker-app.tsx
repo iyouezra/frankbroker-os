@@ -132,16 +132,36 @@ function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, pric
   return { gross, fees, net, brokerage, regulator, exchange, csd };
 }
 
-const navItems: { id: View; label: string; icon: string }[] = [
-  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-  { id: "performance", label: "Performance", icon: "performance" },
-  { id: "orders", label: "Order log", icon: "orders" },
-  { id: "clients", label: "Clients & accounts", icon: "clients" },
-  { id: "settlement", label: "Settlement", icon: "settlement" },
-  { id: "reconciliation", label: "Reconciliation", icon: "reconciliation" },
-  { id: "reports", label: "Reports", icon: "reports" },
-  { id: "audit", label: "Audit trail", icon: "audit" },
+type NavItem = { id: View; label: string; icon: string };
+const navGroups: { label: string; items: NavItem[] }[] = [
+  { label: "Overview", items: [
+    { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+    { id: "performance", label: "Performance", icon: "performance" },
+  ] },
+  { label: "Operations", items: [
+    { id: "orders", label: "Order log", icon: "orders" },
+    { id: "clients", label: "Clients & accounts", icon: "clients" },
+    { id: "settlement", label: "Settlement", icon: "settlement" },
+    { id: "reconciliation", label: "Reconciliation", icon: "reconciliation" },
+  ] },
+  { label: "Records", items: [
+    { id: "reports", label: "Reports", icon: "reports" },
+    { id: "audit", label: "Audit trail", icon: "audit" },
+  ] },
 ];
+const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
+
+// Demo identity per role, reusing the seeded broker staff (Dawit A. the trader, etc.).
+const roleNames: Record<Role, string> = {
+  broker_admin: "Mekdes Tadesse",
+  trader: "Dawit Alemu",
+  operations: "Hana Kebede",
+  compliance: "Liya Girma",
+  settlement: "Rahel Getachew",
+  management: "Yonas Alemayehu",
+  super_admin: "Frank",
+};
+const initials = (name: string) => name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 
 // Lucide-style line icons (24×24, stroke 1.8) — matches the Frank design system.
 const ICON_PATHS: Record<string, string> = {
@@ -283,7 +303,7 @@ function hydrateOrders(rows: Array<Omit<DemoOrder, "time">>) {
   })) as DemoOrder[];
 }
 
-export default function FrankBrokerApp({ userName }: { userName: string }) {
+export default function FrankBrokerApp() {
   const [view, setView] = useState<View>("dashboard");
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [selectedId, setSelectedId] = useState<string>(initialOrders[0].id);
@@ -760,10 +780,12 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           <button className="sidebar-toggle" onClick={() => setCollapsed((current) => !current)} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand" : "Collapse"}><Icon name="collapse" size={18} /></button>
         </div>
         <nav aria-label="Main navigation">
-          <span className="nav-label">OPERATIONS</span>
-          {navItems.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
+          {navGroups.map((group) => <div className="nav-group" key={group.label}>
+            <span className="nav-label">{group.label}</span>
+            {group.items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
+          </div>)}
         </nav>
-        <div className="sidebar-foot"><div className="system-state"><i /><span><b>{features.manualTradeCapture ? "Manual market mode" : "Trade capture disabled"}</b><small>{features.manualTradeCapture ? "ESX / CSD disconnected by design" : "Controlled from platform admin"}</small></span></div><p>FrankBroker OS <b>MVP 0.1</b></p></div>
+        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><select value={role} onChange={(event) => setRole(event.target.value as Role)} aria-label="Active role">{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select><i>⌄</i></div></div></div></div>
       </aside>
 
       <div className="workspace">
@@ -771,7 +793,7 @@ export default function FrankBrokerApp({ userName }: { userName: string }) {
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
           <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
           <label className="search"><span><Icon name="search" size={17} /></span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
-          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => setBellOpen((value) => !value)}><Icon name="bell" size={18} />{unreadCount > 0 && <em>{unreadCount > 9 ? "9+" : unreadCount}</em>}</button>{bellOpen && <><div className="notif-scrim" onClick={() => setBellOpen(false)} /><div className="notif-panel" role="dialog" aria-label="Notifications"><div className="notif-head"><b>Notifications</b>{unreadCount > 0 && <button onClick={markAllRead}>Mark all read</button>}</div><div className="notif-list">{notifications.length === 0 ? <div className="notif-empty">You&apos;re all caught up.</div> : notifications.map((item) => <button key={item.id} className={`notif-item${item.read ? "" : " unread"}`} onClick={() => openNotification(item)}><i className={`notif-dot sev-${item.severity}`} /><div><b>{item.title}</b><p>{item.body}</p><small>{item.category} · {timeAgo(item.createdAt)}</small></div></button>)}</div></div></>}</div><div className="user-control"><span>MT</span><label><b>{userName}</b><select aria-label="Demo role" value={role} onChange={(event) => setRole(event.target.value as Role)}>{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label></div></div>
+          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => setBellOpen((value) => !value)}><Icon name="bell" size={18} />{unreadCount > 0 && <em>{unreadCount > 9 ? "9+" : unreadCount}</em>}</button>{bellOpen && <><div className="notif-scrim" onClick={() => setBellOpen(false)} /><div className="notif-panel" role="dialog" aria-label="Notifications"><div className="notif-head"><b>Notifications</b>{unreadCount > 0 && <button onClick={markAllRead}>Mark all read</button>}</div><div className="notif-list">{notifications.length === 0 ? <div className="notif-empty">You&apos;re all caught up.</div> : notifications.map((item) => <button key={item.id} className={`notif-item${item.read ? "" : " unread"}`} onClick={() => openNotification(item)}><i className={`notif-dot sev-${item.severity}`} /><div><b>{item.title}</b><p>{item.body}</p><small>{item.category} · {timeAgo(item.createdAt)}</small></div></button>)}</div></div></>}</div></div>
         </header>
 
         <main>
