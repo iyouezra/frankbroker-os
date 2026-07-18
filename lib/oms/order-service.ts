@@ -17,6 +17,7 @@ import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuri
 import { assertTransition, isTerminalStatus } from "./status";
 import { validatePreTrade, validationPassed, type ValidationCheck } from "./validation-service";
 import { computeConfiguredAmounts, resolveFeePolicy, serializeFeeBreakdown } from "./fee-service";
+import { consumeOrderVerification, ORDER_SOURCES, orderPayloadHash } from "../verification-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -46,6 +47,7 @@ export type CreateOrderInput = {
   termsVersion?: string;
   disclosureVersion?: string;
   disclosureAcceptedAt?: Date;
+  verificationId?: string;
 };
 
 type SubmissionActor = Omit<Actor, "id"> & { id: string | null };
@@ -161,10 +163,24 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const id = `ORD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
   const now = new Date();
   const riskFlag = amounts.net.gte(2_000_000) ? "review" : "none";
+  const source = input.source ?? "manual";
+  const requiresVerification = ORDER_SOURCES.includes(source as (typeof ORDER_SOURCES)[number]);
+  if (requiresVerification && !input.verificationId) {
+    throw new Response("Verify the client instruction before submitting this order.", { status: 409 });
+  }
+  const verificationPayloadHash = orderPayloadHash({
+    accountId: input.accountId, instrumentId: input.instrumentId, side: input.side,
+    quantity: toNum(quantity), price: toNum(price), orderType, source,
+    submissionReference: input.submissionReference ?? "",
+  });
   const ledgerActorId = actor.id ?? fallbackLedgerActor?.id;
   if (valid && !ledgerActorId) throw new Response("No active broker user is available to record the asset reservation.", { status: 409 });
 
   await prisma.$transaction(async (tx) => {
+    const instructionVerifiedAt = requiresVerification ? await consumeOrderVerification(tx, {
+      id: input.verificationId!, brokerId: actor.brokerId, clientId: account.client.id,
+      accountId: input.accountId, payloadHash: verificationPayloadHash, orderId: id,
+    }) : null;
     let cashBlock: ReturnType<typeof blockBuyCash> | null = null;
     let securitiesBlock: ReturnType<typeof blockSellSecurities> | null = null;
     let holdingId: string | null = null;
@@ -222,7 +238,9 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         blockedCash: cashBlock ? amounts.net : ZERO,
         blockedQuantity: securitiesBlock ? quantity : ZERO,
         status: finalStatus,
-        source: input.source ?? "manual",
+        source,
+        instructionVerificationId: input.verificationId ?? null,
+        instructionVerifiedAt,
         riskFlag,
         notes: input.notes?.trim() || null,
         submittedAt: now,

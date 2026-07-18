@@ -23,6 +23,21 @@ export type CreateClientInput = {
   riskRating?: "standard" | "enhanced" | "review";
   termsAccepted: boolean;
   electronicDeliveryConsent: boolean;
+  onboardingChannel?: "digital" | "in_person" | "neway" | "phone" | "investor_portal";
+  externalClientReference?: string;
+  dateOfBirth?: string;
+  nationality?: string;
+  countryOfResidence?: string;
+  occupation?: string;
+  employerName?: string;
+  sourceOfFunds?: string;
+  investmentObjective?: string;
+  taxResidency?: string;
+  pepStatus?: "not_pep" | "pep" | "related_to_pep";
+  bankName?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  phoneVerifiedAt?: Date;
 };
 
 function normalizedDigits(value: string) {
@@ -38,6 +53,10 @@ function validateCreateInput(input: CreateClientInput) {
   if (fayda.length !== 12) return "Fayda FIN must contain 12 digits.";
   if (tin.length < 10 || tin.length > 12) return "TIN must contain 10 to 12 digits.";
   if (input.address.trim().length < 4) return "A current or registered address is required.";
+  if (!input.sourceOfFunds?.trim()) return "Source of funds is required.";
+  if (!input.investmentObjective?.trim()) return "Investment objective is required.";
+  if (!input.taxResidency?.trim()) return "Tax residency is required.";
+  if (!input.pepStatus) return "A politically exposed person declaration is required.";
   if (input.proofOfAddressType.trim().length < 3 || input.proofOfAddressReference.trim().length < 4) return "Proof-of-address type and reference are required.";
   const organization = input.clientType === "institution" || input.clientType === "corporate";
   if (organization) {
@@ -102,6 +121,21 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         status: "pending_approval",
         createdBy: actor.id,
         submittedAt: now,
+        onboardingChannel: input.onboardingChannel ?? "in_person",
+        externalClientReference: input.externalClientReference?.trim() || null,
+        dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00.000Z`) : null,
+        nationality: input.nationality?.trim() || null,
+        countryOfResidence: input.countryOfResidence?.trim() || null,
+        occupation: input.occupation?.trim() || null,
+        employerName: input.employerName?.trim() || null,
+        sourceOfFunds: input.sourceOfFunds?.trim() || null,
+        investmentObjective: input.investmentObjective?.trim() || null,
+        taxResidency: input.taxResidency?.trim() || null,
+        pepStatus: input.pepStatus ?? "not_declared",
+        bankName: input.bankName?.trim() || null,
+        bankAccountName: input.bankAccountName?.trim() || null,
+        bankAccountLast4: normalizedDigits(input.bankAccountNumber ?? "").slice(-4) || null,
+        phoneVerifiedAt: input.phoneVerifiedAt ?? null,
         accounts: {
           create: {
             id: accountId,

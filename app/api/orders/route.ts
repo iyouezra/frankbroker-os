@@ -187,6 +187,8 @@ export async function POST(request: Request) {
       validity?: string;
       notes?: string;
       submissionReference?: string;
+      source?: string;
+      verificationId?: string;
     };
 
     const side = parseOrderSide(payload.side);
@@ -211,7 +213,8 @@ export async function POST(request: Request) {
       orderType: normalizeOrderType(payload.orderType ?? "limit"),
       validity: payload.validity,
       notes: payload.notes,
-      source: "manual",
+      source: payload.source,
+      verificationId: payload.verificationId,
       submissionReference: payload.submissionReference?.trim() || undefined,
     });
     return Response.json(result, { status: 201 });

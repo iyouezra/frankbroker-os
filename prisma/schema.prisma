@@ -28,6 +28,7 @@ model Broker {
   serviceRequests       ClientServiceRequest[]
   pooledBankAccounts    PooledBankAccount[]
   cashMovements         CashMovement[]
+  verificationChallenges VerificationChallenge[]
 
   @@map("brokers")
 }
@@ -98,6 +99,22 @@ model Client {
   approvedBy                   String?                @map("approved_by")
   approvedAt                   DateTime?              @map("approved_at")
   rejectionReason              String?                @map("rejection_reason")
+  onboardingChannel            String                 @default("in_person") @map("onboarding_channel")
+  externalClientReference      String?                @map("external_client_reference")
+  dateOfBirth                  DateTime?               @map("date_of_birth") @db.Date
+  nationality                  String?
+  countryOfResidence           String?                @map("country_of_residence")
+  occupation                   String?
+  employerName                 String?                @map("employer_name")
+  sourceOfFunds                String?                @map("source_of_funds")
+  investmentObjective          String?                @map("investment_objective")
+  taxResidency                 String?                @map("tax_residency")
+  pepStatus                    String                 @default("not_declared") @map("pep_status")
+  bankName                     String?                @map("bank_name")
+  bankAccountName              String?                @map("bank_account_name")
+  bankAccountLast4             String?                @map("bank_account_last4")
+  phoneVerifiedAt              DateTime?              @map("phone_verified_at")
+  identityVerifiedAt           DateTime?              @map("identity_verified_at")
   createdAt                    DateTime               @default(now()) @map("created_at")
   updatedAt                    DateTime               @updatedAt @map("updated_at")
   broker                       Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
@@ -108,6 +125,7 @@ model Client {
   creator                      User?                  @relation("ClientCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   approver                     User?                  @relation("ClientApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   cashMovements                CashMovement[]
+  verificationChallenges      VerificationChallenge[]
 
   @@index([brokerId])
   @@index([status, kycStatus])
@@ -142,6 +160,7 @@ model Account {
   clientMoneyPositions     ClientMoneyPosition[]
   clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
   cashMovements            CashMovement[]
+  verificationChallenges   VerificationChallenge[]
 
   @@index([clientId])
   @@map("accounts")
@@ -356,6 +375,8 @@ model Order {
   blockedQuantity          Decimal                  @default(0) @map("blocked_quantity") @db.Decimal(24, 8)
   status                   String                   @default("draft")
   source                   String                   @default("manual")
+  instructionVerificationId String?                 @unique @map("instruction_verification_id")
+  instructionVerifiedAt     DateTime?                @map("instruction_verified_at")
   assignedTraderId         String?                  @map("assigned_trader_id")
   riskFlag                 String                   @default("none") @map("risk_flag")
   notes                    String?
@@ -386,12 +407,43 @@ model Order {
   serviceRequests          ClientServiceRequest[]
   clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
   pooledBankLedgerEntries  PooledBankLedgerEntry[]
+  instructionVerification VerificationChallenge?    @relation(fields: [instructionVerificationId], references: [id], onDelete: Restrict)
 
   @@unique([brokerId, submissionReference])
   @@index([brokerId, status])
   @@index([accountId])
   @@index([instrumentId])
   @@map("orders")
+}
+
+model VerificationChallenge {
+  id              String    @id
+  brokerId        String    @map("broker_id")
+  clientId        String    @map("client_id")
+  accountId       String?   @map("account_id")
+  purpose         String
+  source          String
+  method          String    @default("otp")
+  destinationHint String?   @map("destination_hint")
+  payloadHash     String    @map("payload_hash")
+  codeHash        String    @map("code_hash")
+  salt            String
+  status          String    @default("pending")
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(5) @map("max_attempts")
+  expiresAt       DateTime  @map("expires_at")
+  verifiedAt      DateTime? @map("verified_at")
+  consumedAt      DateTime? @map("consumed_at")
+  createdBy       String?   @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  broker          Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  account         Account?  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  order           Order?
+
+  @@index([clientId, purpose, status])
+  @@index([expiresAt, status])
+  @@map("verification_challenges")
 }
 
 model OrderValidation {

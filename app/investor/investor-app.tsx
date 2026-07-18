@@ -30,6 +30,14 @@ type InvestorKyc = {
   signatoryAuthorityConfirmed: boolean;
   termsAccepted: boolean;
   electronicDeliveryConsent: boolean;
+  nationality: string;
+  countryOfResidence: string;
+  occupation: string;
+  sourceOfFunds: string;
+  investmentObjective: string;
+  taxResidency: string;
+  pepStatus: "not_pep" | "pep" | "related_to_pep";
+  verificationId?: string;
 };
 type InvestorOrderInput = { symbol: string; side: "buy" | "sell"; quantity: number; price: number; orderType: string; disclosureAccepted: boolean; disclosureVersion: "order-v1" };
 type OrderCheck = { code: string; passed: boolean; message: string };
@@ -123,8 +131,8 @@ function ProgressDots({ step }: { step: number }) {
   return <div className={styles.progressDots} aria-label={`Onboarding step ${Math.min(step, 3) + 1} of 4`}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
 }
 
-const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "Bole, Addis Ababa", proofOfAddressType: "Utility bill", proofOfAddressReference: "DEMO-POA-001", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false };
-const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "Business license", proofOfAddressReference: "DEMO-POA-017", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false };
+const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "Bole, Addis Ababa", proofOfAddressType: "Utility bill", proofOfAddressReference: "DEMO-POA-001", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
+const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "Business license", proofOfAddressReference: "DEMO-POA-017", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
 
 function KycProgress({ step }: { step: number }) {
   return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 4</small></span><i><em style={{ width: `${((step + 1) / 4) * 100}%` }} /></i></div>;
@@ -344,18 +352,30 @@ export default function InvestorApp() {
   }, []);
   const postInvestor = async (body: unknown) => {
     const response = await fetch("/api/investor", { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) });
-    const data = await response.json().catch(() => ({})) as { error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number } };
+    const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; kycStatus: string } };
     if (!response.ok) throw new Error(data.error ?? "Unable to update the investor account.");
     return data;
   };
   const completeOnboarding = async (profile: InvestorKyc) => {
-    setProfileName(profile.fullName); setPhase("app");
-    try { await postInvestor({ action: "kyc", ...profile, termsVersion: bootstrap?.tenant.legalDocument?.version }); notify("Identity, authority, and consent records linked to your broker account."); }
-    catch { notify("KYC completed in the offline demo; connect the database to persist it."); }
+    try {
+      const challenge = await postInvestor({ action: "request_kyc_otp", phone: profile.phone });
+      const code = window.prompt(`Verify ${profile.phone} before submitting KYC.${challenge.demoCode ? `\n\nDemo code: ${challenge.demoCode}` : ""}`);
+      if (!code || !challenge.id) return notify("Mobile verification is required before KYC can be submitted.");
+      await postInvestor({ action: "confirm_otp", verificationId: challenge.id, code });
+      const result = await postInvestor({ action: "kyc", ...profile, verificationId: challenge.id, termsVersion: bootstrap?.tenant.legalDocument?.version });
+      setProfileName(profile.fullName); setPhase("app");
+      notify(`${result.profile?.clientCode ?? "Client record"} submitted for broker review · account ${result.profile?.accountNumber ?? "pending"}.`);
+    } catch (error) { notify(error instanceof Error ? error.message : "KYC could not be submitted."); }
   };
   const placeOrder = async (order: InvestorOrderInput): Promise<PlaceResult> => {
     try {
-      const result = await postInvestor({ action: "order", ...order, submissionReference: crypto.randomUUID() });
+      const submissionReference = crypto.randomUUID();
+      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference });
+      const challengeData = challenge as unknown as { id?: string; demoCode?: string; destinationHint?: string };
+      const code = window.prompt(`Confirm this exact order with the code sent to ${challengeData.destinationHint ?? "your registered mobile"}.${challengeData.demoCode ? `\n\nDemo code: ${challengeData.demoCode}` : ""}`);
+      if (!code) return { status: "verification_cancelled" };
+      await postInvestor({ action: "confirm_otp", verificationId: challengeData.id, code });
+      const result = await postInvestor({ action: "order", ...order, submissionReference, verificationId: challengeData.id });
       const failed = (result.checks ?? []).filter((check) => !check.passed);
       if (result.order?.status === "validation_failed") {
         notify(failed[0] ? `Order held: ${failed[0].message}` : "Order held for review.");

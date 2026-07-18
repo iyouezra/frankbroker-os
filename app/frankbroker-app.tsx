@@ -13,7 +13,7 @@ import { isOrderEligibleClient } from "../lib/client-readiness";
 
 type View = "dashboard" | "performance" | "orders" | "clients" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "settings";
 type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
-type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string };
+type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationId: string; verificationCode: string; demoCode: string };
 type NewClientValue = {
   clientType: "individual" | "corporate" | "institution";
   fullName: string;
@@ -32,6 +32,18 @@ type NewClientValue = {
   riskRating: "standard" | "enhanced" | "review";
   termsAccepted: boolean;
   electronicDeliveryConsent: boolean;
+  onboardingChannel: "digital" | "in_person" | "neway" | "phone";
+  externalClientReference: string;
+  nationality: string;
+  countryOfResidence: string;
+  occupation: string;
+  sourceOfFunds: string;
+  investmentObjective: string;
+  taxResidency: string;
+  pepStatus: "not_pep" | "pep" | "related_to_pep";
+  bankName: string;
+  bankAccountName: string;
+  bankAccountNumber: string;
 };
 type ClientDirectoryResponse = {
   clients: BrokerClient[];
@@ -120,6 +132,18 @@ const newClientDefaults = (): NewClientValue => ({
   riskRating: "standard",
   termsAccepted: false,
   electronicDeliveryConsent: true,
+  onboardingChannel: "in_person",
+  externalClientReference: "",
+  nationality: "Ethiopian",
+  countryOfResidence: "Ethiopia",
+  occupation: "",
+  sourceOfFunds: "",
+  investmentObjective: "Long-term growth",
+  taxResidency: "Ethiopia",
+  pepStatus: "not_pep",
+  bankName: "",
+  bankAccountName: "",
+  bankAccountNumber: "",
 });
 
 function displayLabel(value: string) {
@@ -339,7 +363,7 @@ export default function FrankBrokerApp() {
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
   const [cashOperations, setCashOperations] = useState<CashOperationsData>(fallbackCashOperations);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID() });
+  const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID(), source: "phone", verificationId: "", verificationCode: "", demoCode: "" });
   const [newClient, setNewClient] = useState<NewClientValue>(newClientDefaults);
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [controls, setControls] = useState<TenantControls>(fallbackControls);
@@ -684,7 +708,16 @@ export default function FrankBrokerApp() {
     const price = Number(newOrder.price);
     setBusyAction("create");
     try {
-      const result = await apiRequest<{ order: DemoOrder; checks?: { code: string; label: string; passed: boolean; message: string }[] }>("/api/orders", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ ...newOrder, quantity, price }) });
+      let verificationId = newOrder.verificationId;
+      if (!verificationId) {
+        const challenge = await apiRequest<{ id: string; demoCode?: string; destinationHint?: string }>("/api/verifications", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ action: "request_order", ...newOrder, quantity, price }) });
+        setNewOrder((current) => ({ ...current, verificationId: challenge.id, demoCode: challenge.demoCode ?? "" }));
+        notify(`Authorization code requested for ${challenge.destinationHint ?? "the registered contact"}. Enter it to submit the exact instruction.`);
+        return;
+      }
+      if (newOrder.verificationCode.length !== 6) throw new Error("Enter the 6-digit client authorization code.");
+      await apiRequest("/api/verifications", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ action: "confirm", accountId: newOrder.accountId, verificationId, code: newOrder.verificationCode }) });
+      const result = await apiRequest<{ order: DemoOrder; checks?: { code: string; label: string; passed: boolean; message: string }[] }>("/api/orders", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ ...newOrder, verificationId, quantity, price }) });
       // Reflect the server's authoritative pre-trade checks (incl. daily limit).
       if (result.checks) setChecks(result.checks);
       const failed = result.checks?.filter((item) => !item.passed) ?? [];
@@ -698,6 +731,7 @@ export default function FrankBrokerApp() {
       }
       setDrawer(null);
       setChecks(null);
+      setNewOrder((current) => ({ ...current, verificationId: "", verificationCode: "", demoCode: "", submissionReference: crypto.randomUUID() }));
       setView("orders");
       notify(`${created.id} submitted for broker review.`);
     } catch (error) {
@@ -1393,6 +1427,9 @@ function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: N
     && tinValid
     && value.address.trim().length >= 4
     && value.proofOfAddressReference.trim().length >= 4
+    && value.sourceOfFunds.trim().length >= 3
+    && value.investmentObjective.trim().length >= 3
+    && value.taxResidency.trim().length >= 3
     && value.termsAccepted
     && (!organization || (
       value.businessRegistrationNumber.trim().length >= 4
@@ -1406,16 +1443,23 @@ function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: N
     <div className="stepper"><span className="active">1 <b>Client record</b></span><i /><span className={ready ? "active" : ""}>2 <b>Approval</b></span><i /><span>3 <b>Trading active</b></span></div>
     <section className="form-section">
       <h3>Account owner</h3>
+      <div className="field-row"><label>Onboarding source<select value={value.onboardingChannel} onChange={(event) => set("onboardingChannel", event.target.value as NewClientValue["onboardingChannel"])}><option value="digital">Digital</option><option value="in_person">In person</option><option value="neway">Neway</option><option value="phone">Phone</option></select></label><label>External reference <span className="optional-label">optional</span><input value={value.externalClientReference} onChange={(event) => set("externalClientReference", event.target.value)} placeholder="e.g. Neway reference" /></label></div>
       <div className="segmented three"><button type="button" className={value.clientType === "individual" ? "active buy" : ""} onClick={() => set("clientType", "individual")}>INDIVIDUAL</button><button type="button" className={value.clientType === "corporate" ? "active buy" : ""} onClick={() => set("clientType", "corporate")}>CORPORATE</button><button type="button" className={value.clientType === "institution" ? "active buy" : ""} onClick={() => set("clientType", "institution")}>INSTITUTIONAL</button></div>
       <label>{organization ? "Legal organization name" : "Full legal name"}<input value={value.fullName} onChange={(event) => set("fullName", event.target.value)} placeholder="As shown on official records" /></label>
       <div className="field-row"><label>Phone<input value={value.phone} onChange={(event) => set("phone", event.target.value.replace(/[^0-9+]/g, ""))} placeholder="+251…" /></label><label>Email<input type="email" value={value.email} onChange={(event) => set("email", event.target.value)} placeholder="client@example.et" /></label></div>
       <label>{organization ? "Registered address" : "Current address"}<input value={value.address} onChange={(event) => set("address", event.target.value)} placeholder="City, sub-city, and locality" /></label>
+      <div className="field-row"><label>Nationality<input value={value.nationality} onChange={(event) => set("nationality", event.target.value)} /></label><label>Country of residence<input value={value.countryOfResidence} onChange={(event) => set("countryOfResidence", event.target.value)} /></label></div>
     </section>
     <section className="form-section">
       <h3>Identity and tax</h3>
       <div className="field-row"><label>{organization ? "Representative Fayda FIN" : "Fayda FIN"}<input inputMode="numeric" maxLength={12} value={value.faydaId} onChange={(event) => set("faydaId", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digits" /><small>{value.faydaId && !faydaValid ? "FIN must contain 12 digits." : "Only a masked reference is retained."}</small></label><label>TIN<input inputMode="numeric" value={value.tin} onChange={(event) => set("tin", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="10–12 digits" /><small>{value.tin && !tinValid ? "Enter a valid TIN." : "Used for tax and account records."}</small></label></div>
       <div className="field-row"><label>Proof of address<select value={value.proofOfAddressType} onChange={(event) => set("proofOfAddressType", event.target.value)}><option>Bank letter</option><option>Utility bill</option><option>Government correspondence</option><option>Business license</option><option>Lease agreement</option></select></label><label>Document reference<input value={value.proofOfAddressReference} onChange={(event) => set("proofOfAddressReference", event.target.value)} placeholder="Internal document reference" /></label></div>
       <label>CSD account/reference <span className="optional-label">optional</span><input value={value.csdReference} onChange={(event) => set("csdReference", event.target.value)} placeholder="Record when available" /></label>
+      <div className="field-row"><label>Occupation / business activity<input value={value.occupation} onChange={(event) => set("occupation", event.target.value)} /></label><label>Source of funds<input value={value.sourceOfFunds} onChange={(event) => set("sourceOfFunds", event.target.value)} placeholder="Employment, business, pension…" /></label></div>
+      <div className="field-row"><label>Investment objective<input value={value.investmentObjective} onChange={(event) => set("investmentObjective", event.target.value)} /></label><label>Tax residency<input value={value.taxResidency} onChange={(event) => set("taxResidency", event.target.value)} /></label></div>
+      <label>PEP declaration<select value={value.pepStatus} onChange={(event) => set("pepStatus", event.target.value as NewClientValue["pepStatus"])}><option value="not_pep">Not a politically exposed person</option><option value="pep">Politically exposed person</option><option value="related_to_pep">Family member / close associate</option></select></label>
+      <div className="field-row"><label>Bank name <span className="optional-label">optional</span><input value={value.bankName} onChange={(event) => set("bankName", event.target.value)} /></label><label>Bank account name<input value={value.bankAccountName} onChange={(event) => set("bankAccountName", event.target.value)} /></label></div>
+      <label>Bank account number <span className="optional-label">masked after capture</span><input value={value.bankAccountNumber} onChange={(event) => set("bankAccountNumber", event.target.value.replace(/\s/g, ""))} /></label>
     </section>
     {organization && <section className="form-section">
       <h3>{value.clientType === "corporate" ? "Corporate authority" : "Institutional authority"}</h3>
@@ -1445,15 +1489,17 @@ function NewOrderForm({ value, setValue, clients, instruments, controls, checks,
     <div className="stepper"><span className="active">1 <b>Instruction</b></span><i /><span className={checks ? "active" : ""}>2 <b>Validation</b></span><i /><span>3 <b>Review</b></span></div>
     <div className="form-section"><h3>Client instruction</h3>
       <label>Client account<select value={value.accountId} onChange={(event) => setValue({ ...value, accountId: event.target.value })}>{clients.map((item) => <option key={item.id} value={item.accountId}>{item.code} · {item.name}</option>)}</select><small>{client ? `${etb(client.availableCash)} available cash · KYC ${client.kyc.replaceAll("_", " ")}` : "No client accounts available"}</small></label>
+      <label>Instruction source<select value={value.source} onChange={(event) => setValue({ ...value, source: event.target.value as NewOrderValue["source"], verificationId: "", verificationCode: "", demoCode: "" })}><option value="digital">Digital</option><option value="in_person">In person</option><option value="neway">Neway</option><option value="phone">Phone</option></select><small>The source is retained on the order and audit trail.</small></label>
       <label>Instrument<select value={instrument?.id ?? ""} disabled={!instruments.length} onChange={(event) => { const next = instruments.find((item) => item.id === event.target.value); if (next) setValue({ ...value, instrumentId: next.id, price: String(next.price) }); }}>{instruments.length ? instruments.map((item) => <option key={item.id} value={item.id}>{item.symbol} · {item.name}</option>) : <option value="">No instruments enabled</option>}</select><small>{instrument ? `${instrument.asset} · ${instrument.status} · Lot ${instrument.lot} · ${instrument.cycle}` : "Enable an instrument for this tenant in the admin console."}</small></label>
       <div className="segmented"><button type="button" className={value.side === "buy" ? "active buy" : ""} onClick={() => setValue({ ...value, side: "buy" })}>BUY</button><button type="button" className={value.side === "sell" ? "active sell" : ""} onClick={() => setValue({ ...value, side: "sell" })}>SELL</button></div>
       <div className="field-row"><label>Quantity<input inputMode="numeric" value={value.quantity} onChange={(event) => setValue({ ...value, quantity: event.target.value })} /></label><label>Limit price (ETB)<input inputMode="decimal" value={value.price} onChange={(event) => setValue({ ...value, price: event.target.value })} /></label></div>
       <div className="field-row"><label>Order type<select value={value.orderType} disabled={!controls.allowedOrderTypes.length} onChange={(event) => setValue({ ...value, orderType: event.target.value })}>{controls.allowedOrderTypes.length ? controls.allowedOrderTypes.map((orderType) => <option key={orderType}>{orderType}</option>) : <option value="">No order types enabled</option>}</select></label><label>Validity<select value={value.validity} onChange={(event) => setValue({ ...value, validity: event.target.value })}><option>Day</option><option>Good till date</option><option>Immediate or cancel</option></select></label></div>
       <label>Dealer notes<textarea rows={3} placeholder="Optional client instruction details" value={value.notes} onChange={(event) => setValue({ ...value, notes: event.target.value })} /></label>
+      {value.verificationId && <div className="client-approval-callout"><span>CLIENT AUTHORIZATION</span><div><b>Enter the one-time code</b><small>The code is bound to this account, instrument, side, quantity, price, order type, source, and submission reference.{value.demoCode ? ` Demo code: ${value.demoCode}` : ""}</small><input inputMode="numeric" maxLength={6} value={value.verificationCode} onChange={(event) => setValue({ ...value, verificationCode: event.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="6-digit code" /></div></div>}
     </div>
     <div className="estimate-card"><span><small>Gross consideration</small><b>{etb(amounts.gross)}</b></span><span><small>Brokerage{feeRule ? ` (${feeRule.brokeragePct.toFixed(2)}%)` : ""}</small><b>{etb(amounts.brokerage)}</b></span>{amounts.regulator > 0 && <span><small>ECMA fee</small><b>{etb(amounts.regulator)}</b></span>}{amounts.exchange > 0 && <span><small>ESX fee</small><b>{etb(amounts.exchange)}</b></span>}{amounts.csd > 0 && <span><small>CSD fee</small><b>{etb(amounts.csd)}</b></span>}<span><small>Total estimated fees</small><b>{etb(amounts.fees)}</b></span><span><small>Estimated net</small><strong>{etb(amounts.net)}</strong></span></div>
     <div className="validation-card"><div><h3>Pre-trade validation</h3><button type="button" className="btn secondary small" onClick={onValidate}>Run validation</button></div>{checks ? <ul>{checks.map((check) => <li key={check.label} className={check.passed ? "pass" : "fail"}><span>{check.passed ? "✓" : "!"}</span><b>{check.label}</b><small>{check.message}</small></li>)}</ul> : <p>Run all cash, holdings, KYC, account, tradability, order-type, lot, and tick-size controls before submission.</p>}</div>
-    <div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : "Submit for review"} <span>→</span></button></div>
+    <div className="drawer-actions"><button type="button" className="btn secondary" disabled>Save draft</button><button type="submit" className="btn primary" disabled={busy || !checks?.every((item) => item.passed)}>{busy ? "Submitting…" : value.verificationId ? "Verify & submit" : "Request authorization"} <span>→</span></button></div>
   </form>;
 }
 

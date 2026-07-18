@@ -5,6 +5,7 @@ import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
+import { confirmOtpChallenge, createOtpChallenge, orderPayloadHash } from "../../../lib/verification-service";
 
 export const runtime = "nodejs";
 
@@ -143,6 +144,27 @@ export async function POST(request: Request) {
     const { brokerId, clientId } = resolveInvestorContext(request);
     const payload = await request.json() as Record<string, unknown>;
 
+    if (payload.action === "request_kyc_otp" || payload.action === "confirm_otp") {
+      const client = await prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true } });
+      if (!client) return Response.json({ error: "Investor profile not found." }, { status: 404 });
+      if (payload.action === "confirm_otp") {
+        return Response.json(await confirmOtpChallenge({ id: String(payload.verificationId ?? ""), brokerId, clientId, code: String(payload.code ?? "") }));
+      }
+      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: client.accounts[0]?.id, purpose: "kyc_phone", source: "investor_portal", payloadHash: String(payload.phone ?? "").replace(/\D/g, ""), destinationHint: `mobile ending ${String(payload.phone ?? "").replace(/\D/g, "").slice(-4)}` });
+      return Response.json(challenge, { status: 201 });
+    }
+
+    if (payload.action === "request_order_otp") {
+      const [client, instrument] = await Promise.all([
+        prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true } }),
+        prisma.instrument.findUnique({ where: { symbol: String(payload.symbol ?? "") } }),
+      ]);
+      const account = client?.accounts[0];
+      if (!client || !account || !instrument) return Response.json({ error: "Investor account or instrument not found." }, { status: 404 });
+      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", destinationHint: `mobile ending ${client.phone?.replace(/\D/g, "").slice(-4) ?? "unknown"}`, payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
+      return Response.json(challenge, { status: 201 });
+    }
+
     if (payload.action === "cash_movement") {
       const movementType = String(payload.movementType ?? "");
       if (!['deposit', 'withdrawal'].includes(movementType)) {
@@ -194,10 +216,16 @@ export async function POST(request: Request) {
       if (legalDocument && String(payload.termsVersion ?? "") !== legalDocument.version) {
         return Response.json({ error: "The brokerage terms changed. Review the current version and try again." }, { status: 409 });
       }
+      const phoneVerification = await prisma.verificationChallenge.findFirst({ where: {
+        id: String(payload.verificationId ?? ""), brokerId, clientId, purpose: "kyc_phone", status: "verified",
+        consumedAt: null, expiresAt: { gt: new Date() }, payloadHash: String(payload.phone ?? "").replace(/\D/g, ""),
+      } });
+      if (!phoneVerification) return Response.json({ error: "Verify the mobile number before submitting KYC." }, { status: 409 });
 
       // The raw identifiers are deliberately never stored. Production should send
       // them directly to an Ethiopia-resident identity provider and retain only its reference.
       const updated = await prisma.$transaction(async (tx) => {
+        await tx.verificationChallenge.update({ where: { id: phoneVerification.id }, data: { status: "consumed", consumedAt: new Date() } });
         const next = await tx.client.update({ where: { id: client.id }, data: {
           fullName,
           clientType: payload.accountType === "institution" ? "institution" : "individual",
@@ -214,11 +242,18 @@ export async function POST(request: Request) {
           beneficialOwners: payload.accountType === "institution" && String(payload.beneficialOwnerName ?? "").trim()
             ? [{ name: String(payload.beneficialOwnerName).trim(), status: "declared" }]
             : undefined,
-          kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date(),
-          kycReviewDueAt: new Date(Date.now() + (settings?.kycReviewMonths ?? 12) * 30 * 24 * 60 * 60 * 1000),
+          kycStatus: "pending_review", riskRating: "standard", status: "pending_approval", kycConsentAt: new Date(),
+          onboardingChannel: "investor_portal", phoneVerifiedAt: new Date(),
+          sourceOfFunds: String(payload.sourceOfFunds ?? "").trim() || null,
+          investmentObjective: String(payload.investmentObjective ?? "").trim() || null,
+          taxResidency: String(payload.taxResidency ?? "Ethiopia").trim(),
+          pepStatus: String(payload.pepStatus ?? "not_pep"),
+          nationality: String(payload.nationality ?? "Ethiopian").trim(),
+          countryOfResidence: String(payload.countryOfResidence ?? "Ethiopia").trim(),
+          occupation: String(payload.occupation ?? "").trim() || null,
           electronicDeliveryConsentAt: payload.electronicDeliveryConsent === true ? new Date() : null,
         } });
-        await tx.account.updateMany({ where: { clientId: client.id }, data: { status: "active" } });
+        await tx.account.updateMany({ where: { clientId: client.id }, data: { status: "pending_approval" } });
         if (legalDocument && payload.termsAccepted === true) {
           await tx.clientConsent.create({ data: {
             id: crypto.randomUUID(),
@@ -231,12 +266,13 @@ export async function POST(request: Request) {
           } });
         }
         await tx.auditLog.create({ data: {
-          id: crypto.randomUUID(), brokerId, actorId: null, action: "INVESTOR_KYC_DEMO_COMPLETED",
-          entityType: "client", entityId: client.id, summary: `Demo KYC completed for ${fullName}; only masked identifiers retained`,
+          id: crypto.randomUUID(), brokerId, actorId: null, action: "INVESTOR_KYC_SUBMITTED",
+          entityType: "client", entityId: client.id, summary: `Digital KYC submitted for broker review for ${fullName}; only masked identifiers retained`,
         } });
         return next;
       });
-      return Response.json({ profile: { id: updated.id, fullName: updated.fullName, kycStatus: updated.kycStatus } });
+      const account = await prisma.account.findFirst({ where: { clientId: updated.id } });
+      return Response.json({ profile: { id: updated.id, clientCode: updated.clientCode, accountNumber: account?.accountNumber, fullName: updated.fullName, kycStatus: updated.kycStatus } });
     }
 
     if (payload.action === "service_request") {
@@ -333,6 +369,7 @@ export async function POST(request: Request) {
           termsVersion: legalDocument?.version,
           disclosureVersion: "order-v1",
           disclosureAcceptedAt: new Date(),
+          verificationId: String(payload.verificationId ?? ""),
         },
       );
       return Response.json({
