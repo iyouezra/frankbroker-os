@@ -11,7 +11,7 @@ import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/
 import { buildReports, feesEarned, downloadCsv, type Report } from "../lib/broker-reports";
 import { isOrderEligibleClient } from "../lib/client-readiness";
 
-type View = "dashboard" | "performance" | "orders" | "clients" | "settlement" | "reconciliation" | "reports" | "audit" | "settings";
+type View = "dashboard" | "performance" | "orders" | "clients" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "settings";
 type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string };
 type NewClientValue = {
@@ -52,6 +52,10 @@ type TenantFeatures = { manualTradeCapture: boolean; [key: string]: boolean };
 type TenantInfo = { name: string; license: string; primaryColor: string };
 type TenantApiInstrument = { id: string; symbol: string; name: string; assetClass: string; issuer: string; status: string; currency: string; price: number; lotSize: number; tickSize: number; settlementCycle: string };
 type TenantApiResult = { tenant?: { tradingName?: string; licenseNumber?: string; primaryColor?: string; features?: Partial<TenantFeatures>; controls?: Partial<TenantControls> | null }; instruments?: TenantApiInstrument[] };
+type CashPoolView = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; status: string; bookBalance: number; statementBalance: number; beneficialTotal: number; ownershipVariance: number; bankVariance: number; lastReconciledAt: string | null };
+type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: number; currency: string; status: string; bankReference: string | null; proofReference: string | null; destinationBankName: string | null; destinationAccountName: string | null; destinationAccountMasked: string | null; channel: string; submissionReference: string; submittedAt: string; rejectionReason: string | null; failureReason: string | null; client?: { id: string; code: string; name: string }; account?: { id: string; number: string }; pool?: { id: string; bankName: string; accountName: string; accountNumberMasked: string; purpose: string } };
+type CashOperationsData = { summary: { bankBookTotal: number; statementTotal: number; beneficialTotal: number; pendingDeposits: number; pendingWithdrawals: number }; pools: CashPoolView[]; movements: CashMovementView[] };
+type BrokerCashInput = { clientId: string; accountId?: string; pooledBankAccountId: string; movementType: "deposit" | "withdrawal"; amount: number; submissionReference: string; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string; notes?: string };
 type Client360Tab = "overview" | "assets" | "orders" | "trades" | "transactions" | "settlements" | "documents" | "notes" | "audit";
 type Client360Detail = {
   client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string; createdBy: string | null; submittedAt: string | null; approvedBy: string | null; approvedAt: string | null; rejectionReason: string | null };
@@ -89,6 +93,14 @@ const fallbackControls: TenantControls = {
   ],
 };
 const fallbackFeatures: TenantFeatures = { manualTradeCapture: true };
+const fallbackCashOperations: CashOperationsData = {
+  summary: { bankBookTotal: 19_449_700, statementTotal: 19_449_700, beneficialTotal: 19_449_700, pendingDeposits: 1, pendingWithdrawals: 0 },
+  pools: [
+    { id: "pool_aby_general", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", currency: "ETB", purpose: "general", status: "active", bookBalance: 16_449_700, statementBalance: 16_449_700, beneficialTotal: 16_449_700, ownershipVariance: 0, bankVariance: 0, lastReconciledAt: "2026-07-14T16:00:00Z" },
+    { id: "pool_aby_fixed_income", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Fixed Income Client Money", accountNumberMasked: "•••• 7721", currency: "ETB", purpose: "fixed_income", status: "active", bookBalance: 3_000_000, statementBalance: 3_000_000, beneficialTotal: 3_000_000, ownershipVariance: 0, bankVariance: 0, lastReconciledAt: "2026-07-14T16:00:00Z" },
+  ],
+  movements: [{ id: "MOV-DEMO-DEP-001", type: "deposit", amount: 15_000, currency: "ETB", status: "pending_verification", bankReference: "CBE-FT-908231", proofReference: "mobile-transfer-receipt", destinationBankName: null, destinationAccountName: null, destinationAccountMasked: null, channel: "investor_portal", submissionReference: "INV-DEMO-FUND-001", submittedAt: "2026-07-16T08:42:00Z", rejectionReason: null, failureReason: null, client: { id: "cli_investor_demo", code: "CL-INV-001", name: "Selam Mekonnen" }, account: { id: "acc_investor_demo", number: "INV-00001-01" }, pool: { id: "pool_aby_general", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", purpose: "general" } }],
+};
 const fallbackInstruments: BrokerInstrument[] = demoInstruments;
 const newClientDefaults = (): NewClientValue => ({
   clientType: "individual",
@@ -143,6 +155,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   { label: "Operations", items: [
     { id: "orders", label: "Order log", icon: "orders" },
     { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance"] },
+    { id: "cash", label: "Client money", icon: "cash", roles: ["broker_admin", "operations", "settlement"] },
     { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
     { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations"] },
   ] },
@@ -175,6 +188,7 @@ const ICON_PATHS: Record<string, string> = {
   dashboard: "M4 13h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 21h6a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 9h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z M4 21h6a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z",
   orders: "M8 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1 M9 3h6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M8 11h8 M8 15h5",
   clients: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+  cash: "M3 7h18v13H3z M16 13h5 M3 7l3-3h12l3 3 M7 11h5 M7 15h3",
   settlement: "M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01l-3-3",
   reconciliation: "M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M13 6h3a2 2 0 0 1 2 2v7 M11 18H8a2 2 0 0 1-2-2V9",
   reports: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z M14 2v4a2 2 0 0 0 2 2h4 M16 13H8 M16 17H8 M10 9H8",
@@ -323,6 +337,7 @@ export default function FrankBrokerApp() {
   const [selectedClientId, setSelectedClientId] = useState(fallbackClients[0].id);
   const [reconBatch, setReconBatch] = useState<ReconBatch>(fallbackReconBatch);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
+  const [cashOperations, setCashOperations] = useState<CashOperationsData>(fallbackCashOperations);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID() });
   const [newClient, setNewClient] = useState<NewClientValue>(newClientDefaults);
@@ -356,6 +371,15 @@ export default function FrankBrokerApp() {
 
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/cash-movements", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Cash API unavailable")))
+      .then((result: CashOperationsData) => setCashOperations(result))
+      .catch(() => setCashOperations(fallbackCashOperations));
+    return () => controller.abort();
+  }, [role]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -463,6 +487,7 @@ export default function FrankBrokerApp() {
       if (order) { openDetail(order); return; }
       setView("orders");
     } else if (item.entityType === "client") setView("clients");
+    else if (item.entityType === "cash_movement") setView("cash");
     else if (item.entityType === "reconciliation") setView("reconciliation");
   };
 
@@ -504,6 +529,37 @@ export default function FrankBrokerApp() {
     } catch {
       // The workflow response remains authoritative even if a follow-up refresh fails.
     }
+  };
+
+  const refreshCashData = async () => {
+    const result = await apiRequest<CashOperationsData>("/api/cash-movements", { headers: { "x-frank-demo-role": role } });
+    setCashOperations(result);
+  };
+
+  const createCashInstruction = async (input: BrokerCashInput) => {
+    setBusyAction("cash_create");
+    try {
+      await apiRequest("/api/cash-movements", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify(input) });
+      await Promise.all([refreshCashData(), refreshOmsData()]);
+      notify(`${displayLabel(input.movementType)} instruction recorded. Controlled review is now required.`);
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Cash instruction could not be recorded.", "error");
+      return false;
+    } finally { setBusyAction(null); }
+  };
+
+  const actOnCashInstruction = async (id: string, action: "verify" | "approve" | "complete" | "reject" | "fail", detail: { reason?: string; bankReference?: string }) => {
+    setBusyAction(`cash_${id}_${action}`);
+    try {
+      await apiRequest(`/api/cash-movements/${encodeURIComponent(id)}/action`, { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ action, ...detail }) });
+      await Promise.all([refreshCashData(), refreshOmsData()]);
+      notify(`${id} updated. Account, pooled-bank, beneficial-owner, and audit records remain linked.`);
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Cash instruction could not be updated.", "error");
+      return false;
+    } finally { setBusyAction(null); }
   };
 
   const actionOrder = async (action: "approve" | "reject" | "cancel" | "settle" | "fail") => {
@@ -820,6 +876,7 @@ export default function FrankBrokerApp() {
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "orders" && <OrdersPage orders={filteredOrders} instruments={instruments} onOpen={openDetail} onNewOrder={openNewOrder} onExport={exportOrders} />}
           {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
+          {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} onDownloaded={(name) => notify(`${name} exported as CSV.`)} />}
@@ -1189,6 +1246,45 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
     {tab === "notes" && <div className="notes-layout"><section className="panel note-composer"><div className="panel-head"><div><span className="eyebrow">INTERNAL ONLY</span><h2>Add broker note</h2></div></div>{canAdjust ? <div className="note-form"><label>Category<select value={noteCategory} onChange={(event) => setNoteCategory(event.target.value)}>{["general", "compliance", "support", "trading", "settlement"].map((category) => <option key={category} value={category}>{displayLabel(category)}</option>)}</select></label><label>Note<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="Record a concise operational fact, decision, or follow-up…" rows={5} /></label><small>Internal notes are visible only to broker staff and are permanently audit logged.</small><button className="btn primary" disabled={busy === "add_note" || noteText.trim().length < 3} onClick={() => void act("add_note")}>{busy === "add_note" ? "Adding note…" : "Add internal note"}</button></div> : <div className="permission-note">Read-only role: internal notes can be viewed but not created.</div>}</section><section className="panel notes-list"><div className="panel-head"><div><span className="eyebrow">BROKER RECORD</span><h2>Internal notes</h2></div></div>{model.notes.length ? model.notes.map((note) => <article key={note.id}><span>{displayLabel(note.category)}</span><p>{note.text}</p><footer><b>{note.createdBy}</b><time>{new Date(note.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</time><em>{displayLabel(note.visibility)}</em></footer></article>) : <EmptyState title="No internal notes" copy="Authorized broker users can record general, compliance, support, trading, or settlement notes." />}</section></div>}
 
     {tab === "audit" && <section className="panel client-audit"><div className="panel-head"><div><span className="eyebrow">CLIENT CONTROL RECORD</span><h2>Audit trail</h2></div></div>{model.auditTrail.length ? model.auditTrail.map((entry) => <div key={entry.id}><i /><time>{new Date(entry.timestamp).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}<b>{new Date(entry.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</b></time><span><small>{entry.user} · {displayLabel(entry.entityType)} {entry.entityId ?? ""}</small><h3>{displayLabel(entry.action)}</h3><p>{entry.reason}</p>{(entry.oldValue || entry.newValue) && <details><summary>Recorded change</summary><pre>{entry.oldValue ? `Before: ${entry.oldValue}\n` : ""}{entry.newValue ? `After: ${entry.newValue}` : ""}</pre></details>}</span></div>) : <EmptyState title="No client audit events" copy="Sensitive client, order, trade, ledger, settlement, consent, restriction, and note events will appear here." />}</section>}
+  </>;
+}
+
+function CashOperationsPage({ data, clients, role, busy, onCreate, onAction }: { data: CashOperationsData; clients: BrokerClient[]; role: Role; busy: string | null; onCreate: (input: BrokerCashInput) => Promise<boolean>; onAction: (id: string, action: "verify" | "approve" | "complete" | "reject" | "fail", detail: { reason?: string; bankReference?: string }) => Promise<boolean> }) {
+  const [recording, setRecording] = useState(false);
+  const [filter, setFilter] = useState<"all" | "pending" | "deposit" | "withdrawal">("pending");
+  const [actionState, setActionState] = useState<{ movement: CashMovementView; action: "verify" | "approve" | "complete" | "reject" | "fail" } | null>(null);
+  const [actionDetail, setActionDetail] = useState("");
+  const activeClients = clients.filter((client) => client.status === "active" && client.accountStatus === "active");
+  const [form, setForm] = useState<BrokerCashInput>({ clientId: activeClients[0]?.id ?? "", accountId: activeClients[0]?.accountId, pooledBankAccountId: data.pools[0]?.id ?? "", movementType: "deposit", amount: 15_000, submissionReference: crypto.randomUUID(), bankReference: "", destinationBankName: "Commercial Bank of Ethiopia", destinationAccountName: "", destinationAccountMasked: "" });
+  const canAdjust = hasPermission(role, "adjust");
+  const pendingStatuses = ["pending_verification", "pending_approval", "approved"];
+  const movements = data.movements.filter((movement) => filter === "all" || (filter === "pending" ? pendingStatuses.includes(movement.status) : movement.type === filter));
+  const variance = data.summary.statementTotal - data.summary.beneficialTotal;
+  const movementTone = (status: string) => status === "completed" ? "success" : ["rejected", "failed"].includes(status) ? "danger" : status === "approved" ? "brand" : "warning";
+  const chooseClient = (clientId: string) => {
+    const client = activeClients.find((item) => item.id === clientId);
+    setForm((current) => ({ ...current, clientId, accountId: client?.accountId }));
+  };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const saved = await onCreate({ ...form, submissionReference: form.submissionReference || crypto.randomUUID() });
+    if (saved) { setRecording(false); setForm((current) => ({ ...current, amount: 15_000, submissionReference: crypto.randomUUID(), bankReference: "", proofReference: "", destinationAccountName: "", destinationAccountMasked: "", notes: "" })); }
+  };
+  const openAction = (movement: CashMovementView, action: "verify" | "approve" | "complete" | "reject" | "fail") => { setActionDetail(action === "verify" ? movement.bankReference ?? "" : ""); setActionState({ movement, action }); };
+  const confirmAction = async () => {
+    if (!actionState) return;
+    const requiresBankReference = ["verify", "complete"].includes(actionState.action);
+    const saved = await onAction(actionState.movement.id, actionState.action, requiresBankReference ? { bankReference: actionDetail } : { reason: actionDetail });
+    if (saved) setActionState(null);
+  };
+  return <><SectionHeader eyebrow="SAFEGUARDED CLIENT CASH" title="Client money operations" copy="Control deposits and withdrawals across pooled bank accounts while preserving each investor's exact beneficial ownership." action={canAdjust ? <button className="btn primary" onClick={() => setRecording((value) => !value)}>{recording ? "Close form" : "+ Record instruction"}</button> : undefined} />
+    <div className="manual-banner"><span>CONTROL</span><p>Investor balances are a subledger of safeguarded pooled accounts. A zero variance is required between bank-confirmed cash, the bank book, and beneficial-owner allocations.</p><button onClick={() => setFilter("all")}>View full ledger <b>→</b></button></div>
+    <section className="metric-grid cash-metrics"><Metric label="Pooled bank book" value={compactEtb(data.summary.bankBookTotal)} note={`${data.pools.length} safeguarded account${data.pools.length === 1 ? "" : "s"}`} tone="brand" /><Metric label="Beneficial ownership" value={compactEtb(data.summary.beneficialTotal)} note="Allocated investor by investor" tone="success" /><Metric label="Control variance" value={etb(variance)} note={variance === 0 ? "Bank and investor books agree" : "Stop and investigate"} tone={variance === 0 ? "success" : "danger"} /><Metric label="Deposits to verify" value={String(data.summary.pendingDeposits)} note="No credit before evidence match" tone="warning" /><Metric label="Withdrawals in flight" value={String(data.summary.pendingWithdrawals)} note="Reserved until paid or released" tone="purple" /></section>
+    {recording && <form className="panel cash-capture" onSubmit={(event) => void submit(event)}><div className="panel-head"><div><span className="eyebrow">PAPER OR BRANCH INSTRUCTION</span><h2>Record a client cash instruction</h2></div><span className="account-number">Maker entry</span></div><div className="cash-capture-grid"><label>Client account<div className="brand-select"><select value={form.clientId} onChange={(event) => chooseClient(event.target.value)}>{activeClients.map((client) => <option key={client.id} value={client.id}>{client.code} · {client.name}</option>)}</select><i>⌄</i></div></label><label>Instruction type<div className="brand-select"><select value={form.movementType} onChange={(event) => setForm((current) => ({ ...current, movementType: event.target.value as "deposit" | "withdrawal" }))}><option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option></select><i>⌄</i></div></label><label>Pooled account<div className="brand-select"><select value={form.pooledBankAccountId} onChange={(event) => setForm((current) => ({ ...current, pooledBankAccountId: event.target.value }))}>{data.pools.map((pool) => <option key={pool.id} value={pool.id}>{displayLabel(pool.purpose)} · {pool.accountNumberMasked}</option>)}</select><i>⌄</i></div></label><label>Amount (ETB)<input type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: Number(event.target.value) }))} /></label>{form.movementType === "deposit" ? <><label>Transfer / slip reference<input required value={form.bankReference ?? ""} onChange={(event) => setForm((current) => ({ ...current, bankReference: event.target.value }))} placeholder="Bank evidence reference" /></label><label>Receipt reference<input value={form.proofReference ?? ""} onChange={(event) => setForm((current) => ({ ...current, proofReference: event.target.value }))} placeholder="Scanned paper or document reference" /></label></> : <><label>Destination bank<input required value={form.destinationBankName ?? ""} onChange={(event) => setForm((current) => ({ ...current, destinationBankName: event.target.value }))} /></label><label>Verified account name<input required value={form.destinationAccountName ?? ""} onChange={(event) => setForm((current) => ({ ...current, destinationAccountName: event.target.value }))} /></label><label>Account last 4 only<input required minLength={4} value={form.destinationAccountMasked ?? ""} onChange={(event) => setForm((current) => ({ ...current, destinationAccountMasked: event.target.value.replace(/\D/g, "") }))} placeholder="4108" /></label></>}<label className="cash-notes">Operational note<input value={form.notes ?? ""} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Source branch, paper form, callback, or supporting context" /></label></div><div className="cash-capture-foot"><p>{form.movementType === "deposit" ? "This creates a pending item only. Another authorized user must verify bank evidence before crediting cash." : "Cash is reserved when this instruction is recorded. Another authorized user must approve it before payment."}</p><button className="btn primary" disabled={busy === "cash_create" || !form.clientId || !form.pooledBankAccountId || form.amount <= 0}>{busy === "cash_create" ? "Recording…" : "Record for review"}</button></div></form>}
+    <section className="cash-pool-grid">{data.pools.map((pool) => <article className="panel cash-pool" key={pool.id}><div className="cash-pool-head"><span><small>{displayLabel(pool.purpose)}</small><b>{pool.bankName}</b></span><span className={`status ${pool.status === "active" ? "status-success" : "status-neutral"}`}><i />{displayLabel(pool.status)}</span></div><h3>{pool.accountName}</h3><p>{pool.accountNumberMasked} · {pool.currency}</p><dl><div><dt>Bank-confirmed</dt><dd>{etb(pool.statementBalance)}</dd></div><div><dt>Internal bank book</dt><dd>{etb(pool.bookBalance)}</dd></div><div><dt>Investor allocations</dt><dd>{etb(pool.beneficialTotal)}</dd></div><div><dt>Variance</dt><dd className={pool.ownershipVariance || pool.bankVariance ? "negative" : "positive"}>{etb(pool.statementBalance - pool.beneficialTotal)}</dd></div></dl><footer>Last evidence match {pool.lastReconciledAt ? new Date(pool.lastReconciledAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "not recorded"}</footer></article>)}</section>
+    <div className="filter-row cash-filters">{(["pending", "all", "deposit", "withdrawal"] as const).map((item) => <button key={item} className={`filter ${filter === item ? "active" : ""}`} onClick={() => setFilter(item)}>{displayLabel(item)} <b>{item === "all" ? data.movements.length : item === "pending" ? data.movements.filter((movement) => pendingStatuses.includes(movement.status)).length : data.movements.filter((movement) => movement.type === item).length}</b></button>)}<span /></div>
+    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL QUEUE</span><h2>Deposit and withdrawal instructions</h2></div><span className="account-number">{movements.length} shown</span></div>{movements.length ? <div className="table-scroll"><table className="cash-table"><thead><tr><th>Instruction / time</th><th>Client</th><th>Type</th><th className="num">Amount</th><th>Pooled account</th><th>Bank / payment evidence</th><th>Channel</th><th>Status</th><th>Available action</th></tr></thead><tbody>{movements.map((movement) => <tr key={movement.id}><td><b>{movement.id}</b><small>{new Date(movement.submittedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small></td><td><b>{movement.client?.name ?? "Client"}</b><small>{movement.client?.code} · {movement.account?.number}</small></td><td><span className={`cash-type cash-${movement.type}`}>{movement.type === "deposit" ? "↓ Deposit" : "↑ Withdrawal"}</span></td><td className="num"><b>{fmt.format(movement.amount)}</b><small>{movement.currency}</small></td><td><b>{displayLabel(movement.pool?.purpose ?? "general")}</b><small>{movement.pool?.accountNumberMasked}</small></td><td><b>{movement.bankReference ?? movement.destinationBankName ?? "Not recorded"}</b><small>{movement.type === "withdrawal" ? `${movement.destinationAccountName ?? ""} ${movement.destinationAccountMasked ?? ""}` : movement.proofReference ?? "Awaiting evidence match"}</small></td><td>{displayLabel(movement.channel)}</td><td><span className={`status status-${movementTone(movement.status)}`}><i />{displayLabel(movement.status)}</span></td><td><div className="cash-row-actions">{canAdjust && movement.type === "deposit" && movement.status === "pending_verification" && <><button className="btn primary small" onClick={() => openAction(movement, "verify")}>Verify & credit</button><button className="btn danger small" onClick={() => openAction(movement, "reject")}>Reject</button></>}{canAdjust && movement.type === "withdrawal" && movement.status === "pending_approval" && <><button className="btn primary small" onClick={() => openAction(movement, "approve")}>Approve</button><button className="btn danger small" onClick={() => openAction(movement, "reject")}>Reject</button></>}{canAdjust && movement.type === "withdrawal" && movement.status === "approved" && <><button className="btn primary small" onClick={() => openAction(movement, "complete")}>Mark paid</button><button className="btn danger small" onClick={() => openAction(movement, "fail")}>Payment failed</button></>}{(!canAdjust || ["completed", "rejected", "failed"].includes(movement.status)) && <span className="muted-label">No action</span>}</div></td></tr>)}</tbody></table></div> : <EmptyState title="No cash instructions in this view" copy="New investor-portal and broker-desk instructions appear here for controlled processing." />}</section>
+    {actionState && <div className="cash-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setActionState(null); }}><section className="cash-dialog" role="dialog" aria-modal="true" aria-labelledby="cash-action-title"><span className="eyebrow">CONTROLLED ACTION</span><h2 id="cash-action-title">{displayLabel(actionState.action)} {actionState.movement.type}</h2><p>{actionState.movement.client?.name} · {etb(actionState.movement.amount)} · {actionState.movement.id}</p><label>{["verify", "complete"].includes(actionState.action) ? "Bank evidence / payment reference" : actionState.action === "approve" ? "Approval note (optional)" : "Reason (required)"}<input autoFocus value={actionDetail} onChange={(event) => setActionDetail(event.target.value)} placeholder={["verify", "complete"].includes(actionState.action) ? "Confirmed bank reference" : "Record the control decision"} /></label><div><button className="btn secondary" onClick={() => setActionState(null)}>Cancel</button><button className={`btn ${["reject", "fail"].includes(actionState.action) ? "danger" : "primary"}`} disabled={Boolean(busy) || (actionState.action !== "approve" && !actionDetail.trim())} onClick={() => void confirmAction()}>{busy ? "Saving…" : actionState.action === "verify" ? "Verify and credit" : actionState.action === "complete" ? "Confirm payment" : displayLabel(actionState.action)}</button></div></section></div>}
   </>;
 }
 

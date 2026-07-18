@@ -16,6 +16,7 @@ import {
   resolveFeePolicy,
   serializeFeeBreakdown,
 } from "./fee-service";
+import { applyClientMoneyTradeBook } from "../client-money-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -160,8 +161,37 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
     });
     if (!holding) throw new Response("Holding could not be initialized.", { status: 500 });
 
+    // Create the trade and settlement shell before ledger rows reference it.
+    // The serializable transaction rolls both back if any financial mutation fails.
+    await tx.trade.create({
+      data: {
+        id: tradeId,
+        captureReference: input.captureReference ?? null,
+        orderId,
+        executionPrice,
+        quantityFilled: quantity,
+        grossAmount: amounts.gross,
+        fees: amounts.fees,
+        feeBreakdown: serializeFeeBreakdown(amounts.breakdown),
+        netAmount: amounts.net,
+        tradeDate: valueDate,
+        settlementDate: dateOnly(settlementDate),
+        capturedBy: actor.id,
+        settlement: {
+          create: {
+            id: settlementId,
+            status: "pending",
+            settlementDate: dateOnly(settlementDate),
+            cashStatus: "pending",
+            securitiesStatus: "pending",
+          },
+        },
+      },
+    });
+
     let blockedCash = order.blockedCash;
     let blockedQuantity = order.blockedQuantity;
+    let cashBookImpact = ZERO;
     if (order.side === "buy") {
       const targetRemainingBlock = remainingQuantity.isZero()
         ? ZERO
@@ -190,6 +220,7 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
         reason: "Trade captured",
         mutation: mutations.cash,
       });
+      cashBookImpact = money(mutations.cash.next.total.minus(account.totalCash));
       await persistSecuritiesMutation(tx, {
         holdingId: holding.id,
         accountId: order.accountId,
@@ -230,6 +261,7 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
         reason: "Trade captured",
         mutation: mutations.cash,
       });
+      cashBookImpact = money(mutations.cash.next.total.minus(account.totalCash));
       await persistSecuritiesMutation(tx, {
         holdingId: holding.id,
         accountId: order.accountId,
@@ -244,30 +276,14 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
       blockedQuantity = order.blockedQuantity.minus(quantity);
     }
 
-    await tx.trade.create({
-      data: {
-        id: tradeId,
-        captureReference: input.captureReference ?? null,
-        orderId,
-        executionPrice,
-        quantityFilled: quantity,
-        grossAmount: amounts.gross,
-        fees: amounts.fees,
-        feeBreakdown: serializeFeeBreakdown(amounts.breakdown),
-        netAmount: amounts.net,
-        tradeDate: valueDate,
-        settlementDate: dateOnly(settlementDate),
-        capturedBy: actor.id,
-        settlement: {
-          create: {
-            id: settlementId,
-            status: "pending",
-            settlementDate: dateOnly(settlementDate),
-            cashStatus: "pending",
-            securitiesStatus: "pending",
-          },
-        },
-      },
+    await applyClientMoneyTradeBook(tx, {
+      brokerId: actor.brokerId,
+      accountId: order.accountId,
+      orderId,
+      tradeId,
+      actorId: actor.id,
+      impact: cashBookImpact,
+      assetClass: order.instrument.assetClass,
     });
 
     const finalStatus = remainingQuantity.gt(0) ? "partially_filled" : "settlement_pending";

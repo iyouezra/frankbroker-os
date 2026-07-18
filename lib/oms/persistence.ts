@@ -21,7 +21,9 @@ export async function persistCashMutation(
     accountId: string;
     orderId?: string | null;
     tradeId?: string | null;
-    actorId: string;
+    cashMovementId?: string | null;
+    pooledBankAccountId?: string | null;
+    actorId: string | null;
     valueDate: Date;
     reason?: string | null;
     mutation: CashMutation;
@@ -44,6 +46,8 @@ export async function persistCashMutation(
       accountId: input.accountId,
       orderId: input.orderId ?? null,
       tradeId: input.tradeId ?? null,
+      cashMovementId: input.cashMovementId ?? null,
+      pooledBankAccountId: input.pooledBankAccountId ?? null,
       entryType: entry.entryType,
       amount: entry.amount,
       totalImpact: entry.totalImpact,

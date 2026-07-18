@@ -24,6 +24,7 @@ async function main() {
     data: [
       { id: "usr_demo_admin", brokerId: "brk_abyssinia", email: "demo.admin@frankbroker.et", fullName: "Mekdes Tadesse", role: "broker_admin", status: "active" },
       { id: "usr_trader", brokerId: "brk_abyssinia", email: "dawit@frankbroker.et", fullName: "Dawit Alemu", role: "trader", status: "active" },
+      { id: "usr_operations", brokerId: "brk_abyssinia", email: "hana@frankbroker.et", fullName: "Hana Kebede", role: "operations", status: "active" },
       { id: "usr_compliance", brokerId: "brk_abyssinia", email: "liya@frankbroker.et", fullName: "Liya Girma", role: "compliance", status: "active" },
       { id: "usr_settlement", brokerId: "brk_abyssinia", email: "rahel@frankbroker.et", fullName: "Rahel Getachew", role: "settlement", status: "active" },
       { id: "usr_platform_admin", brokerId: null, email: "platform.admin@frankmoney.et", fullName: "Fikru Yilma", role: "super_admin", status: "active", mfaEnabled: true },
@@ -53,6 +54,34 @@ async function main() {
       { id: "acc_blue", clientId: "cli_blue", accountNumber: "TRD-10017-01", totalCash: 4_705_300, availableCash: 4_120_300, blockedCash: 585_000, unsettledCash: 0, status: "active" },
       { id: "acc_investor_demo", clientId: "cli_investor_demo", accountNumber: "INV-00001-01", totalCash: 75_000, availableCash: 75_000, blockedCash: 0, unsettledCash: 0, status: "active" },
       { id: "acc_pending_demo", clientId: "cli_pending_demo", accountNumber: "TRD-2026-P001-01", totalCash: 0, availableCash: 0, blockedCash: 0, unsettledCash: 0, status: "pending_approval", restrictionReason: "Awaiting client onboarding approval" },
+    ],
+    skipDuplicates: true,
+  });
+
+  // Physical cash is held in safeguarded omnibus accounts while these
+  // positions record each investor's exact beneficial share of each pool.
+  await prisma.pooledBankAccount.createMany({
+    data: [
+      { id: "pool_aby_general", brokerId: "brk_abyssinia", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", purpose: "general", bookBalance: 16_449_700, statementBalance: 16_449_700, status: "active", lastReconciledAt: new Date("2026-07-14T16:00:00Z") },
+      { id: "pool_aby_fixed_income", brokerId: "brk_abyssinia", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Fixed Income Client Money", accountNumberMasked: "•••• 7721", purpose: "fixed_income", bookBalance: 3_000_000, statementBalance: 3_000_000, status: "active", lastReconciledAt: new Date("2026-07-14T16:00:00Z") },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.clientMoneyPosition.createMany({
+    data: [
+      { id: "pos_meron_general", accountId: "acc_meron", pooledBankAccountId: "pool_aby_general", balance: 1_840_500 },
+      { id: "pos_wegagen_general", accountId: "acc_wegagen", pooledBankAccountId: "pool_aby_general", balance: 9_400_000 },
+      { id: "pos_wegagen_fixed", accountId: "acc_wegagen", pooledBankAccountId: "pool_aby_fixed_income", balance: 3_000_000 },
+      { id: "pos_selam_general", accountId: "acc_selam", pooledBankAccountId: "pool_aby_general", balance: 428_900 },
+      { id: "pos_blue_general", accountId: "acc_blue", pooledBankAccountId: "pool_aby_general", balance: 4_705_300 },
+      { id: "pos_investor_general", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", balance: 75_000 },
+      { id: "pos_pending_general", accountId: "acc_pending_demo", pooledBankAccountId: "pool_aby_general", balance: 0 },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.cashMovement.createMany({
+    data: [
+      { id: "MOV-DEMO-DEP-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-FUND-001", movementType: "deposit", amount: 15_000, status: "pending_verification", bankReference: "CBE-FT-908231", proofReference: "mobile-transfer-receipt", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-16T08:42:00Z"), notes: "Awaiting independent bank evidence match" },
     ],
     skipDuplicates: true,
   });

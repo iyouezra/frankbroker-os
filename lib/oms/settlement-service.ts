@@ -7,6 +7,7 @@ import { writeNotification, OPS } from "./notification-service";
 import { settleBuySecurities, settleSellCash, type CashSnapshot, type SecuritySnapshot } from "./ledger-service";
 import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
 import { assertTransition } from "./status";
+import { confirmClientMoneyTradeAtSettlement } from "../client-money-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -74,6 +75,13 @@ export async function settleNextTrade(actor: Actor, orderId: string, requestedTr
         mutation,
       });
     }
+
+    await confirmClientMoneyTradeAtSettlement(tx, {
+      brokerId: actor.brokerId,
+      orderId,
+      tradeId: trade.id,
+      actorId: actor.id,
+    });
 
     await tx.settlement.update({
       where: { id: trade.settlement.id },

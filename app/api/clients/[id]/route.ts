@@ -35,6 +35,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         },
         consents: { include: { legalDocument: true }, orderBy: { acceptedAt: "desc" } },
         serviceRequests: { orderBy: { submittedAt: "desc" } },
+        cashMovements: { include: { pooledBankAccount: true }, orderBy: { submittedAt: "desc" } },
         notes: { include: { author: true }, orderBy: { createdAt: "desc" } },
         accounts: {
           orderBy: { createdAt: "asc" },
@@ -92,6 +93,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ...orders.map((order) => order.id),
       ...trades.flatMap(({ trade }) => [trade.id, ...(trade.settlement ? [trade.settlement.id] : [])]),
       ...client.serviceRequests.map((item) => item.id),
+      ...client.cashMovements.map((item) => item.id),
       ...client.notes.map((note) => note.id),
     ];
     const auditRows = await prisma.auditLog.findMany({
@@ -108,6 +110,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ...(account?.cashLedgerEntries ?? []).map((entry) => entry.createdAt),
       ...(account?.securitiesLedgerEntries ?? []).map((entry) => entry.createdAt),
       ...client.notes.map((note) => note.createdAt),
+      ...client.cashMovements.map((movement) => movement.updatedAt),
     ]);
 
     const transactions = [
@@ -125,11 +128,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         blockedImpact: toNum(entry.blockedImpact),
         unsettledImpact: toNum(entry.unsettledImpact),
         runningBalance: toNum(entry.runningBalance),
-        reference: entry.tradeId ?? entry.orderId ?? entry.id,
+        reference: entry.cashMovementId ?? entry.tradeId ?? entry.orderId ?? entry.id,
         orderId: entry.orderId,
         tradeId: entry.tradeId,
         status: "posted",
-        createdBy: entry.createdByUser.fullName,
+        createdBy: entry.createdByUser?.fullName ?? "Investor portal",
         notes: entry.reason ?? entry.description,
       })),
       ...(account?.securitiesLedgerEntries ?? []).map((entry) => ({
@@ -185,8 +188,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         available: toNum(account.availableCash),
         blocked: toNum(account.blockedCash),
         unsettled: toNum(account.unsettledCash),
-        pendingDeposits: 0,
-        pendingWithdrawals: 0,
+        pendingDeposits: client.cashMovements
+          .filter((movement) => movement.movementType === "deposit" && movement.status === "pending_verification")
+          .reduce((sum, movement) => sum + toNum(movement.amount), 0),
+        pendingWithdrawals: client.cashMovements
+          .filter((movement) => movement.movementType === "withdrawal" && ["pending_approval", "approved"].includes(movement.status))
+          .reduce((sum, movement) => sum + toNum(movement.amount), 0),
         currency: account.currency,
       } : null,
       holdings: (account?.holdings ?? []).map((holding) => ({

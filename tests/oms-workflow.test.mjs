@@ -7,8 +7,12 @@ import {
   blockSellSecurities,
   captureBuyFill,
   captureSellFill,
+  completeWithdrawalCash,
+  creditVerifiedDeposit,
   releaseBuyCash,
   releaseSellSecurities,
+  releaseWithdrawalCash,
+  reserveWithdrawalCash,
   settleBuySecurities,
   settleSellCash,
 } from "../lib/oms/ledger-service.ts";
@@ -45,6 +49,39 @@ test("buy order with sufficient cash blocks cash and release restores it", () =>
 
   const cancelled = releaseBuyCash(blocked.next, 1_025, "Cancelled order");
   assert.equal(toNum(cancelled.next.available), 10_000);
+});
+
+test("verified deposit credits total and available cash atomically", () => {
+  const result = creditVerifiedDeposit(cash(10_000), 2_500);
+  assert.deepEqual(
+    [toNum(result.next.total), toNum(result.next.available), toNum(result.next.blocked), result.entries[0].entryType],
+    [12_500, 12_500, 0, "deposit"],
+  );
+  assert.throws(() => creditVerifiedDeposit(cash(10_000), 0), /Deposit must be positive/);
+});
+
+test("withdrawal reservation prevents double spend and payment debits only reserved cash", () => {
+  const reserved = reserveWithdrawalCash(cash(10_000), 3_000);
+  assert.deepEqual(
+    [toNum(reserved.next.total), toNum(reserved.next.available), toNum(reserved.next.blocked)],
+    [10_000, 7_000, 3_000],
+  );
+  assert.throws(() => reserveWithdrawalCash(reserved.next, 7_001), /Insufficient available cash/);
+  const paid = completeWithdrawalCash(reserved.next, 3_000);
+  assert.deepEqual(
+    [toNum(paid.next.total), toNum(paid.next.available), toNum(paid.next.blocked), paid.entries[0].entryType],
+    [7_000, 7_000, 0, "withdrawal"],
+  );
+});
+
+test("rejected or failed withdrawal releases its exact reservation", () => {
+  const reserved = reserveWithdrawalCash(cash(10_000), 3_000);
+  const released = releaseWithdrawalCash(reserved.next, 3_000, "Payment failed");
+  assert.deepEqual(
+    [toNum(released.next.total), toNum(released.next.available), toNum(released.next.blocked), released.entries[0].entryType],
+    [10_000, 10_000, 0, "release"],
+  );
+  assert.throws(() => releaseWithdrawalCash(reserved.next, 3_001), /exceeds reserved cash/);
 });
 
 test("buy order with insufficient cash fails validation and cannot block", () => {

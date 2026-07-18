@@ -4,6 +4,7 @@ import { resolveInvestorContext } from "../../../lib/server-auth";
 import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
+import { serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
             orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
             take: 1,
           },
+          pooledBankAccounts: { where: { status: "active" }, orderBy: { purpose: "asc" } },
         },
       }),
       prisma.client.findFirst({
@@ -36,10 +38,12 @@ export async function GET(request: Request) {
             include: {
               holdings: { include: { instrument: true } },
               orders: { include: { instrument: true }, orderBy: { createdAt: "desc" }, take: 25 },
+              clientMoneyPositions: { include: { pooledBankAccount: true } },
             },
           },
           consents: { orderBy: { acceptedAt: "desc" } },
           serviceRequests: { orderBy: { submittedAt: "desc" }, take: 20 },
+          cashMovements: { include: { pooledBankAccount: true }, orderBy: { submittedAt: "desc" }, take: 25 },
         },
       }),
     ]);
@@ -116,6 +120,16 @@ export async function GET(request: Request) {
         submittedAt: item.submittedAt.toISOString(),
         resolutionNotes: item.resolutionNotes,
       })),
+      cashPools: broker.pooledBankAccounts.map((pool) => ({
+        id: pool.id,
+        bankName: pool.bankName,
+        accountName: pool.accountName,
+        accountNumberMasked: pool.accountNumberMasked,
+        currency: pool.currency,
+        purpose: pool.purpose,
+        beneficialBalance: toNum(account?.clientMoneyPositions.find((position) => position.pooledBankAccountId === pool.id)?.balance),
+      })),
+      cashMovements: (client?.cashMovements ?? []).map(serializeCashMovement),
       instruments: broker.instrumentAccess.map(({ instrument }) => ({
         id: instrument.id, ticker: instrument.symbol, name: instrument.name, assetClass: instrument.assetClass,
         price: toNum(instrument.lastPrice), status: instrument.tradingStatus, lotSize: instrument.lotSize,
@@ -128,6 +142,35 @@ export async function POST(request: Request) {
   try {
     const { brokerId, clientId } = resolveInvestorContext(request);
     const payload = await request.json() as Record<string, unknown>;
+
+    if (payload.action === "cash_movement") {
+      const movementType = String(payload.movementType ?? "");
+      if (!['deposit', 'withdrawal'].includes(movementType)) {
+        return Response.json({ error: "Movement type must be deposit or withdrawal." }, { status: 400 });
+      }
+      const movement = await submitInvestorCashMovement(brokerId, clientId, {
+        pooledBankAccountId: String(payload.pooledBankAccountId ?? ""),
+        movementType: movementType as "deposit" | "withdrawal",
+        amount: String(payload.amount ?? ""),
+        submissionReference: String(payload.submissionReference ?? ""),
+        bankReference: String(payload.bankReference ?? ""),
+        proofReference: String(payload.proofReference ?? ""),
+        destinationBankName: String(payload.destinationBankName ?? ""),
+        destinationAccountName: String(payload.destinationAccountName ?? ""),
+        destinationAccountMasked: String(payload.destinationAccountMasked ?? ""),
+        notes: String(payload.notes ?? ""),
+      });
+      const account = await prisma.account.findUnique({ where: { id: movement.accountId } });
+      return Response.json({
+        cashMovement: serializeCashMovement(movement),
+        account: account ? {
+          id: account.id,
+          totalCash: toNum(account.totalCash),
+          availableCash: toNum(account.availableCash),
+          blockedCash: toNum(account.blockedCash),
+        } : null,
+      }, { status: 201 });
+    }
 
     if (payload.action === "kyc") {
       const fullName = String(payload.fullName ?? "").trim();

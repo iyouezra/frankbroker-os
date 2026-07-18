@@ -144,6 +144,77 @@ export function releaseBuyCash(snapshot: CashSnapshot, amount: DecimalValue, des
   return { next: result.next, entries: [result.entry] };
 }
 
+/** Credit client cash only after the broker has matched the deposit to bank evidence. */
+export function creditVerifiedDeposit(snapshot: CashSnapshot, amount: DecimalValue): CashMutation {
+  assertCashInvariant(snapshot);
+  const credited = money(amount);
+  if (credited.lte(0)) throw new LedgerIntegrityError("Deposit must be positive.");
+  const result = appendCash(snapshot, {
+    entryType: "deposit",
+    amount: credited,
+    totalImpact: credited,
+    availableImpact: credited,
+    blockedImpact: ZERO,
+    unsettledImpact: ZERO,
+    description: "Verified client deposit credited",
+  });
+  return { next: result.next, entries: [result.entry] };
+}
+
+/** Reserve withdrawable cash while a payment instruction is reviewed and paid. */
+export function reserveWithdrawalCash(snapshot: CashSnapshot, amount: DecimalValue): CashMutation {
+  assertCashInvariant(snapshot);
+  const reserved = money(amount);
+  if (reserved.lte(0)) throw new LedgerIntegrityError("Withdrawal must be positive.");
+  if (snapshot.available.lt(reserved)) throw new LedgerIntegrityError("Insufficient available cash for withdrawal.");
+  const result = appendCash(snapshot, {
+    entryType: "block",
+    amount: reserved,
+    totalImpact: ZERO,
+    availableImpact: reserved.negated(),
+    blockedImpact: reserved,
+    unsettledImpact: ZERO,
+    description: "Cash reserved for withdrawal instruction",
+  });
+  return { next: result.next, entries: [result.entry] };
+}
+
+/** Remove a paid withdrawal from the client's cash after bank payment evidence exists. */
+export function completeWithdrawalCash(snapshot: CashSnapshot, amount: DecimalValue): CashMutation {
+  assertCashInvariant(snapshot);
+  const paid = money(amount);
+  if (paid.lte(0)) throw new LedgerIntegrityError("Withdrawal must be positive.");
+  if (snapshot.blocked.lt(paid)) throw new LedgerIntegrityError("Withdrawal exceeds reserved cash.");
+  const result = appendCash(snapshot, {
+    entryType: "withdrawal",
+    amount: paid.negated(),
+    totalImpact: paid.negated(),
+    availableImpact: ZERO,
+    blockedImpact: paid.negated(),
+    unsettledImpact: ZERO,
+    description: "Confirmed client withdrawal paid",
+  });
+  return { next: result.next, entries: [result.entry] };
+}
+
+/** Restore reserved cash when a withdrawal is rejected or its payment fails. */
+export function releaseWithdrawalCash(snapshot: CashSnapshot, amount: DecimalValue, description = "Withdrawal reservation released"): CashMutation {
+  assertCashInvariant(snapshot);
+  const released = money(amount);
+  if (released.lte(0)) throw new LedgerIntegrityError("Withdrawal release must be positive.");
+  if (snapshot.blocked.lt(released)) throw new LedgerIntegrityError("Withdrawal release exceeds reserved cash.");
+  const result = appendCash(snapshot, {
+    entryType: "release",
+    amount: released,
+    totalImpact: ZERO,
+    availableImpact: released,
+    blockedImpact: released.negated(),
+    unsettledImpact: ZERO,
+    description,
+  });
+  return { next: result.next, entries: [result.entry] };
+}
+
 export function captureBuyFill(
   cashSnapshot: CashSnapshot,
   securitySnapshot: SecuritySnapshot,
