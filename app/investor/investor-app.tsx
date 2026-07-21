@@ -106,6 +106,31 @@ function Sparkline({ values, large = false }: { values: number[]; large?: boolea
   return <svg className={styles.sparkline} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={rising ? "Rising price trend" : "Falling price trend"}><polyline points={points} fill="none" stroke={rising ? "var(--investor-accent)" : "var(--investor-loss)"} strokeWidth={large ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
+function MarketSparkline({ stock }: { stock: InvestorStock }) {
+  const history = getInvestorHistory(stock)["1M"];
+  const sampled = Array.from({ length: 11 }, (_, index) => history[Math.round((index / 10) * (history.length - 1))]);
+  const width = 82;
+  const height = 30;
+  const baseline = height / 2;
+  const scale = 5;
+  const start = sampled[0].close;
+  const changes = sampled.map((point) => ((point.close / start) - 1) * 100);
+  const x = (index: number) => (index / (sampled.length - 1)) * width;
+  const y = (change: number) => 3 + ((scale - Math.max(-scale, Math.min(scale, change))) / (scale * 2)) * (height - 6);
+  const line = changes.map((change, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(change).toFixed(1)}`).join(" ");
+  const area = `${line} L${width},${baseline} L0,${baseline} Z`;
+  const endY = y(changes.at(-1)!);
+  return <span className={styles.marketSparkline}>
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${stock.name} one month trend`}>
+      <line x1="0" y1={baseline} x2={width} y2={baseline} className={styles.microBaseline} />
+      <path d={area} className={styles.microArea} />
+      <path d={line} className={styles.microLine} />
+      <circle cx={width} cy={endY} r="2.5" className={styles.microEndpoint} />
+    </svg>
+    <small>1M</small>
+  </span>;
+}
+
 const compactDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const chartDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 
@@ -184,8 +209,9 @@ function ScoreRing({ score = 78 }: { score?: number }) {
   return <div className={styles.scoreRing} aria-label={`FrankScore ${score}`}><svg viewBox="0 0 86 86"><circle cx="43" cy="43" r="37" className={styles.scoreTrack} /><circle cx="43" cy="43" r="37" className={styles.scoreValue} strokeDasharray={circumference} strokeDashoffset={circumference * (1 - score / 100)} /></svg><strong>{score}</strong></div>;
 }
 
-function StockRow({ stock, onClick }: { stock: InvestorStock; onClick: () => void }) {
-  return <button className={styles.stockRow} onClick={onClick}><span className={styles.tickerTile}>{stock.ticker.slice(0, 4)}</span><span className={styles.stockIdentity}><b>{stock.name}</b><small>{stock.ticker} · {stock.sector}</small></span><Sparkline values={getInvestorHistory(stock)["1M"].map((point) => point.close)} /><span className={styles.stockPrice}><b>{formatEtb(stock.price)}</b><Delta value={stock.delta} /></span></button>;
+function StockRow({ stock, onClick, holdingValue }: { stock: InvestorStock; onClick: () => void; holdingValue?: number }) {
+  const isHolding = holdingValue !== undefined;
+  return <button className={`${styles.stockRow} ${isHolding ? styles.homeStockRow : ""}`} onClick={onClick}><span className={styles.tickerTile}>{stock.ticker.slice(0, 4)}</span><span className={styles.stockIdentity}><b>{stock.name}</b><small>{stock.ticker} · {stock.sector}</small></span>{!isHolding && <MarketSparkline stock={stock} />}<span className={styles.stockPrice}><b>{formatEtb(holdingValue ?? stock.price)}</b><Delta value={stock.delta} /></span></button>;
 }
 
 function ScreenHeader({ title, onBack, right }: { title: string; onBack?: () => void; right?: ReactNode }) {
@@ -282,7 +308,7 @@ function HomeScreen({ openStock, go, account, unread, onBell, onCash }: { openSt
   const holdings = account?.holdings.length ? account.holdings.filter((holding) => investorStocks.some((stock) => stock.ticker === holding.ticker)) : investorHoldings;
   const stockValue = holdings.reduce((sum, holding) => sum + investorStocks.find((stock) => stock.ticker === holding.ticker)!.price * holding.quantity, 0);
   const totalValue = stockValue + 25_000 + (account?.availableCash ?? 4_210);
-  return <div className={styles.screen}><div className={styles.homeHeader}><AppLogo /><button className={styles.iconButton} aria-label="Notifications" onClick={onBell}><Icon name="bell" size={20} />{unread > 0 && <i />}</button></div><Card className={styles.heroCard}><small>Your money, all together</small><strong>{formatEtb(totalValue)}</strong><div><Delta value={1.8} pill /><span>ESX open · closes 15:30</span></div></Card><div className={styles.quickActions}><Button onClick={() => go("markets")}><Icon name="plus" size={18} /> Invest</Button><Button variant="secondary" onClick={onCash}>Add or withdraw</Button></div><Card><div className={styles.cardHeader}><h2>Companies you own</h2><button onClick={() => go("portfolio")}>Details</button></div>{holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; return <StockRow key={stock.ticker} stock={stock} onClick={() => openStock(stock)} />; })}</Card><Card className={styles.coachCard}><span><Icon name="bulb" size={20} /></span><div><small>FRANK COACH</small><h3>{coachTips[tip].title}</h3><p>{coachTips[tip].body}</p><button onClick={() => setTip((tip + 1) % coachTips.length)}>Next tip <em>{tip + 1}/{coachTips.length}</em></button></div></Card><Card><div className={styles.cardHeader}><h2>Your plan</h2><span className={styles.badge}>Steady</span></div><div className={styles.planPreview}><ScoreRing /><div><b>FrankScore 78 — healthy</b><p>70% bonds, 30% stocks. Built for sleeping well.</p><button onClick={() => go("plan")}>Review plan</button></div></div></Card></div>;
+  return <div className={styles.screen}><div className={styles.homeHeader}><AppLogo /><button className={styles.iconButton} aria-label="Notifications" onClick={onBell}><Icon name="bell" size={20} />{unread > 0 && <i />}</button></div><Card className={styles.heroCard}><small>Your money, all together</small><strong>{formatEtb(totalValue)}</strong><div><Delta value={1.8} pill /><span>ESX open · closes 15:30</span></div></Card><div className={styles.quickActions}><Button onClick={() => go("markets")}><Icon name="plus" size={18} /> Invest</Button><Button variant="secondary" onClick={onCash}>Add or withdraw</Button></div><Card><div className={styles.cardHeader}><h2>Companies you own</h2><button onClick={() => go("portfolio")}>Details</button></div>{holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; return <StockRow key={stock.ticker} stock={stock} holdingValue={stock.price * holding.quantity} onClick={() => openStock(stock)} />; })}</Card><Card className={styles.coachCard}><span><Icon name="bulb" size={20} /></span><div><small>FRANK COACH</small><h3>{coachTips[tip].title}</h3><p>{coachTips[tip].body}</p><button onClick={() => setTip((tip + 1) % coachTips.length)}>Next tip <em>{tip + 1}/{coachTips.length}</em></button></div></Card><Card><div className={styles.cardHeader}><h2>Your plan</h2><span className={styles.badge}>Steady</span></div><div className={styles.planPreview}><ScoreRing /><div><b>FrankScore 78 — healthy</b><p>70% bonds, 30% stocks. Built for sleeping well.</p><button onClick={() => go("plan")}>Review plan</button></div></div></Card></div>;
 }
 
 function MarketsScreen({ openStock, enabledTickers, bondsEnabled }: { openStock: (stock: InvestorStock) => void; enabledTickers: string[] | null; bondsEnabled: boolean }) {

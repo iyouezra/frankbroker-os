@@ -131,6 +131,7 @@
 .badge { width: fit-content; display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 999px; background: var(--investor-aqua-100); color: var(--investor-teal-800); font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
 .gainBadge { background: #e2f6ec; }
 .stockRow { width: 100%; min-height: 68px; display: grid; grid-template-columns: 43px minmax(0,1fr) 76px auto; align-items: center; gap: 10px; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--investor-ink-100); background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.homeStockRow { grid-template-columns: 43px minmax(0,1fr) auto; }
 .stockRow:last-child { border-bottom: 0; }
 .stockRow:hover { background: var(--investor-ink-50); }
 .tickerTile { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 12px; background: var(--investor-aqua-100); color: var(--investor-teal-800); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
@@ -140,6 +141,13 @@
 .stockPrice { display: flex; flex-direction: column; align-items: flex-end; }
 .stockPrice b { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stockPrice .delta { margin-top: 4px; }
+.marketSparkline { width: 82px; display: flex; flex-direction: column; align-items: flex-end; color: var(--investor-ink-400); }
+.marketSparkline svg { width: 82px; height: 30px; display: block; overflow: visible; }
+.marketSparkline small { margin-top: 1px; font-family: var(--font-mono); font-size: 7px; letter-spacing: .08em; }
+.microBaseline { stroke: var(--investor-ink-200); stroke-width: 1; stroke-dasharray: 2 3; }
+.microArea { fill: var(--investor-teal-600); opacity: .075; }
+.microLine { fill: none; stroke: var(--investor-teal-700); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .72; }
+.microEndpoint { fill: white; stroke: var(--investor-teal-700); stroke-width: 1.6; }
 
 .coachCard { display: flex; gap: 12px; border-color: transparent; background: var(--investor-aqua-100); box-shadow: none; }
 .coachCard > span { width: 38px; height: 38px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 11px; background: white; color: var(--investor-teal-700); }
@@ -435,8 +443,9 @@
 
 @media (max-width: 390px) {
   .screen, .detailScreen { padding-right: 16px; padding-left: 16px; }
-  .stockRow { grid-template-columns: 41px minmax(0,1fr) auto; }
-  .stockRow .sparkline { display: none; }
+  .stockRow { grid-template-columns: 41px minmax(74px,1fr) 70px auto; gap: 7px; }
+  .homeStockRow { grid-template-columns: 41px minmax(0,1fr) auto; }
+  .marketSparkline, .marketSparkline svg { width: 70px; }
   .stockPrice b { font-size: 11px; }
   .heroCard > strong { font-size: 28px; }
   .onboarding { padding-right: 16px; padding-left: 16px; }
