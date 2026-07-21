@@ -14,6 +14,83 @@ export type InvestorStock = {
   frankTake: string;
 };
 
+export type MarketRange = "1W" | "1M" | "3M" | "1Y" | "All";
+export type PricePoint = { date: string; close: number; volume: number };
+export type InvestorHistory = Record<MarketRange, PricePoint[]>;
+export type SessionQuote = { open: number; low: number; high: number; volume: number };
+
+const historyCache = new Map<string, InvestorHistory>();
+const rangeLengths: Record<MarketRange, number> = { "1W": 6, "1M": 22, "3M": 66, "1Y": 260, All: 390 };
+const marketProfiles: Record<InvestorStock["ticker"], { drift: number; volatility: number; volume: number }> = {
+  TELE: { drift: 0.00034, volatility: 0.0082, volume: 24_180 },
+  AWAB: { drift: 0.00021, volatility: 0.0058, volume: 3_840 },
+  WGBX: { drift: -0.00008, volatility: 0.0069, volume: 6_420 },
+  GDAB: { drift: 0.00038, volatility: 0.0091, volume: 8_760 },
+  ABAYB: { drift: 0.00006, volatility: 0.0064, volume: 5_310 },
+};
+
+function seededRandom(seed: number) {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    return state / 4_294_967_296;
+  };
+}
+
+function previousTradingDays(count: number) {
+  const dates: string[] = [];
+  const cursor = new Date("2026-07-21T12:00:00Z");
+  while (dates.length < count) {
+    const day = cursor.getUTCDay();
+    if (day !== 0 && day !== 6) dates.unshift(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return dates;
+}
+
+export function getInvestorHistory(stock: InvestorStock): InvestorHistory {
+  const cached = historyCache.get(stock.ticker);
+  if (cached) return cached;
+
+  const profile = marketProfiles[stock.ticker];
+  const random = seededRandom([...stock.ticker].reduce((seed, char) => seed * 31 + char.charCodeAt(0), 17));
+  const dates = previousTradingDays(rangeLengths.All);
+  const reversed: PricePoint[] = [];
+  let price = stock.price;
+
+  for (let index = dates.length - 1; index >= 0; index -= 1) {
+    const activity = 0.62 + random() * 0.82;
+    reversed.push({
+      date: dates[index],
+      close: Number(price.toFixed(stock.price >= 1_000 ? 0 : 2)),
+      volume: Math.round(profile.volume * activity),
+    });
+    const noise = (random() + random() + random() - 1.5) * profile.volatility;
+    const cycle = Math.sin(index * 0.31 + stock.ticker.length) * profile.volatility * 0.18;
+    price /= 1 + profile.drift + noise + cycle;
+  }
+
+  const all = reversed.reverse();
+  all[all.length - 1] = { ...all[all.length - 1], close: stock.price, volume: profile.volume };
+  const history = Object.fromEntries(
+    (Object.keys(rangeLengths) as MarketRange[]).map((range) => [range, all.slice(-rangeLengths[range])]),
+  ) as InvestorHistory;
+  historyCache.set(stock.ticker, history);
+  return history;
+}
+
+export function getInvestorSession(stock: InvestorStock): SessionQuote {
+  const profile = marketProfiles[stock.ticker];
+  const open = stock.price / (1 + stock.delta / 100);
+  const spread = Math.max(stock.price * profile.volatility * 0.75, stock.price >= 1_000 ? 4 : 0.75);
+  return {
+    open: Number(open.toFixed(stock.price >= 1_000 ? 0 : 2)),
+    low: Number((Math.min(open, stock.price) - spread).toFixed(stock.price >= 1_000 ? 0 : 2)),
+    high: Number((Math.max(open, stock.price) + spread * 0.8).toFixed(stock.price >= 1_000 ? 0 : 2)),
+    volume: profile.volume,
+  };
+}
+
 export const investorStocks: InvestorStock[] = [
   {
     ticker: "TELE",

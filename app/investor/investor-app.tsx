@@ -1,14 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   coachTips,
   formatEtb,
+  getInvestorHistory,
+  getInvestorSession,
   investorBonds,
   investorHoldings,
   investorStocks,
   type InvestorStock,
+  type MarketRange,
 } from "../../lib/investor-data";
 import styles from "./investor.module.css";
 import { demoInvestorNotifications, timeAgo, type NotificationItem } from "../../lib/notifications-demo";
@@ -103,13 +106,86 @@ function Sparkline({ values, large = false }: { values: number[]; large?: boolea
   return <svg className={styles.sparkline} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={rising ? "Rising price trend" : "Falling price trend"}><polyline points={points} fill="none" stroke={rising ? "var(--investor-accent)" : "var(--investor-loss)"} strokeWidth={large ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
+const compactDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+const chartDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+function PriceChart({ stock, range }: { stock: InvestorStock; range: MarketRange }) {
+  const points = getInvestorHistory(stock)[range];
+  const [activeIndex, setActiveIndex] = useState(points.length - 1);
+  const gradientId = useId().replaceAll(":", "");
+
+  const width = 340;
+  const plotLeft = 4;
+  const plotRight = 292;
+  const priceTop = 14;
+  const priceBottom = 112;
+  const volumeTop = 130;
+  const volumeBottom = 157;
+  const closes = points.map((point) => point.close);
+  const rawMin = Math.min(...closes);
+  const rawMax = Math.max(...closes);
+  const padding = Math.max((rawMax - rawMin) * 0.12, stock.price * 0.0025);
+  const min = rawMin - padding;
+  const max = rawMax + padding;
+  const x = (index: number) => plotLeft + (index / Math.max(points.length - 1, 1)) * (plotRight - plotLeft);
+  const y = (value: number) => priceBottom - ((value - min) / Math.max(max - min, 1)) * (priceBottom - priceTop);
+  const line = points.map((point, index) => `${index ? "L" : "M"}${x(index).toFixed(2)},${y(point.close).toFixed(2)}`).join(" ");
+  const area = `${line} L${plotRight},${priceBottom} L${plotLeft},${priceBottom} Z`;
+  const maxVolume = Math.max(...points.map((point) => point.volume));
+  const barWidth = Math.max(1, ((plotRight - plotLeft) / points.length) * 0.55);
+  const active = points[Math.min(activeIndex, points.length - 1)];
+  const periodChange = ((points.at(-1)!.close / points[0].close) - 1) * 100;
+  const positive = periodChange >= 0;
+  const stroke = positive ? "var(--investor-accent)" : "var(--investor-loss)";
+  const gridValues = [max, (max + min) / 2, min];
+  const updateActive = (clientX: number, target: SVGSVGElement) => {
+    const bounds = target.getBoundingClientRect();
+    const viewX = ((clientX - bounds.left) / bounds.width) * width;
+    const next = Math.round(((viewX - plotLeft) / (plotRight - plotLeft)) * (points.length - 1));
+    setActiveIndex(Math.max(0, Math.min(points.length - 1, next)));
+  };
+
+  return <div className={styles.priceChart}>
+    <div className={styles.chartReadout}><span><b>{formatEtb(active.close)}</b><small>{chartDate.format(new Date(`${active.date}T12:00:00Z`))}</small></span><span><b className={positive ? styles.gain : styles.loss}>{positive ? "+" : "−"}{Math.abs(periodChange).toFixed(1)}%</b><small>{range} return</small></span></div>
+    <svg viewBox={`0 0 ${width} 170`} role="img" aria-label={`${stock.name} ${range} price and volume chart`} onPointerMove={(event) => updateActive(event.clientX, event.currentTarget)} onPointerDown={(event) => updateActive(event.clientX, event.currentTarget)} onPointerLeave={() => setActiveIndex(points.length - 1)}>
+      <defs><linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={stroke} stopOpacity=".2" /><stop offset="1" stopColor={stroke} stopOpacity="0" /></linearGradient></defs>
+      {gridValues.map((value) => <g key={value}><line x1={plotLeft} y1={y(value)} x2={plotRight} y2={y(value)} className={styles.chartGrid} /><text x="334" y={y(value) + 3} textAnchor="end" className={styles.chartAxis}>{value.toLocaleString("en-US", { maximumFractionDigits: stock.price >= 1_000 ? 0 : 2 })}</text></g>)}
+      <line x1={plotLeft} y1={y(points[0].close)} x2={plotRight} y2={y(points[0].close)} className={styles.chartBaseline} />
+      <path d={area} fill={`url(#${gradientId})`} />
+      <path d={line} fill="none" stroke={stroke} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      {points.map((point, index) => <rect key={point.date} x={x(index) - barWidth / 2} y={volumeBottom - (point.volume / maxVolume) * (volumeBottom - volumeTop)} width={barWidth} height={(point.volume / maxVolume) * (volumeBottom - volumeTop)} rx=".6" className={styles.volumeBar} />)}
+      <line x1={x(activeIndex)} y1={priceTop} x2={x(activeIndex)} y2={volumeBottom} className={styles.chartCursor} />
+      <circle cx={x(activeIndex)} cy={y(active.close)} r="4" fill="white" stroke={stroke} strokeWidth="2.2" />
+    </svg>
+    <div className={styles.chartDates}><span>{compactDate.format(new Date(`${points[0].date}T12:00:00Z`))}</span><span>Volume</span><span>{compactDate.format(new Date(`${points.at(-1)!.date}T12:00:00Z`))}</span></div>
+  </div>;
+}
+
+function PortfolioChart({ total }: { total: number }) {
+  const investedEnd = total / 1.185;
+  const invested = [0.76, 0.78, 0.79, 0.82, 0.84, 0.85, 0.88, 0.9, 0.92, 0.95, 0.97, 1].map((value) => value * investedEnd);
+  const value = [0.76, 0.775, 0.768, 0.815, 0.834, 0.87, 0.862, 0.925, 0.948, 1.03, 1.105, 1.185].map((ratio) => ratio * investedEnd);
+  const width = 340;
+  const height = 106;
+  const min = Math.min(...invested, ...value) * 0.97;
+  const max = Math.max(...value) * 1.02;
+  const x = (index: number) => (index / (value.length - 1)) * width;
+  const y = (amount: number) => height - ((amount - min) / (max - min)) * (height - 8) - 4;
+  const path = (series: number[]) => series.map((amount, index) => `${index ? "L" : "M"}${x(index).toFixed(2)},${y(amount).toFixed(2)}`).join(" ");
+  return <div className={styles.portfolioChart}>
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Portfolio value compared with net invested"><line x1="0" y1={height / 2} x2={width} y2={height / 2} className={styles.chartGrid} /><path d={path(invested)} className={styles.investedLine} /><path d={path(value)} className={styles.valueLine} /></svg>
+    <div className={styles.performanceLegend}><span><i />Portfolio value</span><span><i />Net invested</span></div>
+    <div className={styles.chartDates}><span>Aug 2025</span><span>Today</span></div>
+  </div>;
+}
+
 function ScoreRing({ score = 78 }: { score?: number }) {
   const circumference = 2 * Math.PI * 37;
   return <div className={styles.scoreRing} aria-label={`FrankScore ${score}`}><svg viewBox="0 0 86 86"><circle cx="43" cy="43" r="37" className={styles.scoreTrack} /><circle cx="43" cy="43" r="37" className={styles.scoreValue} strokeDasharray={circumference} strokeDashoffset={circumference * (1 - score / 100)} /></svg><strong>{score}</strong></div>;
 }
 
 function StockRow({ stock, onClick }: { stock: InvestorStock; onClick: () => void }) {
-  return <button className={styles.stockRow} onClick={onClick}><span className={styles.tickerTile}>{stock.ticker.slice(0, 4)}</span><span className={styles.stockIdentity}><b>{stock.name}</b><small>{stock.ticker} · {stock.sector}</small></span><Sparkline values={stock.series} /><span className={styles.stockPrice}><b>{formatEtb(stock.price)}</b><Delta value={stock.delta} /></span></button>;
+  return <button className={styles.stockRow} onClick={onClick}><span className={styles.tickerTile}>{stock.ticker.slice(0, 4)}</span><span className={styles.stockIdentity}><b>{stock.name}</b><small>{stock.ticker} · {stock.sector}</small></span><Sparkline values={getInvestorHistory(stock)["1M"].map((point) => point.close)} /><span className={styles.stockPrice}><b>{formatEtb(stock.price)}</b><Delta value={stock.delta} /></span></button>;
 }
 
 function ScreenHeader({ title, onBack, right }: { title: string; onBack?: () => void; right?: ReactNode }) {
@@ -224,7 +300,7 @@ function PortfolioScreen({ openStock, account }: { openStock: (stock: InvestorSt
   const cost = rows.reduce((sum, row) => sum + row.cost, 0);
   const cash = account?.availableCash ?? 4_210;
   const total = stockValue + 25_000 + cash;
-  return <div className={styles.screen}><ScreenHeader title="Portfolio" /><Card className={styles.portfolioSummary}><small>Total value</small><strong>{formatEtb(total)}</strong><div className={styles.summaryGrid}><span><small>Cost basis (stocks)</small><b>{formatEtb(cost)}</b></span><span><small>Unrealized gain</small><b className={styles.gain}>+{formatEtb(stockValue - cost).replace("ETB ", "")}</b></span><span><small>Dividends this year</small><b>ETB 1,440.00</b></span><span><small>Today</small><Delta value={1.8} /></span></div></Card><Card><div className={styles.cardHeader}><h2>Performance</h2><span className={`${styles.badge} ${styles.gainBadge}`}>+18.5% all time</span></div><Sparkline values={[92, 95, 94, 98, 97, 101, 100, 104, 103, 107, 106, 110]} large /><div className={styles.chartDates}><span>Mar 2026</span><span>Today</span></div></Card><Card><div className={styles.cardHeader}><h2>What you own</h2></div><AllocationBar bonds={Math.round((25_000 / total) * 100)} stocks={Math.round((stockValue / total) * 100)} /><div className={styles.legend}><span><i />Stocks {Math.round((stockValue / total) * 100)}%</span><span><i />Bonds {Math.round((25_000 / total) * 100)}%</span><span><i />Cash {Math.round((cash / total) * 100)}%</span></div>{rows.map((row) => <button className={styles.holdingRow} key={row.stock.ticker} onClick={() => openStock(row.stock)}><span className={styles.tickerTile}>{row.stock.ticker.slice(0, 4)}</span><span><b>{row.stock.name}</b><small>{row.holding.quantity} sh · avg {formatEtb(row.holding.averageCost)}</small></span><span><b>{formatEtb(row.value)}</b><small className={row.gain >= 0 ? styles.gain : styles.loss}>{row.gain >= 0 ? "+" : "−"}{formatEtb(Math.abs(row.gain)).replace("ETB ", "")}</small></span></button>)}<div className={styles.holdingRow}><span className={styles.tickerTile}><Icon name="shield" size={19} /></span><span><b>GoE Treasury Bonds</b><small>14.5–16.0% per year · held to maturity</small></span><span><b>ETB 25,000.00</b></span></div></Card><p className={styles.disclaimer}>Unrealized gains are on paper until you sell. Estimates use the last traded ESX price.</p></div>;
+  return <div className={styles.screen}><ScreenHeader title="Portfolio" /><Card className={styles.portfolioSummary}><small>Total value</small><strong>{formatEtb(total)}</strong><div className={styles.summaryGrid}><span><small>Cost basis (stocks)</small><b>{formatEtb(cost)}</b></span><span><small>Unrealized gain</small><b className={styles.gain}>+{formatEtb(stockValue - cost).replace("ETB ", "")}</b></span><span><small>Dividends this year</small><b>ETB 1,440.00</b></span><span><small>Today</small><Delta value={1.8} /></span></div></Card><Card><div className={styles.cardHeader}><h2>Performance</h2><span className={`${styles.badge} ${styles.gainBadge}`}>+18.5% all time</span></div><PortfolioChart total={total} /></Card><Card><div className={styles.cardHeader}><h2>What you own</h2></div><AllocationBar bonds={Math.round((25_000 / total) * 100)} stocks={Math.round((stockValue / total) * 100)} /><div className={styles.legend}><span><i />Stocks {Math.round((stockValue / total) * 100)}%</span><span><i />Bonds {Math.round((25_000 / total) * 100)}%</span><span><i />Cash {Math.round((cash / total) * 100)}%</span></div>{rows.map((row) => <button className={styles.holdingRow} key={row.stock.ticker} onClick={() => openStock(row.stock)}><span className={styles.tickerTile}>{row.stock.ticker.slice(0, 4)}</span><span><b>{row.stock.name}</b><small>{row.holding.quantity} sh · avg {formatEtb(row.holding.averageCost)}</small></span><span><b>{formatEtb(row.value)}</b><small className={row.gain >= 0 ? styles.gain : styles.loss}>{row.gain >= 0 ? "+" : "−"}{formatEtb(Math.abs(row.gain)).replace("ETB ", "")}</small></span></button>)}<div className={styles.holdingRow}><span className={styles.tickerTile}><Icon name="shield" size={19} /></span><span><b>GoE Treasury Bonds</b><small>14.5–16.0% per year · held to maturity</small></span><span><b>ETB 25,000.00</b></span></div></Card><p className={styles.disclaimer}>Unrealized gains are on paper until you sell. Estimates use the last traded ESX price.</p></div>;
 }
 
 function PlanScreen() {
@@ -305,8 +381,10 @@ function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrderTypes, 
 
 function StockDetail({ stock, account, onBack, placeOrder, feeRule, allowedOrderTypes }: { stock: InvestorStock; account: InvestorBootstrap["account"]; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
   const [side, setSide] = useState<"Buy" | "Sell" | null>(null);
+  const [range, setRange] = useState<MarketRange>("1M");
   const holding = account?.holdings.find((item) => item.ticker === stock.ticker) ?? investorHoldings.find((item) => item.ticker === stock.ticker);
-  return <div className={styles.detailScreen}><ScreenHeader title={stock.ticker} onBack={onBack} right={<span className={styles.badge}>{stock.sector}</span>} /><div className={styles.detailBody}><p className={styles.companyName}>{stock.name}</p><div className={styles.quote}><strong>{formatEtb(stock.price)}</strong><Delta value={stock.delta} pill /></div><Sparkline values={stock.series} large /><div className={styles.rangeTabs}>{["1W", "1M", "3M", "1Y", "All"].map((range, index) => <button key={range} className={index === 1 ? styles.rangeActive : ""}>{range}</button>)}</div><Card className={styles.marketStats}>{[["Open", formatEtb(stock.series[0])], ["Day range", `${formatEtb(Math.min(...stock.series))} – ${formatEtb(Math.max(...stock.series))}`], ["Volume", "24,180 shares"], ["Listed", "ESX Main Market"]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</Card>{holding && <Card className={styles.positionCard}><small>YOUR POSITION</small><div>{[["Shares", `${holding.quantity} sh`], ["Avg cost", formatEtb(holding.averageCost)], ["Value", formatEtb(holding.quantity * stock.price)], ["Unrealized", `${holding.quantity * (stock.price - holding.averageCost) >= 0 ? "+" : "−"}${formatEtb(Math.abs(holding.quantity * (stock.price - holding.averageCost))).replace("ETB ", "")}`]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div></Card>}<Card><div className={styles.cardHeader}><h2>Company insights</h2></div><div className={styles.insights}>{[["Dividend yield", stock.dividendYield], ["P/E", stock.pe], ["YTD", `${stock.ytd >= 0 ? "+" : ""}${stock.ytd}%`], ["Revenue", stock.revenueGrowth], ["Next dividend", stock.nextDividend], ["Sector", stock.sector]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div><div className={styles.frankTake}><small>FRANK&apos;S TAKE</small><p>{stock.frankTake}</p></div></Card><Card><div className={styles.cardHeader}><h2>About</h2></div><p className={styles.about}>{stock.about}</p></Card><p className={styles.disclaimer}>Prices move. Invest money you won&apos;t need soon.</p></div><div className={styles.tradeBar}><Button onClick={() => setSide("Buy")}>Buy</Button><Button variant="secondary" disabled={!holding} onClick={() => setSide("Sell")}>Sell</Button></div>{side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status !== "validation_failed") setSide(null); return result; }} />}</div>;
+  const session = getInvestorSession(stock);
+  return <div className={styles.detailScreen}><ScreenHeader title={stock.ticker} onBack={onBack} right={<span className={styles.badge}>{stock.sector}</span>} /><div className={styles.detailBody}><p className={styles.companyName}>{stock.name}</p><div className={styles.quote}><strong>{formatEtb(stock.price)}</strong><Delta value={stock.delta} pill /></div><PriceChart key={`${stock.ticker}-${range}`} stock={stock} range={range} /><div className={styles.rangeTabs}>{(["1W", "1M", "3M", "1Y", "All"] as MarketRange[]).map((item) => <button key={item} className={range === item ? styles.rangeActive : ""} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div><Card className={styles.marketStats}>{[["Open", formatEtb(session.open)], ["Day range", `${formatEtb(session.low)} – ${formatEtb(session.high)}`], ["Volume", `${session.volume.toLocaleString("en-US")} shares`], ["Listed", "ESX Main Market"]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</Card>{holding && <Card className={styles.positionCard}><small>YOUR POSITION</small><div>{[["Shares", `${holding.quantity} sh`], ["Avg cost", formatEtb(holding.averageCost)], ["Value", formatEtb(holding.quantity * stock.price)], ["Unrealized", `${holding.quantity * (stock.price - holding.averageCost) >= 0 ? "+" : "−"}${formatEtb(Math.abs(holding.quantity * (stock.price - holding.averageCost))).replace("ETB ", "")}`]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div></Card>}<Card><div className={styles.cardHeader}><h2>Company insights</h2></div><div className={styles.insights}>{[["Dividend yield", stock.dividendYield], ["P/E", stock.pe], ["YTD", `${stock.ytd >= 0 ? "+" : ""}${stock.ytd}%`], ["Revenue", stock.revenueGrowth], ["Next dividend", stock.nextDividend], ["Sector", stock.sector]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div><div className={styles.frankTake}><small>FRANK&apos;S TAKE</small><p>{stock.frankTake}</p></div></Card><Card><div className={styles.cardHeader}><h2>About</h2></div><p className={styles.about}>{stock.about}</p></Card><p className={styles.disclaimer}>Prices move. Invest money you won&apos;t need soon.</p></div><div className={styles.tradeBar}><Button onClick={() => setSide("Buy")}>Buy</Button><Button variant="secondary" disabled={!holding} onClick={() => setSide("Sell")}>Sell</Button></div>{side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status !== "validation_failed") setSide(null); return result; }} />}</div>;
 }
 
 export default function InvestorApp() {

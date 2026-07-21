@@ -72,6 +72,27 @@
 .deltaPill.loss { background: #fbe9e9; }
 .sparkline { width: 76px; height: 34px; display: block; overflow: visible; }
 .sparkline[viewBox="0 0 340 92"] { width: 100%; height: 92px; }
+.priceChart { margin-top: 4px; }
+.priceChart svg, .portfolioChart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.priceChart svg { cursor: crosshair; touch-action: none; }
+.chartReadout { min-height: 35px; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 2px; }
+.chartReadout > span { display: flex; flex-direction: column; }
+.chartReadout > span:last-child { align-items: flex-end; }
+.chartReadout b { font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chartReadout small { margin-top: 2px; color: var(--investor-ink-400); font-size: 8.5px; }
+.chartGrid { stroke: var(--investor-ink-100); stroke-width: 1; }
+.chartBaseline { stroke: var(--investor-ink-300); stroke-width: 1; stroke-dasharray: 3 4; }
+.chartAxis { fill: var(--investor-ink-400); font-family: var(--font-mono); font-size: 8px; }
+.volumeBar { fill: var(--investor-teal-600); opacity: .2; }
+.chartCursor { stroke: var(--investor-ink-400); stroke-width: 1; stroke-dasharray: 2 3; }
+.portfolioChart { margin-top: 7px; }
+.portfolioChart .valueLine, .portfolioChart .investedLine { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.portfolioChart .valueLine { stroke: var(--investor-accent); }
+.portfolioChart .investedLine { stroke: var(--investor-ink-300); stroke-width: 1.7; stroke-dasharray: 5 4; }
+.performanceLegend { display: flex; gap: 14px; margin-top: 7px; color: var(--investor-ink-500); font-size: 9px; }
+.performanceLegend span { display: flex; align-items: center; gap: 5px; }
+.performanceLegend i { width: 13px; height: 2px; border-radius: 2px; background: var(--investor-accent); }
+.performanceLegend span:last-child i { height: 1px; background: var(--investor-ink-300); }
 
 .scoreRing { position: relative; width: 82px; height: 82px; flex: 0 0 auto; display: grid; place-items: center; }
 .scoreRing svg { width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -159,6 +180,8 @@
 .summaryGrid small { color: var(--investor-ink-500); font-size: 10px; }
 .summaryGrid b { margin-top: 4px; overflow: hidden; font-family: var(--font-mono); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .chartDates { display: flex; justify-content: space-between; margin-top: 4px; color: var(--investor-ink-400); font-family: var(--font-mono); font-size: 10px; }
+.priceChart .chartDates { margin-top: -3px; font-size: 8px; }
+.priceChart .chartDates span:nth-child(2) { letter-spacing: .05em; text-transform: uppercase; }
 .allocationBar { height: 11px; display: flex; overflow: hidden; margin: 7px 0 9px; border-radius: 6px; background: var(--investor-ink-200); }
 .allocationBar i:first-child { background: var(--investor-teal-700); }
 .allocationBar i:nth-child(2) { background: var(--investor-aqua-400); }
