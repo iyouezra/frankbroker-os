@@ -130,7 +130,7 @@
 .cardHeader button, .planPreview button, .coachCard button { padding: 4px 0; border: 0; background: transparent; color: var(--investor-accent); cursor: pointer; font-size: 12px; font-weight: 700; }
 .badge { width: fit-content; display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 999px; background: var(--investor-aqua-100); color: var(--investor-teal-800); font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
 .gainBadge { background: #e2f6ec; }
-.stockRow { width: 100%; min-height: 68px; display: grid; grid-template-columns: 43px minmax(0,1fr) 76px auto; align-items: center; gap: 10px; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--investor-ink-100); background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.stockRow { width: 100%; min-height: 68px; display: grid; grid-template-columns: 43px minmax(0,1fr) 68px auto; align-items: center; gap: 10px; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--investor-ink-100); background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .homeStockRow { grid-template-columns: 43px minmax(0,1fr) auto; }
 .stockRow:last-child { border-bottom: 0; }
 .stockRow:hover { background: var(--investor-ink-50); }
@@ -141,13 +141,16 @@
 .stockPrice { display: flex; flex-direction: column; align-items: flex-end; }
 .stockPrice b { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stockPrice .delta { margin-top: 4px; }
-.marketSparkline { width: 82px; display: flex; flex-direction: column; align-items: flex-end; color: var(--investor-ink-400); }
-.marketSparkline svg { width: 82px; height: 30px; display: block; overflow: visible; }
-.marketSparkline small { margin-top: 1px; font-family: var(--font-mono); font-size: 7px; letter-spacing: .08em; }
+.marketSparkline { position: relative; width: 64px; height: 36px; display: block; justify-self: start; color: var(--investor-teal-700); transform: translateX(-6px); }
+.marketSparkline svg { width: 64px; height: 28px; display: block; margin-top: 8px; overflow: visible; }
+.marketSparkline small { position: absolute; top: -1px; right: 0; color: var(--investor-ink-400); font-family: var(--font-mono); font-size: 7px; letter-spacing: .08em; }
 .microBaseline { stroke: var(--investor-ink-200); stroke-width: 1; stroke-dasharray: 2 3; }
-.microArea { fill: var(--investor-teal-600); opacity: .075; }
-.microLine { fill: none; stroke: var(--investor-teal-700); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .72; }
-.microEndpoint { fill: white; stroke: var(--investor-teal-700); stroke-width: 1.6; }
+.microArea { fill: currentColor; opacity: .09; }
+.microLine { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+.microPulse { fill: none; stroke: currentColor; stroke-width: 1.2; transform-box: fill-box; transform-origin: center; animation: microPing 1.9s ease-out infinite; }
+.microEndpoint { fill: white; stroke: currentColor; stroke-width: 1.7; }
+.microGain { color: var(--investor-gain); }
+.microLoss { color: var(--investor-loss); }
 
 .coachCard { display: flex; gap: 12px; border-color: transparent; background: var(--investor-aqua-100); box-shadow: none; }
 .coachCard > span { width: 38px; height: 38px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 11px; background: white; color: var(--investor-teal-700); }
@@ -209,6 +212,23 @@
 .holdingRow small { margin-top: 3px; color: var(--investor-ink-500); font-size: 10px; }
 .disclaimer { margin: 4px 2px 16px; color: var(--investor-ink-400); font-size: 11px; line-height: 1.55; }
 
+.learnIntro { margin: -3px 2px 13px; color: var(--investor-ink-500); font-size: 12px; line-height: 1.5; }
+.lessonList { display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
+.lessonCard { margin-bottom: 0; padding: 0; overflow: hidden; }
+.lessonCard > button { width: 100%; min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 16px; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.lessonCard > button > span { min-width: 0; display: flex; flex-direction: column; }
+.lessonCard > button b { font-size: 14px; }
+.lessonCard > button small { margin-top: 4px; color: var(--investor-ink-500); font-size: 11px; line-height: 1.4; }
+.lessonCard > button svg { flex: 0 0 auto; color: var(--investor-ink-400); transition: transform 160ms ease; }
+.lessonOpen { border-color: rgba(12,129,137,.28); }
+.lessonOpen > button svg { color: var(--investor-accent); transform: rotate(90deg); }
+.lessonBody { padding: 0 16px 15px; border-top: 1px solid var(--investor-ink-100); }
+.lessonBody > div { padding-top: 12px; }
+.lessonBody b { color: var(--investor-teal-800); font-size: 11px; }
+.lessonBody p { margin: 3px 0 0; color: var(--investor-ink-600); font-size: 11px; line-height: 1.5; }
+.learnSection { margin: 0 2px 12px; }
+.learnSection small { color: var(--investor-accent); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
+.learnSection h2 { margin-top: 4px; font-size: 18px; }
 .planHero { display: flex; align-items: center; gap: 16px; border: 0; color: white; background: linear-gradient(160deg, var(--investor-teal-700), var(--investor-teal-900)); }
 .planHero h2 { margin-bottom: 4px; font-size: 17px; }
 .planHero p { margin: 0; color: rgba(255,255,255,.68); font-size: 12px; line-height: 1.45; }
@@ -433,6 +453,7 @@
 @keyframes fadeIn { from { opacity: 0; } }
 @keyframes sheetIn { from { transform: translateY(22px); opacity: .6; } }
 @keyframes toastIn { from { transform: translateY(8px); opacity: 0; } }
+@keyframes microPing { 0% { opacity: .55; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(3.4); } }
 
 @media (max-width: 900px) {
   .investorPage { display: block; padding: 0; background: var(--investor-ink-50); overflow: visible; }
@@ -443,9 +464,10 @@
 
 @media (max-width: 390px) {
   .screen, .detailScreen { padding-right: 16px; padding-left: 16px; }
-  .stockRow { grid-template-columns: 41px minmax(74px,1fr) 70px auto; gap: 7px; }
+  .stockRow { grid-template-columns: 41px minmax(74px,1fr) 64px auto; gap: 7px; }
   .homeStockRow { grid-template-columns: 41px minmax(0,1fr) auto; }
-  .marketSparkline, .marketSparkline svg { width: 70px; }
+  .marketSparkline, .marketSparkline svg { width: 58px; }
+  .marketSparkline { transform: translateX(-3px); }
   .stockPrice b { font-size: 11px; }
   .heroCard > strong { font-size: 28px; }
   .onboarding { padding-right: 16px; padding-left: 16px; }
@@ -453,4 +475,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .investorPage *, .investorPage *::before, .investorPage *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  .microPulse { animation: none !important; }
 }
