@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   calculateBondOrder,
   coachTips,
@@ -22,9 +22,19 @@ import {
 } from "../../lib/investor-data";
 import styles from "./investor.module.css";
 import { demoInvestorNotifications, timeAgo, type NotificationItem } from "../../lib/notifications-demo";
+import {
+  filterInvestorActivity,
+  getInvestorActivityStatus,
+  getInvestorActivityTone,
+  getRecentInvestorActivity,
+  mergeInvestorActivity,
+  type InvestorActivity,
+  type InvestorActivityFilter,
+} from "../../lib/investor-activity";
+import { demoInvestorActivity } from "../../lib/investor-activity-demo";
 
 type Tab = "home" | "markets" | "portfolio" | "learn" | "profile";
-type IconName = "home" | "markets" | "portfolio" | "plan" | "profile" | "search" | "back" | "bell" | "plus" | "shield" | "bulb" | "chevron" | "check";
+type IconName = "home" | "markets" | "portfolio" | "plan" | "profile" | "search" | "back" | "bell" | "plus" | "shield" | "bulb" | "chevron" | "check" | "order" | "money";
 type InvestorKyc = {
   accountType: "retail" | "institution";
   fullName: string;
@@ -80,6 +90,7 @@ type InvestorBootstrap = {
   serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null }>;
   cashPools: CashPool[];
   cashMovements: CashMovementView[];
+  activity: InvestorActivity[];
 };
 
 function mergeBondInstrument(bond: InvestorBond, instrument?: InvestorInstrument): InvestorBond {
@@ -138,6 +149,8 @@ const iconPaths: Record<IconName, string> = {
   bulb: "M15 14c.2-1 .7-1.7 1.5-2.5A7 7 0 1 0 5 9c0 1 .5 2.5 1.5 3.5.7.7 1.3 1.5 1.5 2.5 M9 18h6 M10 22h4",
   chevron: "M9 18l6-6-6-6",
   check: "M20 6 9 17l-5-5",
+  order: "M6 3h12v18l-3-2-3 2-3-2-3 2z M9 8h6 M9 12h6",
+  money: "M3 6h18v12H3z M16 12h.01 M3 9h18",
 };
 
 function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
@@ -518,12 +531,129 @@ function AppLogo() {
   return <div className={styles.appLogo}><Image src="/frankscore-icon.png" alt="" width={29} height={41} /><b>Frank</b></div>;
 }
 
-function HomeScreen({ openStock, go, account, unread, onBell, onCash }: { openStock: (stock: InvestorStock) => void; go: (tab: Tab) => void; account: InvestorBootstrap["account"]; unread: number; onBell: () => void; onCash: () => void }) {
+function formatActivityDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Addis_Ababa" }).format(new Date(value));
+}
+
+function formatActivityDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Africa/Addis_Ababa" }).format(new Date(value));
+}
+
+function formatActivityQuantity(value: number) {
+  return new Intl.NumberFormat("en-GB", { maximumFractionDigits: 8 }).format(value);
+}
+
+function activityTitle(item: InvestorActivity) {
+  if (item.kind === "order") return `${item.side === "buy" ? "Buy" : "Sell"} order for ${formatActivityQuantity(item.quantity)} ${item.ticker}`;
+  if (item.kind === "trade") return `${item.side === "buy" ? "Bought" : "Sold"} ${formatActivityQuantity(item.quantity)} ${item.ticker}`;
+  return item.movementType === "deposit" ? "Money added" : "Withdrawal";
+}
+
+function activityAmount(item: InvestorActivity) {
+  if (item.kind === "order") return item.estimatedNet;
+  if (item.kind === "trade") return item.netAmount;
+  return item.amount;
+}
+
+function activityIcon(item: InvestorActivity): IconName {
+  if (item.kind === "order") return "order";
+  if (item.kind === "trade") return "markets";
+  return "money";
+}
+
+function ActivityRow({ item, onClick }: { item: InvestorActivity; onClick: () => void }) {
+  return <button className={styles.activityRow} onClick={onClick}>
+    <span className={styles.activityIcon} data-kind={item.kind}><Icon name={activityIcon(item)} size={18} /></span>
+    <span className={styles.activityIdentity}><b>{activityTitle(item)}</b><small>{formatActivityDate(item.occurredAt)}</small></span>
+    <span className={styles.activityValue}><b>{formatEtb(activityAmount(item))}</b><em data-tone={getInvestorActivityTone(item.status)}>{getInvestorActivityStatus(item.status)}</em></span>
+    <Icon name="chevron" size={15} />
+  </button>;
+}
+
+function ActivityDetail({ item }: { item: InvestorActivity }) {
+  const rows: Array<[string, ReactNode]> = item.kind === "order"
+    ? [
+        ["Company or bond", `${item.instrumentName} (${item.ticker})`],
+        ["Action", item.side === "buy" ? "Buy" : "Sell"],
+        ["Order type", item.orderType === "stop_loss" ? "Stop-Loss" : item.orderType.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())],
+        ["Quantity", formatActivityQuantity(item.quantity)],
+        ["Price", formatEtb(item.price)],
+        ...(item.triggerPrice ? [["Trigger price", formatEtb(item.triggerPrice)] as [string, ReactNode]] : []),
+        ["Filled", formatActivityQuantity(item.filledQuantity)],
+        ["Estimated fees", formatEtb(item.estimatedFees)],
+        ["Estimated total", formatEtb(item.estimatedNet)],
+        ["Submitted", formatActivityDateTime(item.submittedAt)],
+        ["Reference", item.reference],
+        ...(item.rejectionReason ? [["Why it was not approved", item.rejectionReason] as [string, ReactNode]] : []),
+      ]
+    : item.kind === "trade"
+      ? [
+          ["Company or bond", `${item.instrumentName} (${item.ticker})`],
+          ["Action", item.side === "buy" ? "Bought" : "Sold"],
+          ["Quantity", formatActivityQuantity(item.quantity)],
+          ["Execution price", formatEtb(item.executionPrice)],
+          ["Gross value", formatEtb(item.grossAmount)],
+          ["Fees", formatEtb(item.fees)],
+          [item.side === "buy" ? "Total paid" : "Total received", formatEtb(item.netAmount)],
+          ["Trade date", formatActivityDate(`${item.tradeDate}T12:00:00Z`)],
+          ["Settlement date", formatActivityDate(`${item.settlementDate}T12:00:00Z`)],
+          ["Settlement", getInvestorActivityStatus(item.settlementStatus)],
+          ["Reference", item.reference],
+        ]
+      : [
+          ["Type", item.movementType === "deposit" ? "Deposit" : "Withdrawal"],
+          ["Amount", formatEtb(item.amount)],
+          ...(item.bankName ? [["Bank", item.bankName] as [string, ReactNode]] : []),
+          ...(item.accountName ? [["Account holder", item.accountName] as [string, ReactNode]] : []),
+          ...(item.accountMasked ? [["Account", item.accountMasked] as [string, ReactNode]] : []),
+          ...(item.bankReference ? [["Bank reference", item.bankReference] as [string, ReactNode]] : []),
+          ["Submitted", formatActivityDateTime(item.submittedAt)],
+          ...(item.reviewedAt ? [["Reviewed", formatActivityDateTime(item.reviewedAt)] as [string, ReactNode]] : []),
+          ...(item.completedAt ? [["Completed", formatActivityDateTime(item.completedAt)] as [string, ReactNode]] : []),
+          ["Reference", item.reference],
+          ...(item.rejectionReason ? [["Why it was not approved", item.rejectionReason] as [string, ReactNode]] : []),
+          ...(item.failureReason ? [["Why it failed", item.failureReason] as [string, ReactNode]] : []),
+        ];
+  return <>
+    <Card className={styles.activityDetailHero}>
+      <span className={styles.activityIcon} data-kind={item.kind}><Icon name={activityIcon(item)} size={20} /></span>
+      <div><small>{item.kind === "money" ? "MONEY" : item.kind.toUpperCase()}</small><h2>{activityTitle(item)}</h2><b>{formatEtb(activityAmount(item))}</b></div>
+      <em data-tone={getInvestorActivityTone(item.status)}>{getInvestorActivityStatus(item.status)}</em>
+    </Card>
+    <Card className={styles.activityDetailCard}><dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></Card>
+  </>;
+}
+
+function ActivityScreen({ activity, initialItem, onBack }: { activity: InvestorActivity[]; initialItem: InvestorActivity | null; onBack: () => void }) {
+  const [filter, setFilter] = useState<InvestorActivityFilter>("all");
+  const [selected, setSelected] = useState<InvestorActivity | null>(initialItem);
+  const topRef = useRef<HTMLDivElement>(null);
+  const filtered = filterInvestorActivity(activity, filter);
+  useEffect(() => {
+    topRef.current?.scrollIntoView({ block: "start" });
+  }, [selected]);
+  return <div className={styles.screen} ref={topRef}>
+    <ScreenHeader title={selected ? "Activity details" : "Activity"} onBack={() => selected ? setSelected(null) : onBack()} />
+    {selected ? <ActivityDetail item={selected} /> : <>
+      <p className={styles.activityIntro}>Orders, trades, deposits, and withdrawals in one place.</p>
+      <div className={styles.activityFilters}>{([
+        ["all", "All"],
+        ["orders", "Orders"],
+        ["trades", "Trades"],
+        ["money", "Money"],
+      ] as Array<[InvestorActivityFilter, string]>).map(([value, label]) => <button key={value} className={filter === value ? styles.activityFilterActive : ""} onClick={() => setFilter(value)}>{label}</button>)}</div>
+      <Card className={styles.activityList}>{filtered.length > 0 ? filtered.map((item) => <ActivityRow key={`${item.kind}-${item.id}`} item={item} onClick={() => setSelected(item)} />) : <div className={styles.activityEmpty}><Icon name="order" size={24} /><b>No activity here yet</b><p>Your account updates will appear here.</p></div>}</Card>
+    </>}
+  </div>;
+}
+
+function HomeScreen({ openStock, go, account, activity, unread, onBell, onCash, onActivity, onActivityItem }: { openStock: (stock: InvestorStock) => void; go: (tab: Tab) => void; account: InvestorBootstrap["account"]; activity: InvestorActivity[]; unread: number; onBell: () => void; onCash: () => void; onActivity: () => void; onActivityItem: (item: InvestorActivity) => void }) {
   const [tip, setTip] = useState(0);
   const holdings = account?.holdings.length ? account.holdings.filter((holding) => investorStocks.some((stock) => stock.ticker === holding.ticker)) : investorHoldings;
   const stockValue = holdings.reduce((sum, holding) => sum + investorStocks.find((stock) => stock.ticker === holding.ticker)!.price * holding.quantity, 0);
   const totalValue = stockValue + 25_000 + (account?.availableCash ?? 4_210);
-  return <div className={styles.screen}><div className={styles.homeHeader}><AppLogo /><button className={styles.iconButton} aria-label="Notifications" onClick={onBell}><Icon name="bell" size={20} />{unread > 0 && <i />}</button></div><Card className={styles.heroCard}><small>Your money, all together</small><strong>{formatEtb(totalValue)}</strong><div><Delta value={1.8} pill /><span>{investorMarketContext.statusLabel} · updated {formatMarketTimestamp(investorMarketContext.quoteAsOf)}</span></div></Card><div className={styles.quickActions}><Button onClick={() => go("markets")}><Icon name="plus" size={18} /> Invest</Button><Button variant="secondary" onClick={onCash}>Add or withdraw</Button></div><Card><div className={styles.cardHeader}><h2>Companies you own</h2><button onClick={() => go("portfolio")}>Details</button></div>{holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; return <StockRow key={stock.ticker} stock={stock} holdingValue={stock.price * holding.quantity} onClick={() => openStock(stock)} />; })}</Card><Card className={styles.coachCard}><span><Icon name="bulb" size={20} /></span><div><small>FRANK COACH</small><h3>{coachTips[tip].title}</h3><p>{coachTips[tip].body}</p><button onClick={() => setTip((tip + 1) % coachTips.length)}>Next tip <em>{tip + 1}/{coachTips.length}</em></button></div></Card></div>;
+  const recentActivity = getRecentInvestorActivity(activity);
+  return <div className={styles.screen}><div className={styles.homeHeader}><AppLogo /><button className={styles.iconButton} aria-label="Notifications" onClick={onBell}><Icon name="bell" size={20} />{unread > 0 && <i />}</button></div><Card className={styles.heroCard}><small>Your money, all together</small><strong>{formatEtb(totalValue)}</strong><div><Delta value={1.8} pill /><span>{investorMarketContext.statusLabel} · updated {formatMarketTimestamp(investorMarketContext.quoteAsOf)}</span></div></Card><div className={styles.quickActions}><Button onClick={() => go("markets")}><Icon name="plus" size={18} /> Invest</Button><Button variant="secondary" onClick={onCash}>Add or withdraw</Button></div><Card><div className={styles.cardHeader}><h2>Companies you own</h2><button onClick={() => go("portfolio")}>Details</button></div>{holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; return <StockRow key={stock.ticker} stock={stock} holdingValue={stock.price * holding.quantity} onClick={() => openStock(stock)} />; })}</Card><Card className={styles.coachCard}><span><Icon name="bulb" size={20} /></span><div><small>FRANK COACH</small><h3>{coachTips[tip].title}</h3><p>{coachTips[tip].body}</p><button onClick={() => setTip((tip + 1) % coachTips.length)}>Next tip <em>{tip + 1}/{coachTips.length}</em></button></div></Card><Card className={styles.recentActivityCard}><div className={styles.cardHeader}><h2>Recent activity</h2><button onClick={onActivity}>See all</button></div>{recentActivity.length > 0 ? recentActivity.map((item) => <ActivityRow key={`${item.kind}-${item.id}`} item={item} onClick={() => onActivityItem(item)} />) : <div className={styles.activityEmpty}><b>No activity yet</b><p>Your orders and money movements will appear here.</p></div>}</Card></div>;
 }
 
 function MarketsScreen({ openStock, openBond, enabledTickers, bondsEnabled, bonds }: { openStock: (stock: InvestorStock) => void; openBond: (bond: InvestorBond) => void; enabledTickers: string[] | null; bondsEnabled: boolean; bonds: InvestorBond[] }) {
@@ -672,7 +802,7 @@ function calculateInvestorFees(gross: number, rule: InvestorFeeRule) {
   return { brokerage, regulator, exchange, csd, total: brokerage + regulator + exchange + csd };
 }
 
-function CashSheet({ pools: configuredPools, movements, availableCash, onClose, onSubmit }: { pools: CashPool[]; movements: CashMovementView[]; availableCash: number; onClose: () => void; onSubmit: (input: CashMovementInput) => Promise<boolean> }) {
+function CashSheet({ pools: configuredPools, movements, availableCash, onClose, onSubmit, onViewActivity }: { pools: CashPool[]; movements: CashMovementView[]; availableCash: number; onClose: () => void; onSubmit: (input: CashMovementInput) => Promise<boolean>; onViewActivity: () => void }) {
   const pools = configuredPools.length ? configuredPools : [{ id: "pool_aby_general", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", currency: "ETB", purpose: "general", beneficialBalance: availableCash || 75_000 }];
   const linkedBanks = readLinkedBanks();
   const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
@@ -770,7 +900,7 @@ function CashSheet({ pools: configuredPools, movements, availableCash, onClose, 
         </>}
         <Button className={styles.full} disabled={!valid || busy} onClick={() => void submit()}>{busy ? "Sending…" : type === "deposit" ? "Send for verification" : "Request withdrawal"}</Button>
       </>}
-      {movements.length > 0 && <div className={styles.cashHistory}><h3>Recent instructions</h3>{movements.slice(0, 3).map((movement) => <div key={movement.id}><span><b>{movement.type === "deposit" ? "Deposit" : "Withdrawal"}</b><small>{new Date(movement.submittedAt).toLocaleDateString("en-GB")} · {movement.id}</small></span><span><b>{formatEtb(movement.amount)}</b><em data-status={movement.status}>{movement.status.replaceAll("_", " ")}</em></span></div>)}</div>}
+      {movements.length > 0 && <div className={styles.cashHistory}><h3>Recent instructions</h3>{movements.slice(0, 3).map((movement) => <div key={movement.id}><span><b>{movement.type === "deposit" ? "Deposit" : "Withdrawal"}</b><small>{new Date(movement.submittedAt).toLocaleDateString("en-GB")} · {movement.id}</small></span><span><b>{formatEtb(movement.amount)}</b><em data-status={movement.status}>{getInvestorActivityStatus(movement.status)}</em></span></div>)}<button className={styles.cashActivityLink} onClick={onViewActivity}>See all activity</button></div>}
     </section>
   </div>;
 }
@@ -999,11 +1129,20 @@ export default function InvestorApp() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const [cashOpen, setCashOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityInitialItem, setActivityInitialItem] = useState<InvestorActivity | null>(null);
   const featured = useMemo(() => investorStocks.slice(0, 3), []);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
-  const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); };
+  const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); setActivityOpen(false); setActivityInitialItem(null); };
   const openStock = (next: InvestorStock) => { setBond(null); setStock(next); };
   const openBond = (next: InvestorBond) => { setStock(null); setBond(next); };
+  const openActivity = (item: InvestorActivity | null = null) => {
+    setTab("home");
+    setStock(null);
+    setBond(null);
+    setActivityInitialItem(item);
+    setActivityOpen(true);
+  };
   useEffect(() => {
     const controller = new AbortController();
     void fetch("/api/notifications", { headers: investorHeaders, signal: controller.signal })
@@ -1028,10 +1167,20 @@ export default function InvestorApp() {
     const controller = new AbortController();
     void fetch("/api/investor", { headers: investorHeaders, signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((data: InvestorBootstrap) => { setBootstrap(data); if (data.profile?.fullName) setProfileName(data.profile.fullName); })
+      .then((data: InvestorBootstrap) => {
+        setBootstrap({ ...data, activity: data.activity ?? [] });
+        if (data.profile?.fullName) setProfileName(data.profile.fullName);
+      })
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
+  const refreshInvestor = async () => {
+    const response = await fetch("/api/investor", { headers: investorHeaders });
+    if (!response.ok) throw new Error("Unable to refresh the investor account.");
+    const data = await response.json() as InvestorBootstrap;
+    setBootstrap({ ...data, activity: data.activity ?? [] });
+    if (data.profile?.fullName) setProfileName(data.profile.fullName);
+  };
   const postInvestor = async (body: unknown) => {
     const response = await fetch("/api/investor", { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) });
     const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; kycStatus: string } };
@@ -1078,6 +1227,7 @@ export default function InvestorApp() {
       } else {
         notify(`${result.order?.id ?? "Order"} sent to broker review.`);
       }
+      await refreshInvestor().catch(() => undefined);
       return { status: result.order?.status, checks: result.checks };
     } catch (error) {
       notify(error instanceof Error ? error.message : "Order saved in the offline demo.");
@@ -1118,6 +1268,7 @@ export default function InvestorApp() {
           cashMovements: [result.cashMovement!, ...current.cashMovements.filter((item) => item.id !== result.cashMovement!.id)],
         } : current);
       }
+      await refreshInvestor().catch(() => undefined);
       notify(input.movementType === "deposit" ? "Deposit sent for independent bank verification." : "Withdrawal reserved and sent for broker approval.");
       return true;
     } catch (error) {
@@ -1138,6 +1289,43 @@ export default function InvestorApp() {
   const availableBonds = investorBonds.map((item) => mergeBondInstrument(item, bootstrap?.instruments.find((instrument) => instrument.ticker === item.ticker)));
   const bondsEnabled = bootstrap?.tenant.features.bonds ?? true;
   const theme = { "--investor-accent": bootstrap?.tenant.primaryColor ?? "#0c8189" } as CSSProperties;
+  const activity = mergeInvestorActivity(bootstrap?.activity ?? [], demoInvestorActivity);
 
-  return <main className={styles.investorPage} style={theme}><section className={styles.desktopStory}><AppLogo /><span className={styles.licenseBadge}>Platform demo</span><h1>Own a piece of Ethiopia&apos;s growth</h1><p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, and learn which mix may fit your goals."}</p><Button onClick={() => setPhase("app")}>Explore the investor app</Button><div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div><small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small></section><section className={styles.appFrame} aria-label="Frank Money investor app"><div className={styles.appViewport}>{phase === "onboarding" ? <Onboarding onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} /> : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} /> : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} /> : <><div className={styles.scrollArea}>{tab === "home" ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => setCashOpen(true)} /> : tab === "markets" ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} /> : tab === "portfolio" ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} /> : tab === "learn" ? <LearnScreen /> : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}</div><BottomNav active={tab} onChange={navigate} /></>}{cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} />}{bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}{toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}</div></section></main>;
+  return <main className={styles.investorPage} style={theme}>
+    <section className={styles.desktopStory}>
+      <AppLogo />
+      <span className={styles.licenseBadge}>Platform demo</span>
+      <h1>Own a piece of Ethiopia&apos;s growth</h1>
+      <p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, and learn which mix may fit your goals."}</p>
+      <Button onClick={() => setPhase("app")}>Explore the investor app</Button>
+      <div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div>
+      <small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small>
+    </section>
+    <section className={styles.appFrame} aria-label="Frank Money investor app">
+      <div className={styles.appViewport}>
+        {phase === "onboarding" ? <Onboarding onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} />
+          : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} />
+            : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} />
+              : <>
+                <div className={styles.scrollArea}>
+                  {activityOpen
+                    ? <ActivityScreen activity={activity} initialItem={activityInitialItem} onBack={() => { setActivityOpen(false); setActivityInitialItem(null); }} />
+                    : tab === "home"
+                      ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
+                      : tab === "markets"
+                        ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} />
+                        : tab === "portfolio"
+                          ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} />
+                          : tab === "learn"
+                            ? <LearnScreen />
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
+                </div>
+                <BottomNav active={tab} onChange={navigate} />
+              </>}
+        {cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
+        {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
+        {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}
+      </div>
+    </section>
+  </main>;
 }

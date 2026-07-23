@@ -151,6 +151,43 @@
 .coachCard p { margin: 0; color: var(--investor-ink-700); font-size: 12px; line-height: 1.5; }
 .coachCard button { margin-top: 7px; }
 .coachCard button em { margin-left: 7px; color: var(--investor-ink-400); font-family: var(--font-mono); font-size: 10px; font-style: normal; }
+.recentActivityCard, .activityList { padding-top: 14px; padding-bottom: 8px; }
+.activityRow { width: 100%; min-height: 62px; display: grid; grid-template-columns: 38px minmax(0,1fr) auto 15px; align-items: center; gap: 9px; padding: 9px 0; border: 0; border-bottom: 1px solid var(--investor-ink-100); background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.activityRow:last-child { border-bottom: 0; }
+.activityRow:hover { background: var(--investor-ink-50); }
+.activityRow > svg { color: var(--investor-ink-300); }
+.activityIcon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; background: var(--investor-aqua-100); color: var(--investor-teal-800); }
+.activityIcon[data-kind="trade"] { background: #e2f6ec; color: var(--investor-gain); }
+.activityIcon[data-kind="money"] { background: #edf3f8; color: #4d7088; }
+.activityIdentity, .activityValue { min-width: 0; display: flex; flex-direction: column; }
+.activityIdentity b { overflow: hidden; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.activityIdentity small { margin-top: 3px; color: var(--investor-ink-400); font-size: 9px; }
+.activityValue { align-items: flex-end; }
+.activityValue b { font-family: var(--font-mono); font-size: 10.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.activityValue em, .activityDetailHero > em { margin-top: 3px; color: var(--investor-ink-500); font-size: 8px; font-style: normal; font-weight: 750; white-space: nowrap; }
+.activityValue em[data-tone="positive"], .activityDetailHero > em[data-tone="positive"] { color: var(--investor-gain); }
+.activityValue em[data-tone="pending"], .activityDetailHero > em[data-tone="pending"] { color: #956510; }
+.activityValue em[data-tone="negative"], .activityDetailHero > em[data-tone="negative"] { color: var(--investor-loss); }
+.activityIntro { margin: -7px 0 14px; color: var(--investor-ink-500); font-size: 11px; line-height: 1.5; }
+.activityFilters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 12px; padding: 4px; border-radius: 13px; background: var(--investor-ink-100); }
+.activityFilters button { min-height: 36px; padding: 0 6px; border: 0; border-radius: 9px; background: transparent; color: var(--investor-ink-500); cursor: pointer; font-size: 10.5px; font-weight: 700; }
+.activityFilters .activityFilterActive { background: white; color: var(--investor-ink-900); box-shadow: 0 1px 4px rgba(8,62,71,.08); }
+.activityEmpty { display: flex; flex-direction: column; align-items: center; padding: 28px 12px 32px; color: var(--investor-ink-400); text-align: center; }
+.recentActivityCard .activityEmpty { padding: 20px 12px 24px; }
+.activityEmpty b { margin-top: 8px; color: var(--investor-ink-700); font-size: 12px; }
+.activityEmpty p { margin: 4px 0 0; font-size: 10px; }
+.activityDetailHero { display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: start; gap: 11px; }
+.activityDetailHero .activityIcon { width: 42px; height: 42px; }
+.activityDetailHero > div { min-width: 0; }
+.activityDetailHero small { color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .09em; }
+.activityDetailHero h2 { margin: 3px 0 6px; font-size: 14px; line-height: 1.35; }
+.activityDetailHero div > b { font-family: var(--font-mono); font-size: 16px; }
+.activityDetailHero > em { padding: 5px 7px; border-radius: 999px; background: var(--investor-ink-50); }
+.activityDetailCard dl { margin: 0; }
+.activityDetailCard dl > div { display: grid; grid-template-columns: minmax(100px,.8fr) minmax(0,1.2fr); gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.activityDetailCard dl > div:last-child { border-bottom: 0; }
+.activityDetailCard dt { color: var(--investor-ink-500); font-size: 10px; }
+.activityDetailCard dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 10px; font-weight: 650; line-height: 1.45; text-align: right; }
 
 .searchField { min-height: 48px; display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 0 13px; border: 1px solid var(--investor-ink-200); border-radius: 14px; background: white; color: var(--investor-ink-400); }
 .searchField input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--investor-ink-900); font-size: 14px; }
@@ -416,6 +453,7 @@
 .cashHistory small { margin-top: 2px; color: var(--investor-ink-400); font-size: 8px; }
 .cashHistory em { margin-top: 3px; color: var(--investor-teal-700); font-size: 8px; font-style: normal; font-weight: 750; text-transform: capitalize; }
 .cashHistory em[data-status="rejected"], .cashHistory em[data-status="failed"] { color: var(--investor-loss); }
+.cashActivityLink { width: 100%; padding: 10px 0 2px; border: 0; background: transparent; color: var(--investor-accent); cursor: pointer; font-size: 10px; font-weight: 700; text-align: left; }
 .orderTotals { margin: 12px 0 16px; padding: 11px 0; border-top: 1px solid var(--investor-ink-100); border-bottom: 1px solid var(--investor-ink-100); }
 .orderTotals div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
 .orderTotals dt { color: var(--investor-ink-500); font-size: 12px; }
@@ -551,6 +589,11 @@
   .marketSparkline { transform: translateX(-3px); }
   .stockPrice b { font-size: 11px; }
   .heroCard > strong { font-size: 28px; }
+  .activityRow { grid-template-columns: 35px minmax(0,1fr) auto 13px; gap: 7px; }
+  .activityIcon { width: 34px; height: 34px; }
+  .activityIdentity b { font-size: 10.5px; }
+  .activityValue b { font-size: 9.5px; }
+  .activityValue em { max-width: 91px; overflow: hidden; text-overflow: ellipsis; }
   .onboarding { padding-right: 16px; padding-left: 16px; }
 }
 

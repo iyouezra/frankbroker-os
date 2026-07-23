@@ -6,6 +6,7 @@ import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from ".
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
 import { confirmOtpChallenge, createOtpChallenge, orderPayloadHash } from "../../../lib/verification-service";
+import { sortInvestorActivity, type InvestorActivity } from "../../../lib/investor-activity";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,11 @@ export async function GET(request: Request) {
           accounts: {
             include: {
               holdings: { include: { instrument: true } },
-              orders: { include: { instrument: true }, orderBy: { createdAt: "desc" }, take: 25 },
+              orders: {
+                include: { instrument: true, trades: { include: { settlement: true }, orderBy: { capturedAt: "desc" } } },
+                orderBy: { createdAt: "desc" },
+                take: 25,
+              },
               clientMoneyPositions: { include: { pooledBankAccount: true } },
             },
           },
@@ -52,6 +57,66 @@ export async function GET(request: Request) {
     const account = client?.accounts[0];
     const legalDocument = broker.legalDocuments[0] ?? null;
     const feeSchedule = broker.feeSchedules[0] ?? null;
+    const activity = sortInvestorActivity([
+      ...(account?.orders.flatMap((order): InvestorActivity[] => [
+        {
+          kind: "order",
+          id: order.id,
+          occurredAt: (order.submittedAt ?? order.createdAt).toISOString(),
+          status: order.status,
+          ticker: order.instrument.symbol,
+          instrumentName: order.instrument.name,
+          side: order.side === "sell" ? "sell" : "buy",
+          quantity: toNum(order.quantity),
+          price: toNum(order.price),
+          triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
+          orderType: order.orderType,
+          filledQuantity: toNum(order.filledQuantity),
+          estimatedFees: toNum(order.estimatedFees),
+          estimatedNet: toNum(order.estimatedNet),
+          reference: order.submissionReference ?? order.id,
+          submittedAt: (order.submittedAt ?? order.createdAt).toISOString(),
+          rejectionReason: order.rejectionReason,
+        },
+        ...order.trades.map((trade) => ({
+          kind: "trade" as const,
+          id: trade.id,
+          occurredAt: trade.capturedAt.toISOString(),
+          status: trade.settlement?.status === "settled" ? "settled" : "settlement_pending",
+          ticker: order.instrument.symbol,
+          instrumentName: order.instrument.name,
+          side: order.side === "sell" ? "sell" as const : "buy" as const,
+          quantity: toNum(trade.quantityFilled),
+          executionPrice: toNum(trade.executionPrice),
+          grossAmount: toNum(trade.grossAmount),
+          fees: toNum(trade.fees),
+          netAmount: toNum(trade.netAmount),
+          tradeDate: trade.tradeDate.toISOString().slice(0, 10),
+          settlementDate: trade.settlementDate.toISOString().slice(0, 10),
+          settlementStatus: trade.settlement?.status ?? "pending",
+          reference: trade.id,
+        })),
+      ]) ?? []),
+      ...(client?.cashMovements.map((movement): InvestorActivity => ({
+        kind: "money",
+        id: movement.id,
+        occurredAt: movement.submittedAt.toISOString(),
+        status: movement.status,
+        movementType: movement.movementType === "withdrawal" ? "withdrawal" : "deposit",
+        amount: toNum(movement.amount),
+        currency: movement.currency,
+        bankReference: movement.bankReference,
+        bankName: movement.movementType === "withdrawal" ? movement.destinationBankName : movement.pooledBankAccount.bankName,
+        accountName: movement.movementType === "withdrawal" ? movement.destinationAccountName : movement.pooledBankAccount.accountName,
+        accountMasked: movement.movementType === "withdrawal" ? movement.destinationAccountMasked : movement.pooledBankAccount.accountNumberMasked,
+        submittedAt: movement.submittedAt.toISOString(),
+        reviewedAt: movement.reviewedAt?.toISOString() ?? null,
+        completedAt: movement.completedAt?.toISOString() ?? null,
+        rejectionReason: movement.rejectionReason,
+        failureReason: movement.failureReason,
+        reference: movement.submissionReference,
+      })) ?? []),
+    ]).slice(0, 25);
     return Response.json({
       tenant: {
         id: broker.id,
@@ -132,6 +197,7 @@ export async function GET(request: Request) {
         beneficialBalance: toNum(account?.clientMoneyPositions.find((position) => position.pooledBankAccountId === pool.id)?.balance),
       })),
       cashMovements: (client?.cashMovements ?? []).map(serializeCashMovement),
+      activity,
       instruments: broker.instrumentAccess.map(({ instrument }) => ({
         id: instrument.id, ticker: instrument.symbol, name: instrument.name, assetClass: instrument.assetClass,
         issuer: instrument.issuer,

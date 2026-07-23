@@ -82,6 +82,8 @@ async function main() {
   await prisma.cashMovement.createMany({
     data: [
       { id: "MOV-DEMO-DEP-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-FUND-001", movementType: "deposit", amount: 15_000, status: "pending_verification", bankReference: "CBE-FT-908231", proofReference: "mobile-transfer-receipt", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-16T08:42:00Z"), notes: "Awaiting independent bank evidence match" },
+      { id: "MOV-DEMO-WDR-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-WITHDRAW-001", movementType: "withdrawal", amount: 25_000, status: "completed", destinationBankName: "Commercial Bank of Ethiopia", destinationAccountName: "Selam Mekonnen", destinationAccountMasked: "•••••• 894108", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-12T07:30:00Z"), reviewedAt: new Date("2026-07-12T08:15:00Z"), completedAt: new Date("2026-07-12T11:20:00Z") },
+      { id: "MOV-DEMO-DEP-000", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-FUND-000", movementType: "deposit", amount: 160_869.84, status: "completed", bankReference: "CBE-FT-612704", proofReference: "bank-transfer-receipt", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-03T06:45:00Z"), reviewedAt: new Date("2026-07-03T08:10:00Z"), completedAt: new Date("2026-07-03T09:05:00Z") },
     ],
     skipDuplicates: true,
   });
@@ -201,6 +203,9 @@ async function main() {
       { id: "ORD-2026-1046", brokerId: "brk_abyssinia", accountId: "acc_blue", instrumentId: "ins_goeb_2029", side: "buy", quantity: 25_000, filledQuantity: 25_000, remainingQuantity: 0, averageFillPrice: 99.85, executedGross: 2_496_250, executedFees: 12_481.25, executedNet: 2_508_731.25, price: 99.85, orderType: "limit", validity: "day", estimatedGross: 2_496_250, estimatedFees: 12_481.25, estimatedNet: 2_508_731.25, status: "settlement_pending", source: "manual", assignedTraderId: "usr_trader", riskFlag: "review", submittedAt: new Date("2026-07-14T09:54:00Z") },
       { id: "ORD-2026-1045", brokerId: "brk_abyssinia", accountId: "acc_meron", instrumentId: "ins_goeb_2031", side: "buy", quantity: 3_000, filledQuantity: 3_000, remainingQuantity: 0, averageFillPrice: 100.6, executedGross: 301_800, executedFees: 1_509, executedNet: 303_309, price: 100.6, orderType: "limit", validity: "day", estimatedGross: 301_800, estimatedFees: 1_509, estimatedNet: 303_309, status: "settled", source: "manual", assignedTraderId: "usr_trader", riskFlag: "none", submittedAt: new Date("2026-07-14T09:31:00Z") },
       { id: "ORD-2026-1044", brokerId: "brk_abyssinia", accountId: "acc_selam", instrumentId: "ins_tele", side: "buy", quantity: 500, remainingQuantity: 500, price: 311, orderType: "limit", validity: "day", estimatedGross: 155_500, estimatedFees: 777.5, estimatedNet: 156_277.5, status: "validation_failed", source: "manual", riskFlag: "high", submittedAt: new Date("2026-07-14T09:08:00Z") },
+      { id: "ORD-INV-0003", brokerId: "brk_abyssinia", submissionReference: "INV-DEMO-ORDER-003", accountId: "acc_investor_demo", instrumentId: "ins_tele", side: "sell", quantity: 10, remainingQuantity: 10, price: 305, orderType: "limit", validity: "day", estimatedGross: 3_050, estimatedFees: 25, estimatedNet: 3_025, status: "validation_failed", source: "investor_portal", riskFlag: "none", rejectionReason: "The price moved outside your limit before broker review.", submittedAt: new Date("2026-07-15T10:18:00Z") },
+      { id: "ORD-INV-0002", brokerId: "brk_abyssinia", submissionReference: "INV-DEMO-ORDER-002", accountId: "acc_investor_demo", instrumentId: "ins_wgbx", side: "buy", quantity: 15, filledQuantity: 15, remainingQuantity: 0, averageFillPrice: 1_685, executedGross: 25_275, executedFees: 126.38, executedNet: 25_401.38, price: 1_685, orderType: "limit", validity: "day", estimatedGross: 25_275, estimatedFees: 126.38, estimatedNet: 25_401.38, status: "settled", source: "investor_portal", assignedTraderId: "usr_trader", riskFlag: "none", submittedAt: new Date("2026-07-10T08:35:00Z") },
+      { id: "ORD-INV-0001", brokerId: "brk_abyssinia", submissionReference: "INV-DEMO-ORDER-001", accountId: "acc_investor_demo", instrumentId: "ins_tele", side: "buy", quantity: 120, filledQuantity: 120, remainingQuantity: 0, averageFillPrice: 294.1, executedGross: 35_292, executedFees: 176.46, executedNet: 35_468.46, price: 294.1, orderType: "market", validity: "day", estimatedGross: 35_292, estimatedFees: 176.46, estimatedNet: 35_468.46, status: "settled", source: "investor_portal", assignedTraderId: "usr_trader", riskFlag: "none", submittedAt: new Date("2026-07-05T07:55:00Z") },
     ],
     skipDuplicates: true,
   });
@@ -219,6 +224,8 @@ async function main() {
     data: [
       { id: "TRD-2026-0772", orderId: "ORD-2026-1046", executionPrice: 99.85, quantityFilled: 25_000, grossAmount: 2_496_250, fees: 12_481.25, netAmount: 2_508_731.25, tradeDate: dateOnly("2026-07-14"), settlementDate: dateOnly("2026-07-16"), capturedBy: "usr_trader" },
       { id: "TRD-2026-0768", orderId: "ORD-2026-1045", executionPrice: 100.6, quantityFilled: 3_000, grossAmount: 301_800, fees: 1_509, netAmount: 303_309, tradeDate: dateOnly("2026-07-10"), settlementDate: dateOnly("2026-07-14"), capturedBy: "usr_trader" },
+      { id: "TRD-INV-0002", orderId: "ORD-INV-0002", executionPrice: 1_685, quantityFilled: 15, grossAmount: 25_275, fees: 126.38, netAmount: 25_401.38, tradeDate: dateOnly("2026-07-10"), settlementDate: dateOnly("2026-07-14"), capturedBy: "usr_trader", capturedAt: new Date("2026-07-10T09:02:00Z") },
+      { id: "TRD-INV-0001", orderId: "ORD-INV-0001", executionPrice: 294.1, quantityFilled: 120, grossAmount: 35_292, fees: 176.46, netAmount: 35_468.46, tradeDate: dateOnly("2026-07-05"), settlementDate: dateOnly("2026-07-07"), capturedBy: "usr_trader", capturedAt: new Date("2026-07-05T08:14:00Z") },
     ],
     skipDuplicates: true,
   });
@@ -227,6 +234,8 @@ async function main() {
     data: [
       { id: "STL-0772", tradeId: "TRD-2026-0772", status: "pending", settlementDate: dateOnly("2026-07-16"), cashStatus: "pending", securitiesStatus: "pending" },
       { id: "STL-0768", tradeId: "TRD-2026-0768", status: "settled", settlementDate: dateOnly("2026-07-14"), cashStatus: "settled", securitiesStatus: "settled", confirmedBy: "usr_settlement", confirmedAt: new Date("2026-07-14T09:33:18Z") },
+      { id: "STL-INV-0002", tradeId: "TRD-INV-0002", status: "settled", settlementDate: dateOnly("2026-07-14"), cashStatus: "settled", securitiesStatus: "settled", confirmedBy: "usr_settlement", confirmedAt: new Date("2026-07-14T10:05:00Z") },
+      { id: "STL-INV-0001", tradeId: "TRD-INV-0001", status: "settled", settlementDate: dateOnly("2026-07-07"), cashStatus: "settled", securitiesStatus: "settled", confirmedBy: "usr_settlement", confirmedAt: new Date("2026-07-07T10:20:00Z") },
     ],
     skipDuplicates: true,
   });
