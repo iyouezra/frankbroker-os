@@ -360,6 +360,7 @@ model Order {
   side                     String
   quantity                 Decimal                  @db.Decimal(24, 8)
   price                    Decimal                  @db.Decimal(20, 6)
+  triggerPrice             Decimal?                 @map("trigger_price") @db.Decimal(20, 6)
   orderType                String                   @default("limit") @map("order_type")
   validity                 String                   @default("day")
   estimatedGross           Decimal                  @map("estimated_gross") @db.Decimal(20, 4)

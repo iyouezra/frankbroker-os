@@ -49,7 +49,7 @@ type InvestorKyc = {
   pepStatus: "not_pep" | "pep" | "related_to_pep";
   verificationId?: string;
 };
-type InvestorOrderInput = { symbol: string; side: "buy" | "sell"; quantity: number; price: number; orderType: string; disclosureAccepted: boolean; disclosureVersion: "order-v1" };
+type InvestorOrderInput = { symbol: string; side: "buy" | "sell"; quantity: number; price: number; triggerPrice?: number; orderType: string; disclosureAccepted: boolean; disclosureVersion: "order-v1" };
 type OrderCheck = { code: string; passed: boolean; message: string };
 type PlaceResult = { status?: string; checks?: OrderCheck[] };
 type CashPool = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; beneficialBalance: number };
@@ -779,12 +779,16 @@ function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrderTypes, 
   const [orderType, setOrderType] = useState<"Market" | "Limit" | "Stop-loss">("Market");
   const [quantity, setQuantity] = useState("10");
   const [limitPrice, setLimitPrice] = useState(String(Math.round(stock.price * .98)));
+  const [triggerPrice, setTriggerPrice] = useState(String(Number((stock.price * .95).toFixed(stock.price >= 1_000 ? 0 : 2))));
   const [reviewing, setReviewing] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [disclosureAccepted, setDisclosureAccepted] = useState(false);
   const [heldChecks, setHeldChecks] = useState<OrderCheck[]>([]);
   const isSell = side === "Sell";
+  const isStopLoss = orderType === "Stop-loss";
   const executionPrice = orderType === "Limit" ? Number(limitPrice) || stock.price : stock.price;
+  const triggerValue = Number(triggerPrice) || 0;
+  const triggerValid = !isStopLoss || (triggerValue > 0 && triggerValue < stock.price);
   const shares = Number(quantity) || 0;
   const gross = shares * executionPrice;
   const fees = calculateInvestorFees(gross, feeRule);
@@ -794,13 +798,38 @@ function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrderTypes, 
     setPlacing(true);
     setHeldChecks([]);
     try {
-      const result = await onPlaced({ symbol: stock.ticker, side: isSell ? "sell" : "buy", quantity: shares, price: executionPrice, orderType, disclosureAccepted: true, disclosureVersion: "order-v1" });
+      const result = await onPlaced({ symbol: stock.ticker, side: isSell ? "sell" : "buy", quantity: shares, price: executionPrice, triggerPrice: isStopLoss ? triggerValue : undefined, orderType, disclosureAccepted: true, disclosureVersion: "order-v1" });
       const failed = (result?.checks ?? []).filter((check) => !check.passed);
       if (failed.length) { setHeldChecks(failed); setReviewing(false); }
     }
     finally { setPlacing(false); }
   };
-  return <><div className={styles.sheetBackdrop} onClick={onClose}><section className={styles.orderSheet} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="order-title"><i className={styles.sheetHandle} /><h2 id="order-title">{side} {stock.ticker}</h2><div className={styles.chips}>{options.map((option) => <button key={option} className={orderType === option ? styles.chipActive : ""} onClick={() => setOrderType(option)}>{option}</button>)}</div><p className={styles.orderHint}>{orderType === "Market" ? "Trades at the best available ESX price." : orderType === "Limit" ? `${side}s only at your selected price or better.` : "Sells at the next available price after your trigger is reached."}</p>{orderType === "Limit" && <label className={styles.formField}><span>{isSell ? "Sell at or above" : "Buy at or below"}</span><div><em>ETB</em><input inputMode="decimal" value={limitPrice} onChange={(event) => setLimitPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div></label>}<label className={styles.formField}><span>Shares</span><div><input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))} /><em>× {formatEtb(executionPrice)}</em></div><small>{isSell ? `You hold ${holdingQuantity} shares` : "Enter a whole number of shares"}</small></label><dl className={styles.orderTotals}><div><dt>Gross consideration</dt><dd>{formatEtb(gross)}</dd></div><div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div>{fees.regulator > 0 && <div><dt>Regulatory fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>}{fees.exchange > 0 && <div><dt>Exchange fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>}{fees.csd > 0 && <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>}<div><dt>Total estimated fees</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{isSell ? "Estimated net proceeds" : "Estimated cash required"}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl>{heldChecks.length > 0 && <div role="alert" style={{ margin: "0 0 14px", padding: "12px 14px", borderRadius: 14, background: "#FBE9E9", border: "1px solid #F1C9C9", color: "#B4322E", fontSize: 13, lineHeight: 1.5 }}><b style={{ display: "block", marginBottom: 4 }}>Order held: {heldChecks.length === 1 ? "1 check needs attention" : `${heldChecks.length} checks need attention`}</b><ul style={{ margin: 0, paddingLeft: 18 }}>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}<Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity)} onClick={() => setReviewing(true)}>Review order</Button></section></div>{reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">Confirm order</h2><p>You&apos;re {isSell ? "selling" : "buying"} <b>{shares.toFixed(0)} shares of {stock.ticker}</b> for about <b>{formatEtb(gross)}</b>, plus estimated fees of <b>{formatEtb(fees.total)}</b>. A market order can execute at a different price; a limit order may not fill.</p><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the instrument, quantity, order type, estimated value, fee breakdown, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : side}</Button></div></section></div>}</>;
+  return <>
+    <div className={styles.sheetBackdrop} onClick={onClose}>
+      <section className={styles.orderSheet} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="order-title">
+        <i className={styles.sheetHandle} />
+        <h2 id="order-title">{side} {stock.ticker}</h2>
+        <div className={styles.chips}>{options.map((option) => <button key={option} className={orderType === option ? styles.chipActive : ""} onClick={() => setOrderType(option)}>{option}</button>)}</div>
+        <p className={styles.orderHint}>{orderType === "Market" ? "Trades at the best available ESX price." : orderType === "Limit" ? `${side}s only at your selected price or better.` : "When the price reaches your trigger, this becomes a Market sell. The final price may be lower."}</p>
+        {orderType === "Limit" && <label className={styles.formField}><span>{isSell ? "Sell at or above" : "Buy at or below"}</span><div><em>ETB</em><input inputMode="decimal" value={limitPrice} onChange={(event) => setLimitPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div></label>}
+        {isStopLoss && <label className={styles.formField}><span>Trigger when price falls to</span><div><em>ETB</em><input inputMode="decimal" value={triggerPrice} onChange={(event) => setTriggerPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div><small className={triggerValid ? "" : styles.fieldError}>{triggerValid ? `Current price: ${formatEtb(stock.price)}` : `Enter a price below ${formatEtb(stock.price)}.`}</small></label>}
+        <label className={styles.formField}><span>Shares</span><div><input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))} /><em>× {formatEtb(executionPrice)}</em></div><small>{isSell ? `You hold ${holdingQuantity} shares` : "Enter a whole number of shares"}</small></label>
+        <dl className={styles.orderTotals}>
+          {isStopLoss && <div><dt>Trigger price</dt><dd>{formatEtb(triggerValue)}</dd></div>}
+          <div><dt>Gross consideration</dt><dd>{formatEtb(gross)}</dd></div>
+          <div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div>
+          {fees.regulator > 0 && <div><dt>Regulatory fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>}
+          {fees.exchange > 0 && <div><dt>Exchange fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>}
+          {fees.csd > 0 && <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>}
+          <div><dt>Total estimated fees</dt><dd>{formatEtb(fees.total)}</dd></div>
+          <div><dt>{isSell ? "Estimated net proceeds" : "Estimated cash required"}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div>
+        </dl>
+        {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>Order held: {heldChecks.length === 1 ? "1 check needs attention" : `${heldChecks.length} checks need attention`}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
+        <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !triggerValid} onClick={() => setReviewing(true)}>Review order</Button>
+      </section>
+    </div>
+    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">Confirm order</h2><p>You&apos;re {isSell ? "selling" : "buying"} <b>{shares.toFixed(0)} shares of {stock.ticker}</b> for about <b>{formatEtb(gross)}</b>, plus estimated fees of <b>{formatEtb(fees.total)}</b>. {isStopLoss ? <>If the price reaches <b>{formatEtb(triggerValue)}</b>, this becomes a Market sell and the final price may differ.</> : "A market order can execute at a different price; a limit order may not fill."}</p><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the instrument, quantity, order type, estimated value, fee breakdown, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : side}</Button></div></section></div>}
+  </>;
 }
 
 function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes, onClose, onPlaced }: { bond: InvestorBond; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {

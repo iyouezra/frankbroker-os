@@ -56,6 +56,7 @@ export async function GET(request: Request) {
         side: order.side,
         quantity: toNum(order.quantity),
         price: toNum(order.price),
+        triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
         orderType: order.orderType,
         estimatedGross: toNum(order.estimatedGross),
         estimatedFees: toNum(order.estimatedFees),
@@ -183,6 +184,7 @@ export async function POST(request: Request) {
       side?: "buy" | "sell";
       quantity?: number;
       price?: number;
+      triggerPrice?: number;
       orderType?: string;
       validity?: string;
       notes?: string;
@@ -194,6 +196,7 @@ export async function POST(request: Request) {
     const side = parseOrderSide(payload.side);
     const quantityInput = parsePositiveFiniteNumber(payload.quantity);
     const priceInput = parsePositiveFiniteNumber(payload.price);
+    const triggerPriceInput = payload.triggerPrice === undefined ? null : parsePositiveFiniteNumber(payload.triggerPrice);
     if (!payload.accountId || !payload.instrumentId || !side || quantityInput === null || priceInput === null || !payload.submissionReference?.trim()) {
       return Response.json(
         { error: "A valid account, instrument, buy/sell side, positive quantity, positive price, and submission reference are required." },
@@ -210,6 +213,7 @@ export async function POST(request: Request) {
       side,
       quantity: quantityInput,
       price: priceInput,
+      triggerPrice: triggerPriceInput,
       orderType: normalizeOrderType(payload.orderType ?? "limit"),
       validity: payload.validity,
       notes: payload.notes,

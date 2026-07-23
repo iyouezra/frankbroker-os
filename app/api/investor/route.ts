@@ -108,7 +108,8 @@ export async function GET(request: Request) {
         })),
         orders: account.orders.map((order) => ({
           id: order.id, ticker: order.instrument.symbol, side: order.side, quantity: toNum(order.quantity),
-          price: toNum(order.price), status: order.status, createdAt: order.createdAt.toISOString(),
+          price: toNum(order.price), triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
+          status: order.status, createdAt: order.createdAt.toISOString(),
         })),
       } : null,
       serviceRequests: (client?.serviceRequests ?? []).map((item) => ({
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
       ]);
       const account = client?.accounts[0];
       if (!client || !account || !instrument) return Response.json({ error: "Investor account or instrument not found." }, { status: 404 });
-      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", destinationHint: `mobile ending ${client.phone?.replace(/\D/g, "").slice(-4) ?? "unknown"}`, payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
+      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", destinationHint: `mobile ending ${client.phone?.replace(/\D/g, "").slice(-4) ?? "unknown"}`, payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
       return Response.json(challenge, { status: 201 });
     }
 
@@ -358,11 +359,17 @@ export async function POST(request: Request) {
       const side = parseOrderSide(payload.side);
       const quantityInput = parsePositiveFiniteNumber(payload.quantity);
       const priceInput = parsePositiveFiniteNumber(payload.price ?? toNum(instrument.lastPrice));
+      const orderType = normalizeOrderType(payload.orderType, "market");
+      const triggerPriceInput = payload.triggerPrice === undefined || payload.triggerPrice === null || payload.triggerPrice === ""
+        ? null
+        : parsePositiveFiniteNumber(payload.triggerPrice);
       const submissionReference = typeof payload.submissionReference === "string" ? payload.submissionReference.trim() : "";
       if (!side || quantityInput === null || priceInput === null || !submissionReference || submissionReference.length > 120) {
         return Response.json({ error: "A buy/sell side, positive quantity, positive price, and valid submission reference are required." }, { status: 400 });
       }
-      const orderType = normalizeOrderType(payload.orderType, "market");
+      if (orderType === "stop_loss" && (side !== "sell" || triggerPriceInput === null || triggerPriceInput >= priceInput)) {
+        return Response.json({ error: "A Stop-Loss sell needs a positive trigger price below the current price." }, { status: 400 });
+      }
       const result = await createSubmittedOrder(
         { id: null, email: "investor-portal", role: "broker_admin", brokerId },
         {
@@ -371,6 +378,7 @@ export async function POST(request: Request) {
           side,
           quantity: quantityInput,
           price: priceInput,
+          triggerPrice: orderType === "stop_loss" ? triggerPriceInput : null,
           orderType,
           validity: "day",
           source: "investor_portal",

@@ -219,6 +219,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         side: order.side,
         quantity: toNum(order.quantity),
         price: toNum(order.price),
+        triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
         filledQuantity: toNum(order.filledQuantity),
         remainingQuantity: toNum(order.remainingQuantity),
         status: order.status,

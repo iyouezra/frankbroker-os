@@ -7,7 +7,7 @@ export type OrderSource = typeof ORDER_SOURCES[number];
 
 export type OrderAuthorizationPayload = {
   accountId: string; instrumentId: string; side: string; quantity: number | string;
-  price: number | string; orderType: string; source: string; submissionReference: string;
+  price: number | string; triggerPrice?: number | string | null; orderType: string; source: string; submissionReference: string;
 };
 
 function normalizedOrderPayload(value: OrderAuthorizationPayload) {
@@ -17,6 +17,9 @@ function normalizedOrderPayload(value: OrderAuthorizationPayload) {
     side: value.side.toLowerCase(),
     quantity: Number(value.quantity).toFixed(8),
     price: Number(value.price).toFixed(6),
+    triggerPrice: value.triggerPrice === undefined || value.triggerPrice === null || value.triggerPrice === ""
+      ? null
+      : Number(value.triggerPrice).toFixed(6),
     orderType: value.orderType.trim().toLowerCase().replaceAll(" ", "-"),
     source: value.source,
     submissionReference: value.submissionReference,

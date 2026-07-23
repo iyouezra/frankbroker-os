@@ -4,6 +4,7 @@ import test from "node:test";
 import { normalizeOrderType, parseDateOnly, parseOrderSide, parsePositiveFiniteNumber } from "../lib/order-input.ts";
 import { computeCumulativeFillAmounts, D, toNum } from "../lib/money.ts";
 import { computeConfiguredAmounts, computeCumulativeConfiguredFill } from "../lib/oms/fee-service.ts";
+import { orderPayloadHash } from "../lib/verification-service.ts";
 
 test("rejects malformed order inputs before Decimal accounting", () => {
   assert.equal(parseOrderSide("buy"), "buy");
@@ -14,6 +15,23 @@ test("rejects malformed order inputs before Decimal accounting", () => {
   assert.equal(parseDateOnly("2026-02-30"), null);
   assert.equal(parseDateOnly("2026-07-15"), "2026-07-15");
   assert.equal(normalizeOrderType("Stop-loss"), "stop_loss");
+});
+
+test("order authorization binds the Stop-Loss trigger price", () => {
+  const order = {
+    accountId: "acc_1",
+    instrumentId: "ins_tele",
+    side: "sell",
+    quantity: 10,
+    price: 305,
+    orderType: "Stop-loss",
+    source: "investor_portal",
+    submissionReference: "submit-1",
+  };
+  assert.notEqual(
+    orderPayloadHash({ ...order, triggerPrice: 290 }),
+    orderPayloadHash({ ...order, triggerPrice: 285 }),
+  );
 });
 
 test("applies the minimum fee once across partial fills", () => {

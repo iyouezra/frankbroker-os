@@ -39,6 +39,7 @@ export type CreateOrderInput = {
   side: "buy" | "sell";
   quantity: number | string | Prisma.Decimal;
   price: number | string | Prisma.Decimal;
+  triggerPrice?: number | string | Prisma.Decimal | null;
   orderType?: string;
   validity?: string;
   notes?: string;
@@ -86,6 +87,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         side: existingOrder.side,
         quantity: toNum(existingOrder.quantity),
         price: toNum(existingOrder.price),
+        triggerPrice: existingOrder.triggerPrice ? toNum(existingOrder.triggerPrice) : null,
         orderType: existingOrder.orderType,
         estimatedGross: toNum(existingOrder.estimatedGross),
         estimatedFees: toNum(existingOrder.estimatedFees),
@@ -116,6 +118,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
 
   const quantity = D(input.quantity);
   const price = D(input.price);
+  const triggerPrice = input.triggerPrice === undefined || input.triggerPrice === null ? null : D(input.triggerPrice);
   const orderType = normalizeOrderType(input.orderType ?? "limit");
   const feePolicy = await resolveFeePolicy(prisma, actor.brokerId, instrument, settings);
   const amounts = computeConfiguredAmounts(input.side, quantity, price, feePolicy);
@@ -167,7 +170,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   }
   const verificationPayloadHash = orderPayloadHash({
     accountId: input.accountId, instrumentId: input.instrumentId, side: input.side,
-    quantity: toNum(quantity), price: toNum(price), orderType, source,
+    quantity: toNum(quantity), price: toNum(price), triggerPrice: triggerPrice ? toNum(triggerPrice) : null, orderType, source,
     submissionReference: input.submissionReference ?? "",
   });
   const ledgerActorId = actor.id ?? fallbackLedgerActor?.id;
@@ -221,6 +224,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         side: input.side,
         quantity,
         price,
+        triggerPrice,
         orderType,
         validity: input.validity ?? "day",
         estimatedGross: amounts.gross,
@@ -363,7 +367,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         category: "order",
         severity: riskFlag === "review" ? "warning" : "info",
         title: `Order awaiting review · ${instrument.symbol}`,
-        body: `${input.side.toUpperCase()} ${toNum(quantity)} ${instrument.symbol} for ${account.client.fullName} · ${toNum(amounts.net)} ETB${riskFlag === "review" ? " — flagged for enhanced review" : ""}.`,
+        body: `${input.side.toUpperCase()} ${toNum(quantity)} ${instrument.symbol} for ${account.client.fullName} · ${toNum(amounts.net)} ETB${riskFlag === "review" ? ": flagged for enhanced review" : ""}.`,
         entityType: "order",
         entityId: id,
       });

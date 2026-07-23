@@ -27,7 +27,9 @@ export async function POST(request: Request) {
       destinationHint: account.client.phone ? `mobile ending ${account.client.phone.replace(/\D/g, "").slice(-4)}` : "registered contact",
       payloadHash: orderPayloadHash({
         accountId, instrumentId: String(payload.instrumentId ?? ""), side: String(payload.side ?? ""),
-        quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), orderType: String(payload.orderType ?? ""),
+        quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""),
+        triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice),
+        orderType: String(payload.orderType ?? ""),
         source, submissionReference: String(payload.submissionReference ?? ""),
       }),
     });

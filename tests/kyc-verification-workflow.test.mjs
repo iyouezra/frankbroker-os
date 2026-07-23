@@ -16,7 +16,7 @@ test("digital KYC remains pending broker review and returns generated identifier
 
 test("order authorization is exact-payload-bound, expiring, attempt-limited, and single-use", async () => {
   const [verification, orderService] = await Promise.all([read("lib/verification-service.ts"), read("lib/oms/order-service.ts")]);
-  for (const field of ["accountId", "instrumentId", "side", "quantity", "price", "orderType", "source", "submissionReference"]) {
+  for (const field of ["accountId", "instrumentId", "side", "quantity", "price", "triggerPrice", "orderType", "source", "submissionReference"]) {
     assert.match(verification, new RegExp(field));
   }
   assert.match(verification, /maxAttempts/);
@@ -25,6 +25,23 @@ test("order authorization is exact-payload-bound, expiring, attempt-limited, and
   assert.match(verification, /timingSafeEqual/);
   assert.match(orderService, /consumeOrderVerification/);
   assert.match(orderService, /instructionVerificationId/);
+});
+
+test("investor Stop-Loss orders require and persist a trigger price", async () => {
+  const [investor, route, schema, migration, orderService] = await Promise.all([
+    read("app/investor/investor-app.tsx"),
+    read("app/api/investor/route.ts"),
+    read("prisma/schema.prisma"),
+    read("prisma/migrations/20260723190000_add_order_trigger_price/migration.sql"),
+    read("lib/oms/order-service.ts"),
+  ]);
+  assert.match(investor, /Trigger when price falls to/);
+  assert.match(investor, /triggerPrice: isStopLoss \? triggerValue/);
+  assert.match(route, /A Stop-Loss sell needs a positive trigger price below the current price/);
+  assert.match(route, /triggerPrice: orderType === "stop_loss" \? triggerPriceInput : null/);
+  assert.match(schema, /triggerPrice\s+Decimal\?/);
+  assert.match(migration, /ADD COLUMN "trigger_price" DECIMAL\(20,6\)/);
+  assert.match(orderService, /triggerPrice,/);
 });
 
 test("broker and investor order entry both require a verification challenge", async () => {
