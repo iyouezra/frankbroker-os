@@ -266,8 +266,8 @@ function ProgressDots({ step }: { step: number }) {
   return <div className={styles.progressDots} aria-label={`Onboarding step ${Math.min(step, 3) + 1} of 4`}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
 }
 
-const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "Bole, Addis Ababa", proofOfAddressType: "Drivers License", proofOfAddressReference: "DEMO-POA-001", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
-const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "Business license", proofOfAddressReference: "DEMO-POA-017", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
+const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "", proofOfAddressType: "Drivers License", proofOfAddressReference: "", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
+const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "", proofOfAddressReference: "", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
 
 function KycProgress({ step }: { step: number }) {
   return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 5</small></span><i><em style={{ width: `${((step + 1) / 5) * 100}%` }} /></i></div>;
@@ -281,6 +281,12 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<InvestorKyc>(retailDemo);
   const [consent, setConsent] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [businessLicenseFile, setBusinessLicenseFile] = useState<File | null>(null);
+  const [tinCertificateFile, setTinCertificateFile] = useState<File | null>(null);
+  const proofUploadId = useId();
+  const businessLicenseUploadId = useId();
+  const tinCertificateUploadId = useId();
   const [linkedBanks, setLinkedBanks] = useState<LinkedBankAccount[]>([
     { id: "onboarding_bank_1", bankName: bankOptions[0], accountNumber: "100057894108", accountHolderName: retailDemo.fullName, status: "pending" },
   ]);
@@ -288,6 +294,9 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
   const chooseType = (accountType: InvestorKyc["accountType"]) => {
     const nextProfile = accountType === "retail" ? retailDemo : institutionDemo;
     setProfile(nextProfile);
+    setProofFile(null);
+    setBusinessLicenseFile(null);
+    setTinCertificateFile(null);
     setLinkedBanks([{ id: "onboarding_bank_1", bankName: bankOptions[0], accountNumber: accountType === "retail" ? "100057894108" : "100057890017", accountHolderName: nextProfile.fullName, status: "pending" }]);
   };
   const updateLinkedBank = (id: string, field: "bankName" | "accountNumber" | "accountHolderName", value: string) => {
@@ -305,7 +314,9 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
   const faydaValid = /^\d{12}$/.test(profile.faydaId);
   const tinValid = /^\d{10}(?:-\d{2})?$/.test(profile.tin);
   const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid;
-  const identityStepValid = faydaValid && tinValid && profile.address.trim().length >= 4 && profile.proofOfAddressReference.trim().length >= 4 && (profile.accountType === "retail" || (profile.registrationNumber.trim().length >= 4 && profile.representativeName.trim().length >= 3 && profile.beneficialOwnerName.trim().length >= 3));
+  const identityStepValid = faydaValid
+    && tinValid
+    && (profile.accountType === "retail" || (profile.address.trim().length >= 4 && profile.registrationNumber.trim().length >= 4 && profile.representativeName.trim().length >= 3 && profile.beneficialOwnerName.trim().length >= 3));
   const bankStepValid = linkedBanks.length > 0 && linkedBanks.length <= 3 && linkedBanks.every((account) =>
     account.bankName.trim().length > 0
     && account.accountNumber.replace(/\D/g, "").length >= 8
@@ -347,7 +358,9 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
       </>}
       <div><dt>Fayda ID</dt><dd>{masked(profile.faydaId)}</dd></div>
       <div><dt>TIN</dt><dd>{masked(profile.tin)}</dd></div>
-      <div><dt>Address evidence</dt><dd>{profile.proofOfAddressType} · {profile.proofOfAddressReference}</dd></div>
+      {profile.accountType === "retail"
+        ? <div><dt>Address evidence</dt><dd>{profile.proofOfAddressType}{profile.proofOfAddressReference ? ` · ${profile.proofOfAddressReference}` : ""}</dd></div>
+        : <div><dt>Documents</dt><dd>{[businessLicenseFile, tinCertificateFile].filter(Boolean).length} uploaded</dd></div>}
       <div><dt>Linked banks</dt><dd>{linkedBanks.length} {linkedBanks.length === 1 ? "account" : "accounts"}</dd></div>
     </dl></Card>
     <Card className={styles.termsCard}><small>{legalDocument ? `VERSION ${legalDocument.version} · EFFECTIVE ${legalDocument.effectiveAt}` : "DEMO TERMS"}</small><b>{legalDocument?.title ?? "Brokerage account terms"}</b><p>{legalDocument?.summary ?? "Account operation, order handling, fee disclosure, settlement, confirmation, discrepancy, restriction, and closure terms."}</p></Card>
@@ -388,11 +401,55 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
         <KycField label="Authorized representative" value={profile.representativeName} onChange={(value) => update("representativeName", value)} placeholder="Full legal name" />
         <KycField label="Beneficial owner / controller" value={profile.beneficialOwnerName} onChange={(value) => update("beneficialOwnerName", value)} placeholder="Primary declared owner or controller" />
       </>}
-      <KycField label={profile.accountType === "retail" ? "Current address" : "Registered address"} value={profile.address} onChange={(value) => update("address", value)} placeholder="City and sub-city" />
-      <KycField label="Proof of address type" value={profile.proofOfAddressType} onChange={(value) => update("proofOfAddressType", value)} placeholder="Utility bill, bank letter, business license…" />
-      <KycField label="Document reference" value={profile.proofOfAddressReference} onChange={(value) => update("proofOfAddressReference", value)} placeholder="Demo document reference" />
+      {profile.accountType === "retail" ? <>
+        <fieldset className={styles.proofTypeOptions}>
+          <legend>Proof of address type</legend>
+          {["Drivers License", "Kebele ID"].map((option) => <label key={option}>
+            <input type="radio" name="proof-of-address-type" value={option} checked={profile.proofOfAddressType === option} onChange={() => update("proofOfAddressType", option)} />
+            <i>{profile.proofOfAddressType === option && <Icon name="check" size={12} />}</i>
+            <span>{option}</span>
+          </label>)}
+        </fieldset>
+        <div className={styles.uploadField}>
+          <span>Proof of address document</span>
+          <input id={proofUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => {
+            const file = event.target.files?.[0] ?? null;
+            setProofFile(file);
+            update("proofOfAddressReference", file?.name ?? "");
+          }} />
+          <label htmlFor={proofUploadId}>
+            <b>{proofFile ? proofFile.name : "Upload proof of address"}</b>
+            <small>{proofFile ? `${(proofFile.size / 1024).toFixed(0)} KB · Choose a different file` : "PDF, PNG or JPG"}</small>
+            <em>{proofFile ? "✓" : "+"}</em>
+          </label>
+        </div>
+      </> : <>
+        <KycField label="Registered address" value={profile.address} onChange={(value) => update("address", value)} placeholder="City and sub-city" />
+        <div className={styles.uploadField}>
+          <span>Business license</span>
+          <input id={businessLicenseUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => {
+            const file = event.target.files?.[0] ?? null;
+            setBusinessLicenseFile(file);
+            update("proofOfAddressType", file ? "Business license" : "");
+            update("proofOfAddressReference", file?.name ?? "");
+          }} />
+          <label htmlFor={businessLicenseUploadId}>
+            <b>{businessLicenseFile ? businessLicenseFile.name : "Upload business license"}</b>
+            <small>{businessLicenseFile ? `${(businessLicenseFile.size / 1024).toFixed(0)} KB · Choose a different file` : "PDF, PNG or JPG"}</small>
+            <em>{businessLicenseFile ? "✓" : "+"}</em>
+          </label>
+        </div>
+        <div className={styles.uploadField}>
+          <span>TIN certificate</span>
+          <input id={tinCertificateUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setTinCertificateFile(event.target.files?.[0] ?? null)} />
+          <label htmlFor={tinCertificateUploadId}>
+            <b>{tinCertificateFile ? tinCertificateFile.name : "Upload TIN certificate"}</b>
+            <small>{tinCertificateFile ? `${(tinCertificateFile.size / 1024).toFixed(0)} KB · Choose a different file` : "PDF, PNG or JPG"}</small>
+            <em>{tinCertificateFile ? "✓" : "+"}</em>
+          </label>
+        </div>
+      </>}
     </div>
-    <div className={styles.demoNotice}><b>Demo only</b><span>No document image is uploaded. The demo stores only a reference and review status; production storage must remain in the approved jurisdiction.</span></div>
     <Button className={styles.full} disabled={!identityStepValid} onClick={() => setStep(2)}>Continue</Button>
   </div>;
 
@@ -661,7 +718,7 @@ function CashSheet({ pools: configuredPools, movements, availableCash, onClose, 
             <small>Your broker will use this reference to match the transfer.</small>
           </label>
           <div className={styles.uploadField}>
-            <span>Receipt or deposit slip (optional)</span>
+            <span>Receipt or deposit slip</span>
             <input id={receiptUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => {
               const file = event.target.files?.[0] ?? null;
               setReceiptFile(file);
@@ -879,5 +936,5 @@ export default function InvestorApp() {
   const roboPlansEnabled = bootstrap?.tenant.features.roboPlans ?? true;
   const theme = { "--investor-accent": bootstrap?.tenant.primaryColor ?? "#0c8189" } as CSSProperties;
 
-  return <main className={styles.investorPage} style={theme}><section className={styles.desktopStory}><AppLogo /><span className={styles.licenseBadge}>Licensed-market demo</span><h1>Own a piece of Ethiopia&apos;s growth</h1><p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, or let Frank build a steady plan around your goals."}</p><Button onClick={() => setPhase("app")}>Explore the investor app</Button><div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div><small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small></section><section className={styles.appFrame} aria-label="Frank Money investor app"><div className={styles.appViewport}>{phase === "onboarding" ? <Onboarding onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} /> : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} /> : <><div className={styles.scrollArea}>{tab === "home" ? <HomeScreen openStock={setStock} go={navigate} account={bootstrap?.account ?? null} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => setCashOpen(true)} /> : tab === "markets" ? <MarketsScreen openStock={setStock} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} /> : tab === "portfolio" ? <PortfolioScreen openStock={setStock} account={bootstrap?.account ?? null} /> : tab === "learn" ? <LearnScreen showPlanTools={roboPlansEnabled} /> : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}</div><BottomNav active={tab} onChange={navigate} /></>}{cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} />}{bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}{toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}</div></section></main>;
+  return <main className={styles.investorPage} style={theme}><section className={styles.desktopStory}><AppLogo /><span className={styles.licenseBadge}>Platform demo</span><h1>Own a piece of Ethiopia&apos;s growth</h1><p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, or let Frank build a steady plan around your goals."}</p><Button onClick={() => setPhase("app")}>Explore the investor app</Button><div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div><small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small></section><section className={styles.appFrame} aria-label="Frank Money investor app"><div className={styles.appViewport}>{phase === "onboarding" ? <Onboarding onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} /> : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} /> : <><div className={styles.scrollArea}>{tab === "home" ? <HomeScreen openStock={setStock} go={navigate} account={bootstrap?.account ?? null} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => setCashOpen(true)} /> : tab === "markets" ? <MarketsScreen openStock={setStock} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} /> : tab === "portfolio" ? <PortfolioScreen openStock={setStock} account={bootstrap?.account ?? null} /> : tab === "learn" ? <LearnScreen showPlanTools={roboPlansEnabled} /> : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}</div><BottomNav active={tab} onChange={navigate} /></>}{cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} />}{bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}{toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}</div></section></main>;
 }

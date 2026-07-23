@@ -417,6 +417,15 @@
 .kycField input:focus { border-color: var(--investor-teal-600); box-shadow: 0 0 0 3px rgba(20,211,200,.16); }
 .kycField input::placeholder { color: var(--investor-ink-300); }
 .kycField small { color: var(--investor-ink-400); font-size: 10px; line-height: 1.4; }
+.proofTypeOptions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 13px; padding: 0; border: 0; }
+.proofTypeOptions legend { grid-column: 1 / -1; margin-bottom: 6px; font-size: 12px; font-weight: 650; }
+.proofTypeOptions label { min-height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--investor-ink-200); border-radius: 12px; background: white; cursor: pointer; }
+.proofTypeOptions input { position: absolute; opacity: 0; pointer-events: none; }
+.proofTypeOptions i { width: 20px; height: 20px; display: grid; flex: 0 0 auto; place-items: center; border: 1.5px solid var(--investor-ink-300); border-radius: 50%; color: white; }
+.proofTypeOptions span { font-size: 11px; font-weight: 650; }
+.proofTypeOptions label:has(input:checked) { border-color: var(--investor-teal-600); background: var(--investor-aqua-100); }
+.proofTypeOptions input:checked + i { border-color: var(--investor-teal-700); background: var(--investor-teal-700); }
+.proofTypeOptions input:focus-visible + i { outline: 2px solid var(--investor-teal-600); outline-offset: 2px; }
 .onboardingBankList { padding-bottom: 4px; }
 .onboardingBankCard { margin-bottom: 11px; padding: 13px; background: var(--investor-ink-50); box-shadow: none; }
 .onboardingBankCard .formField:last-child { margin-bottom: 0; }
