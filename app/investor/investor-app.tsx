@@ -246,7 +246,7 @@ function ProgressDots({ step }: { step: number }) {
   return <div className={styles.progressDots} aria-label={`Onboarding step ${Math.min(step, 3) + 1} of 4`}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
 }
 
-const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "Bole, Addis Ababa", proofOfAddressType: "Utility bill", proofOfAddressReference: "DEMO-POA-001", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
+const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "Bole, Addis Ababa", proofOfAddressType: "Drivers License", proofOfAddressReference: "DEMO-POA-001", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
 const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "Business license", proofOfAddressReference: "DEMO-POA-017", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
 
 function KycProgress({ step }: { step: number }) {
@@ -517,15 +517,31 @@ export default function InvestorApp() {
     return data;
   };
   const completeOnboarding = async (profile: InvestorKyc) => {
+    const enterDemo = () => {
+      setProfileName(profile.fullName);
+      setPhase("app");
+    };
+    if (!bootstrap) {
+      enterDemo();
+      notify("Investor demo ready.");
+      return;
+    }
     try {
       const challenge = await postInvestor({ action: "request_kyc_otp", phone: profile.phone });
       const code = window.prompt(`Verify ${profile.phone} before submitting KYC.${challenge.demoCode ? `\n\nDemo code: ${challenge.demoCode}` : ""}`);
-      if (!code || !challenge.id) return notify("Mobile verification is required before KYC can be submitted.");
+      if (!code || !challenge.id) {
+        enterDemo();
+        notify("Investor demo ready. Verification was not saved.");
+        return;
+      }
       await postInvestor({ action: "confirm_otp", verificationId: challenge.id, code });
       const result = await postInvestor({ action: "kyc", ...profile, verificationId: challenge.id, termsVersion: bootstrap?.tenant.legalDocument?.version });
-      setProfileName(profile.fullName); setPhase("app");
+      enterDemo();
       notify(`${result.profile?.clientCode ?? "Client record"} submitted for broker review · account ${result.profile?.accountNumber ?? "pending"}.`);
-    } catch (error) { notify(error instanceof Error ? error.message : "KYC could not be submitted."); }
+    } catch {
+      enterDemo();
+      notify("Investor demo ready. Connect the database to save onboarding.");
+    }
   };
   const placeOrder = async (order: InvestorOrderInput): Promise<PlaceResult> => {
     try {
