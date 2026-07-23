@@ -48,6 +48,7 @@ type PlaceResult = { status?: string; checks?: OrderCheck[] };
 type CashPool = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; beneficialBalance: number };
 type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: number; currency: string; status: string; bankReference?: string | null; destinationBankName?: string | null; destinationAccountMasked?: string | null; submittedAt: string; pool?: CashPool };
 type CashMovementInput = { movementType: "deposit" | "withdrawal"; pooledBankAccountId: string; amount: number; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string };
+type LinkedBankAccount = { id: string; bankName: string; accountNumber: string; accountHolderName: string; status: "approved" | "pending" };
 type InvestorFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
 type InvestorBootstrap = {
   tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
@@ -62,6 +63,25 @@ type InvestorBootstrap = {
 const INVESTOR_TENANT_ID = "brk_abyssinia";
 const INVESTOR_CLIENT_ID = "cli_investor_demo";
 const investorHeaders = { "x-frank-tenant-id": INVESTOR_TENANT_ID, "x-frank-client-id": INVESTOR_CLIENT_ID };
+const demoLinkedBanks: LinkedBankAccount[] = [
+  { id: "bank_cbe_demo", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057894108", accountHolderName: "Selam Mekonnen", status: "approved" },
+  { id: "bank_awash_demo", bankName: "Awash Bank", accountNumber: "0132098765432", accountHolderName: "Selam Mekonnen", status: "approved" },
+];
+const bankOptions = ["Commercial Bank of Ethiopia", "Awash Bank", "Bank of Abyssinia", "Dashen Bank", "Cooperative Bank of Oromia", "Wegagen Bank"];
+let currentLinkedBanks = demoLinkedBanks;
+
+function readLinkedBanks() {
+  return currentLinkedBanks;
+}
+
+function saveLinkedBanks(accounts: LinkedBankAccount[]) {
+  currentLinkedBanks = accounts;
+}
+
+function maskLinkedAccount(accountNumber: string) {
+  const digits = accountNumber.replace(/\D/g, "");
+  return digits.length <= 6 ? digits : `${"•".repeat(Math.min(6, digits.length - 6))} ${digits.slice(-6)}`;
+}
 
 const iconPaths: Record<IconName, string> = {
   home: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8 M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
@@ -395,7 +415,73 @@ function LearnScreen({ showPlanTools }: { showPlanTools: boolean }) {
 function ProfileScreen({ notify, name, profile, orders, requests, legalDocument, onRequest }: { notify: (message: string) => void; name: string; profile: InvestorBootstrap["profile"]; orders: Array<{ id: string }>; requests: InvestorBootstrap["serviceRequests"]; legalDocument: InvestorBootstrap["tenant"]["legalDocument"]; onRequest: (requestType: "trade_discrepancy" | "account_closure" | "profile_correction", orderId?: string) => void }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "FM";
   const latestOrderId = orders[0]?.id;
-  return <div className={styles.screen}><ScreenHeader title="You" /><Card className={styles.profileCard}><span>{initials}</span><div><b>{name}</b><small>Investor account · KYC {profile?.kycStatus ?? "pending"}</small></div><em>{profile?.proofOfAddressStatus ?? "Demo checked"}</em></Card><Card className={styles.complianceCard}><div className={styles.cardHeader}><h2>Account records</h2><span className={styles.badge}>{profile?.termsAcceptedVersion ? `Terms ${profile.termsAcceptedVersion}` : "Terms pending"}</span></div><dl><div><dt>Brokerage agreement</dt><dd>{legalDocument?.title ?? "Demo brokerage terms"}</dd></div><div><dt>KYC review</dt><dd>{profile?.kycReviewDueAt ? new Date(profile.kycReviewDueAt).toLocaleDateString("en-GB") : "Not scheduled"}</dd></div><div><dt>Address evidence</dt><dd>{profile?.proofOfAddressStatus ?? "Pending"}</dd></div></dl></Card><Card className={styles.menuCard}><button onClick={() => onRequest("profile_correction")}><span>Request profile correction</span><Icon name="chevron" size={18} /></button><button onClick={() => latestOrderId ? onRequest("trade_discrepancy", latestOrderId) : notify("There is no recent order to report.")}><span>Report an order discrepancy</span><Icon name="chevron" size={18} /></button><button onClick={() => onRequest("account_closure")}><span>Request account closure</span><Icon name="chevron" size={18} /></button>{["Statements & tax", "Security", "Help in Amharic"].map((item) => <button key={item} onClick={() => notify(`${item} is ready for the next demo phase.`)}><span>{item}</span><Icon name="chevron" size={18} /></button>)}</Card>{requests.length > 0 && <Card className={styles.requestCard}><div className={styles.cardHeader}><h2>Your requests</h2></div>{requests.slice(0, 4).map((item) => <div key={item.id}><span><b>{item.subject}</b><small>{new Date(item.submittedAt).toLocaleDateString("en-GB")}</small></span><em>{item.status.replaceAll("_", " ")}</em></div>)}</Card>}<p className={styles.license}>Demo experience only. Licensing and membership statements must be verified for the deploying tenant before production.</p></div>;
+  const [linkedBanksOpen, setLinkedBanksOpen] = useState(false);
+  const [linkedBanks, setLinkedBanks] = useState<LinkedBankAccount[]>(readLinkedBanks);
+  const addLinkedBank = (bankName: string, accountNumber: string) => {
+    if (linkedBanks.length >= 3) return notify("You can link up to 3 bank accounts.");
+    if (linkedBanks.some((account) => account.bankName === bankName && account.accountNumber === accountNumber)) return notify("This bank account is already linked.");
+    const updated = [...linkedBanks, { id: crypto.randomUUID(), bankName, accountNumber, accountHolderName: name, status: "pending" as const }];
+    setLinkedBanks(updated);
+    saveLinkedBanks(updated);
+    notify("Bank account sent for review.");
+  };
+  const deleteLinkedBank = (id: string) => {
+    const updated = linkedBanks.filter((account) => account.id !== id);
+    setLinkedBanks(updated);
+    saveLinkedBanks(updated);
+    notify("Linked bank account removed.");
+  };
+  return <div className={styles.screen}>
+    <ScreenHeader title="You" />
+    <Card className={styles.profileCard}><span>{initials}</span><div><b>{name}</b><small>Investor account · KYC {profile?.kycStatus ?? "pending"}</small></div><em>{profile?.proofOfAddressStatus ?? "Demo checked"}</em></Card>
+    <Card className={styles.complianceCard}><div className={styles.cardHeader}><h2>Account records</h2><span className={styles.badge}>{profile?.termsAcceptedVersion ? `Terms ${profile.termsAcceptedVersion}` : "Terms pending"}</span></div><dl><div><dt>Brokerage agreement</dt><dd>{legalDocument?.title ?? "Demo brokerage terms"}</dd></div><div><dt>KYC review</dt><dd>{profile?.kycReviewDueAt ? new Date(profile.kycReviewDueAt).toLocaleDateString("en-GB") : "Not scheduled"}</dd></div><div><dt>Address evidence</dt><dd>{profile?.proofOfAddressStatus ?? "Pending"}</dd></div></dl></Card>
+    <Card className={styles.menuCard}>
+      <button onClick={() => setLinkedBanksOpen(true)}><span>Linked bank accounts</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => onRequest("profile_correction")}><span>Request profile correction</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => latestOrderId ? onRequest("trade_discrepancy", latestOrderId) : notify("There is no recent order to report.")}><span>Report an order discrepancy</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => onRequest("account_closure")}><span>Request account closure</span><Icon name="chevron" size={18} /></button>
+      {["Statements & tax", "Security", "Help in Amharic"].map((item) => <button key={item} onClick={() => notify(`${item} is ready for the next demo phase.`)}><span>{item}</span><Icon name="chevron" size={18} /></button>)}
+    </Card>
+    {requests.length > 0 && <Card className={styles.requestCard}><div className={styles.cardHeader}><h2>Your requests</h2></div>{requests.slice(0, 4).map((item) => <div key={item.id}><span><b>{item.subject}</b><small>{new Date(item.submittedAt).toLocaleDateString("en-GB")} · {item.id}</small></span><em>{item.status.replaceAll("_", " ")}</em></div>)}</Card>}
+    <p className={styles.license}>Demo experience only. Licensing and membership statements must be verified for the deploying tenant before production.</p>
+    {linkedBanksOpen && <LinkedBanksSheet accounts={linkedBanks} accountHolderName={name} onClose={() => setLinkedBanksOpen(false)} onAdd={addLinkedBank} onDelete={deleteLinkedBank} />}
+  </div>;
+}
+
+function LinkedBanksSheet({ accounts, accountHolderName, onClose, onAdd, onDelete }: { accounts: LinkedBankAccount[]; accountHolderName: string; onClose: () => void; onAdd: (bankName: string, accountNumber: string) => void; onDelete: (id: string) => void }) {
+  const [bankName, setBankName] = useState(bankOptions[0]);
+  const [accountNumber, setAccountNumber] = useState("");
+  const atLimit = accounts.length >= 3;
+  const valid = bankName.trim().length > 0 && accountNumber.replace(/\D/g, "").length >= 8 && !atLimit;
+  const add = () => {
+    if (!valid) return;
+    onAdd(bankName, accountNumber.replace(/\D/g, ""));
+    setAccountNumber("");
+  };
+  const remove = (account: LinkedBankAccount) => {
+    if (window.confirm(`Remove ${account.bankName} ${maskLinkedAccount(account.accountNumber)} from your linked accounts?`)) onDelete(account.id);
+  };
+  return <div className={styles.sheetBackdrop} onClick={onClose}>
+    <section className={`${styles.orderSheet} ${styles.linkedBanksSheet}`} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="linked-banks-title">
+      <i className={styles.sheetHandle} />
+      <div className={styles.cashSheetHead}><div><small>YOUR ACCOUNT</small><h2 id="linked-banks-title">Linked bank accounts</h2></div><button onClick={onClose} aria-label="Close">×</button></div>
+      <div className={styles.linkedBankSummary}><span><b>{accounts.length} of 3 linked</b><small>Approved accounts can receive withdrawals.</small></span></div>
+      <div className={styles.linkedBankList}>
+        {accounts.map((account) => <div key={account.id} className={styles.linkedBankRow}>
+          <span><b>{account.bankName}</b><small>{maskLinkedAccount(account.accountNumber)} · {account.accountHolderName}</small></span>
+          <span><em data-status={account.status}>{account.status}</em><button onClick={() => remove(account)} aria-label={`Delete ${account.bankName} account`}>Delete</button></span>
+        </div>)}
+      </div>
+      {!atLimit ? <div className={styles.linkBankForm}>
+        <h3>Add a bank account</h3>
+        <label className={styles.formField}><span>Bank name</span><div className={styles.selectField}><select value={bankName} onChange={(event) => setBankName(event.target.value)}>{bankOptions.map((bank) => <option key={bank}>{bank}</option>)}</select><em>⌄</em></div></label>
+        <label className={styles.formField}><span>Account number</span><div><input inputMode="numeric" value={accountNumber} onChange={(event) => setAccountNumber(event.target.value.replace(/\D/g, ""))} placeholder="Enter the full account number" /></div></label>
+        <div className={styles.accountNameWarning}><b>Account holder name must match verified records</b><span>We will check the bank account against {accountHolderName}.</span></div>
+        <div className={styles.cashNotice}><b>What happens next</b><span>Your broker reviews the account details. Once approved, the bank account will appear as a withdrawal option.</span></div>
+        <Button className={styles.full} disabled={!valid} onClick={add}>Send for approval</Button>
+      </div> : <div className={styles.cashNotice}><b>You have linked 3 bank accounts</b><span>Delete an account before adding another one.</span></div>}
+    </section>
+  </div>;
 }
 
 function calculateInvestorFees(gross: number, rule: InvestorFeeRule) {
@@ -408,27 +494,105 @@ function calculateInvestorFees(gross: number, rule: InvestorFeeRule) {
 
 function CashSheet({ pools: configuredPools, movements, availableCash, onClose, onSubmit }: { pools: CashPool[]; movements: CashMovementView[]; availableCash: number; onClose: () => void; onSubmit: (input: CashMovementInput) => Promise<boolean> }) {
   const pools = configuredPools.length ? configuredPools : [{ id: "pool_aby_general", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", currency: "ETB", purpose: "general", beneficialBalance: availableCash || 75_000 }];
+  const linkedBanks = readLinkedBanks();
   const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
-  const [poolId, setPoolId] = useState(pools[0]?.id ?? "");
   const [amount, setAmount] = useState("15000");
   const [bankReference, setBankReference] = useState("");
   const [proofReference, setProofReference] = useState("");
-  const [destinationBankName, setDestinationBankName] = useState("Commercial Bank of Ethiopia");
-  const [destinationAccountName, setDestinationAccountName] = useState("");
-  const [destinationAccountMasked, setDestinationAccountMasked] = useState("");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const approvedBanks = linkedBanks.filter((account) => account.status === "approved");
+  const [destinationBankId, setDestinationBankId] = useState(approvedBanks[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
-  const selectedPool = pools.find((pool) => pool.id === poolId) ?? pools[0];
+  const receiptUploadId = useId();
+  const selectedPool = pools[0];
+  const selectedDestination = approvedBanks.find((account) => account.id === destinationBankId) ?? approvedBanks[0];
+  const accountNumbers: Record<string, string> = {
+    pool_aby_general: "100057894108",
+    pool_aby_fixed_income: "100057897721",
+  };
+  const transferAccountNumber = selectedPool ? accountNumbers[selectedPool.id] ?? selectedPool.accountNumberMasked.replace(/[•\s]/g, "") : "";
   const value = Number(amount) || 0;
-  const valid = Boolean(selectedPool && value > 0 && (type === "deposit" ? bankReference.trim() : destinationBankName.trim() && destinationAccountName.trim() && destinationAccountMasked.replace(/\D/g, "").length >= 4 && value <= availableCash && value <= selectedPool.beneficialBalance));
+  const withdrawableCash = configuredPools.length ? availableCash : 75_000;
+  const valid = Boolean(selectedPool && value > 0 && (type === "deposit" ? bankReference.trim() : selectedDestination && value <= withdrawableCash));
   const submit = async () => {
     if (!selectedPool) return;
     setBusy(true);
     try {
-      const saved = await onSubmit({ movementType: type, pooledBankAccountId: selectedPool.id, amount: value, bankReference, proofReference, destinationBankName, destinationAccountName, destinationAccountMasked });
+      const saved = await onSubmit({
+        movementType: type,
+        pooledBankAccountId: selectedPool.id,
+        amount: value,
+        bankReference,
+        proofReference,
+        destinationBankName: selectedDestination?.bankName,
+        destinationAccountName: selectedDestination?.accountHolderName,
+        destinationAccountMasked: selectedDestination ? maskLinkedAccount(selectedDestination.accountNumber) : undefined,
+      });
       if (saved) onClose();
     } finally { setBusy(false); }
   };
-  return <div className={styles.sheetBackdrop} onClick={onClose}><section className={`${styles.orderSheet} ${styles.cashSheet}`} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="cash-title"><i className={styles.sheetHandle} /><div className={styles.cashSheetHead}><div><small>CLIENT MONEY</small><h2 id="cash-title">Move money</h2></div><button onClick={onClose} aria-label="Close">×</button></div><div className={styles.segmented}><button className={type === "deposit" ? styles.segmentActive : ""} onClick={() => { setType("deposit"); setPoolId(pools[0]?.id ?? ""); }}>Add money</button><button className={type === "withdrawal" ? styles.segmentActive : ""} onClick={() => { setType("withdrawal"); setPoolId(pools.find((pool) => pool.beneficialBalance > 0)?.id ?? pools[0]?.id ?? ""); }}>Withdraw</button></div>{pools.length === 0 ? <div className={styles.cashNotice}>Your broker has not configured a client-money bank account yet.</div> : <><label className={styles.formField}><span>Purpose and pooled account</span><div className={styles.selectField}><select value={poolId} onChange={(event) => setPoolId(event.target.value)}>{pools.filter((pool) => type === "deposit" || pool.beneficialBalance > 0).map((pool) => <option key={pool.id} value={pool.id}>{pool.purpose.replaceAll("_", " ")} · {pool.bankName} {pool.accountNumberMasked}</option>)}</select><em>⌄</em></div>{type === "withdrawal" && selectedPool && <small>You beneficially own {formatEtb(selectedPool.beneficialBalance)} in this pool. Total available cash: {formatEtb(availableCash)}.</small>}</label><label className={styles.formField}><span>Amount</span><div><em>ETB</em><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))} /></div></label>{type === "deposit" ? <><div className={styles.bankInstruction}><span><small>TRANSFER TO</small><b>{selectedPool?.accountName}</b></span><dl><div><dt>Bank</dt><dd>{selectedPool?.bankName}</dd></div><div><dt>Account</dt><dd>{selectedPool?.accountNumberMasked}</dd></div><div><dt>Reference</dt><dd>Use your investor name</dd></div></dl></div><label className={styles.formField}><span>Bank transfer or deposit-slip reference</span><div><input value={bankReference} onChange={(event) => setBankReference(event.target.value)} placeholder="e.g. CBE-FT-908231" /></div><small>This does not credit your account by itself. Your broker must match it to bank evidence first.</small></label><label className={styles.formField}><span>Receipt reference (optional)</span><div><input value={proofReference} onChange={(event) => setProofReference(event.target.value)} placeholder="Document or receipt reference" /></div></label></> : <><label className={styles.formField}><span>Destination bank</span><div><input value={destinationBankName} onChange={(event) => setDestinationBankName(event.target.value)} /></div></label><label className={styles.formField}><span>Account holder name</span><div><input value={destinationAccountName} onChange={(event) => setDestinationAccountName(event.target.value)} placeholder="Must match your verified records" /></div></label><label className={styles.formField}><span>Destination account, last 4 digits only</span><div><em>••••</em><input inputMode="numeric" maxLength={12} value={destinationAccountMasked} onChange={(event) => setDestinationAccountMasked(event.target.value.replace(/\D/g, ""))} placeholder="4108" /></div><small>For safety, Frank stores only a masked account number. Your broker verifies the full payment instruction outside this demo.</small></label><div className={styles.cashNotice}><b>What happens next</b><span>{formatEtb(value)} will be reserved immediately, reviewed by your broker, then debited only after payment is confirmed. Rejection or payment failure releases the reservation.</span></div></>}<Button className={styles.full} disabled={!valid || busy} onClick={() => void submit()}>{busy ? "Sending…" : type === "deposit" ? "Send for verification" : "Request withdrawal"}</Button></>}{movements.length > 0 && <div className={styles.cashHistory}><h3>Recent instructions</h3>{movements.slice(0, 3).map((movement) => <div key={movement.id}><span><b>{movement.type === "deposit" ? "Deposit" : "Withdrawal"}</b><small>{new Date(movement.submittedAt).toLocaleDateString("en-GB")} · {movement.id}</small></span><span><b>{formatEtb(movement.amount)}</b><em data-status={movement.status}>{movement.status.replaceAll("_", " ")}</em></span></div>)}</div>}</section></div>;
+  return <div className={styles.sheetBackdrop} onClick={onClose}>
+    <section className={`${styles.orderSheet} ${styles.cashSheet}`} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="cash-title">
+      <i className={styles.sheetHandle} />
+      <div className={styles.cashSheetHead}>
+        <div><small>CLIENT MONEY</small><h2 id="cash-title">Move money</h2></div>
+        <button onClick={onClose} aria-label="Close">×</button>
+      </div>
+      <div className={styles.segmented}>
+        <button className={type === "deposit" ? styles.segmentActive : ""} onClick={() => setType("deposit")}>Add money</button>
+        <button className={type === "withdrawal" ? styles.segmentActive : ""} onClick={() => setType("withdrawal")}>Withdraw</button>
+      </div>
+      {pools.length === 0 ? <div className={styles.cashNotice}>Your broker has not configured a client-money bank account yet.</div> : <>
+        {type === "deposit" ? <>
+          <div className={styles.bankInstruction}>
+            <span><small>TRANSFER TO</small><b>{selectedPool?.accountName}</b></span>
+            <dl>
+              <div><dt>Bank</dt><dd>{selectedPool?.bankName}</dd></div>
+              <div><dt>Account</dt><dd>{transferAccountNumber}</dd></div>
+              <div><dt>Reference</dt><dd>Use your investor name</dd></div>
+            </dl>
+          </div>
+          <label className={styles.formField}>
+            <span>Deposit amount</span>
+            <div><em>ETB</em><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))} /></div>
+          </label>
+          <label className={styles.formField}>
+            <span>Bank transfer reference</span>
+            <div><input value={bankReference} onChange={(event) => setBankReference(event.target.value)} placeholder="e.g. CBE-FT-908231" /></div>
+            <small>Your broker will use this reference to match the transfer.</small>
+          </label>
+          <div className={styles.uploadField}>
+            <span>Receipt or deposit slip (optional)</span>
+            <input id={receiptUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              setReceiptFile(file);
+              setProofReference(file?.name ?? "");
+            }} />
+            <label htmlFor={receiptUploadId}>
+              <b>{receiptFile ? receiptFile.name : "Upload a document"}</b>
+              <small>{receiptFile ? `${(receiptFile.size / 1024).toFixed(0)} KB · Choose a different file` : "PDF, PNG or JPG"}</small>
+              <em>{receiptFile ? "✓" : "+"}</em>
+            </label>
+          </div>
+        </> : <>
+          <div className={styles.availableCashCard}><span>AVAILABLE TO WITHDRAW</span><b>{formatEtb(withdrawableCash)}</b><small>Pending orders and withdrawals are already excluded.</small></div>
+          <label className={styles.formField}>
+            <span>Amount to withdraw</span>
+            <div><em>ETB</em><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))} /></div>
+            {value > withdrawableCash && <small className={styles.fieldError}>Enter an amount within your available cash.</small>}
+          </label>
+          {approvedBanks.length > 0 ? <>
+            <label className={styles.formField}><span>Destination bank</span><div className={styles.selectField}><select value={selectedDestination?.id ?? ""} onChange={(event) => setDestinationBankId(event.target.value)}>{approvedBanks.map((account) => <option key={account.id} value={account.id}>{account.bankName}</option>)}</select><em>⌄</em></div></label>
+            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>Account number</span><div><input value={selectedDestination ? maskLinkedAccount(selectedDestination.accountNumber) : ""} readOnly /></div></label>
+            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>Account holder name</span><div><input value={selectedDestination?.accountHolderName ?? ""} readOnly /></div></label>
+          </> : <div className={styles.cashNotice}><b>No approved bank account</b><span>Add a bank account under You. It will appear here after review and approval.</span></div>}
+          <div className={styles.cashNotice}><b>What happens next</b><span>{formatEtb(value)} will be reserved immediately, reviewed by your broker, then debited only after payment is confirmed. Rejection or payment failure releases the reservation.</span></div>
+        </>}
+        <Button className={styles.full} disabled={!valid || busy} onClick={() => void submit()}>{busy ? "Sending…" : type === "deposit" ? "Send for verification" : "Request withdrawal"}</Button>
+      </>}
+      {movements.length > 0 && <div className={styles.cashHistory}><h3>Recent instructions</h3>{movements.slice(0, 3).map((movement) => <div key={movement.id}><span><b>{movement.type === "deposit" ? "Deposit" : "Withdrawal"}</b><small>{new Date(movement.submittedAt).toLocaleDateString("en-GB")} · {movement.id}</small></span><span><b>{formatEtb(movement.amount)}</b><em data-status={movement.status}>{movement.status.replaceAll("_", " ")}</em></span></div>)}</div>}
+    </section>
+  </div>;
 }
 
 function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrderTypes, onClose, onPlaced }: { stock: InvestorStock; side: "Buy" | "Sell"; holdingQuantity: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {

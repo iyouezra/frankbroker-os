@@ -326,6 +326,17 @@
 .formField input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--investor-ink-900); font-family: var(--font-mono); font-size: 16px; }
 .formField em { color: var(--investor-ink-500); font-size: 11px; font-style: normal; }
 .formField small { color: var(--investor-ink-500); font-size: 10px; line-height: 1.45; }
+.formField .fieldError { color: var(--investor-loss); }
+.readOnlyField > div { background: var(--investor-ink-50); }
+.readOnlyField input { color: var(--investor-ink-600); cursor: default; }
+.uploadField { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.uploadField > span { font-size: 12px; font-weight: 650; }
+.uploadField > input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.uploadField > label { min-height: 62px; display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 3px 12px; padding: 10px 13px; border: 1px dashed var(--investor-ink-200); border-radius: 13px; background: var(--investor-ink-50); cursor: pointer; }
+.uploadField > label b { overflow: hidden; color: var(--investor-ink-900); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.uploadField > label small { color: var(--investor-ink-500); font-size: 10px; }
+.uploadField > label em { grid-column: 2; grid-row: 1 / span 2; align-self: center; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--investor-aqua-100); color: var(--investor-teal-700); font-size: 18px; font-style: normal; }
+.uploadField > input:focus-visible + label { outline: 2px solid var(--investor-teal-600); outline-offset: 2px; }
 .cashSheet { max-height: 92%; overflow-y: auto; padding-bottom: 30px; }
 .cashSheetHead { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 13px; }
 .cashSheetHead small { color: var(--investor-teal-700); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
@@ -333,7 +344,7 @@
 .cashSheetHead button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--investor-ink-50); color: var(--investor-ink-500); font-size: 22px; cursor: pointer; }
 .selectField { position: relative; padding-right: 8px !important; }
 .selectField select { min-width: 0; width: 100%; flex: 1; appearance: none; border: 0; outline: 0; background: transparent; color: var(--investor-ink-900); font: 650 12px var(--font-body); text-transform: capitalize; cursor: pointer; }
-.selectField em { color: var(--investor-teal-700); font-size: 15px; }
+.selectField em { display: none; }
 .bankInstruction { margin: 2px 0 13px; padding: 14px; border: 1px solid rgba(12,129,137,.2); border-radius: 16px; background: linear-gradient(145deg, rgba(20,211,200,.1), rgba(12,129,137,.05)); }
 .bankInstruction > span { display: flex; flex-direction: column; }
 .bankInstruction > span small { color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .1em; }
@@ -344,6 +355,29 @@
 .bankInstruction dd { margin: 0; font-family: var(--font-mono); font-weight: 650; text-align: right; }
 .cashNotice { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 13px; padding: 11px 12px; border-radius: 13px; background: var(--investor-ink-50); color: var(--investor-ink-600); font-size: 10px; line-height: 1.45; }
 .cashNotice b { color: var(--investor-ink-900); font-size: 11px; }
+.availableCashCard { display: flex; flex-direction: column; margin: 2px 0 14px; padding: 14px; border: 1px solid rgba(12,129,137,.2); border-radius: 16px; background: linear-gradient(145deg, rgba(20,211,200,.1), rgba(12,129,137,.05)); }
+.availableCashCard span { color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+.availableCashCard b { margin-top: 5px; font-family: var(--font-mono); font-size: 20px; }
+.availableCashCard small { margin-top: 5px; color: var(--investor-ink-500); font-size: 9px; }
+.linkedBanksSheet { max-height: 92%; overflow-y: auto; padding-bottom: 30px; }
+.linkedBankSummary { display: flex; margin-bottom: 12px; padding: 11px 12px; border-radius: 13px; background: var(--investor-ink-50); }
+.linkedBankSummary span { display: flex; flex-direction: column; gap: 3px; }
+.linkedBankSummary b { font-size: 11px; }
+.linkedBankSummary small { color: var(--investor-ink-500); font-size: 9px; }
+.linkedBankList { margin-bottom: 16px; }
+.linkedBankRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.linkedBankRow > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.linkedBankRow > span:last-child { flex: 0 0 auto; align-items: flex-end; }
+.linkedBankRow b { font-size: 11px; }
+.linkedBankRow small { overflow: hidden; color: var(--investor-ink-500); font-family: var(--font-mono); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.linkedBankRow em { padding: 4px 7px; border-radius: 999px; background: var(--investor-aqua-100); color: var(--investor-teal-700); font-size: 8px; font-style: normal; font-weight: 750; text-transform: capitalize; }
+.linkedBankRow em[data-status="pending"] { background: #fff3d6; color: #956510; }
+.linkedBankRow button { padding: 0; border: 0; background: transparent; color: var(--investor-loss); font-size: 9px; font-weight: 650; cursor: pointer; }
+.linkBankForm { padding-top: 2px; }
+.linkBankForm h3 { margin: 0 0 11px; font-size: 14px; }
+.accountNameWarning { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; padding: 11px 12px; border: 1px solid #f0d8a5; border-radius: 13px; background: #fff9ec; color: #76551b; }
+.accountNameWarning b { font-size: 10.5px; }
+.accountNameWarning span { font-size: 9.5px; line-height: 1.45; }
 .cashHistory { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--investor-ink-100); }
 .cashHistory h3 { margin: 0 0 6px; font-size: 12px; }
 .cashHistory > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--investor-ink-100); }
