@@ -55,10 +55,8 @@ function Icon({ name, size = 19 }: { name: string; size?: number }) {
 const featureLabels: Record<FeatureKey, { title: string; description: string }> = {
   investorPortal: { title: "Investor portal", description: "Give investors access to portfolio, markets, orders, and statements." },
   selfDirected: { title: "Self-directed investing", description: "Allow investors to select ESX stocks and bonds themselves." },
-  roboPlans: { title: "Frank investment plans", description: "Enable goal-based Steady, Balanced, and Growth portfolios." },
   bonds: { title: "Government bonds", description: "Show and trade Government of Ethiopia treasury bonds." },
-  fractionalOrders: { title: "Amount-based orders", description: "Let investors enter an ETB amount instead of whole shares." },
-  recurringInvestments: { title: "Recurring investments", description: "Allow scheduled deposits and automatic plan purchases." },
+  recurringInvestments: { title: "Recurring investments", description: "Allow investors to schedule regular deposits and purchases." },
   institutionalAccounts: { title: "Institutional accounts", description: "Support organizations, representatives, and institutional KYC." },
   manualTradeCapture: { title: "Manual trade capture", description: "Allow brokers to record executions received outside an integration." },
 };

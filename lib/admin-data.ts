@@ -1,6 +1,6 @@
 export type TenantStatus = "active" | "pilot" | "suspended";
 export type TenantPlan = "Enterprise" | "Growth" | "Pilot";
-export type FeatureKey = "investorPortal" | "selfDirected" | "roboPlans" | "bonds" | "fractionalOrders" | "recurringInvestments" | "institutionalAccounts" | "manualTradeCapture";
+export type FeatureKey = "investorPortal" | "selfDirected" | "bonds" | "recurringInvestments" | "institutionalAccounts" | "manualTradeCapture";
 export type AdminFeeRule = {
   assetClass: "equity" | "bond";
   marketSegment: string;
@@ -147,7 +147,7 @@ export const initialTenants: TenantConfig[] = [
     clients: 428,
     ordersToday: 84,
     assetsUnderAdministration: 184_500_000,
-    features: { investorPortal: true, selfDirected: true, roboPlans: true, bonds: true, fractionalOrders: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true },
+    features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true },
     controls: { makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
     legalDocument: defaultLegalDocument("Abyssinia Securities"),
     feeSchedule: defaultFeeSchedule(.5, 25),
@@ -171,7 +171,7 @@ export const initialTenants: TenantConfig[] = [
     clients: 112,
     ordersToday: 21,
     assetsUnderAdministration: 46_800_000,
-    features: { investorPortal: true, selfDirected: true, roboPlans: false, bonds: true, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true },
+    features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true },
     controls: { makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
     legalDocument: defaultLegalDocument("Blue Nile Capital"),
     feeSchedule: defaultFeeSchedule(.65, 30),
@@ -195,7 +195,7 @@ export const initialTenants: TenantConfig[] = [
     clients: 37,
     ordersToday: 0,
     assetsUnderAdministration: 8_250_000,
-    features: { investorPortal: false, selfDirected: true, roboPlans: false, bonds: false, fractionalOrders: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true },
+    features: { investorPortal: false, selfDirected: true, bonds: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true },
     controls: { makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
     legalDocument: defaultLegalDocument("Sheba Invest"),
     feeSchedule: defaultFeeSchedule(.75, 35),

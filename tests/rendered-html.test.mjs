@@ -49,7 +49,12 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(app, /features\.manualTradeCapture/);
   assert.doesNotMatch(app, /Instrument master/);
   assert.match(investorApp, /Own a piece of Ethiopia/);
-  assert.match(investorApp, /FrankScore 78/);
+  assert.match(investorApp, /Your suggested strategy/);
+  assert.match(investorApp, /Get started/);
+  assert.match(investorApp, /Enter a whole number of shares/);
+  assert.doesNotMatch(investorApp, /FrankScore/);
+  assert.doesNotMatch(investorApp, /Investor demo ready/);
+  assert.doesNotMatch(investorApp, /Your plan/);
   assert.match(investorApp, /Review order/);
   assert.match(investorApp, /Open your investment account/);
   assert.match(investorApp, /Fayda ID number \(FIN\)/);
@@ -64,7 +69,7 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(adminApp, /Instrument master/);
   assert.match(adminApp, /CAPABILITY FLAGS/);
   assert.match(adminApp, /Maker-checker approval/);
-  assert.match(adminData, /fractionalOrders/);
+  assert.doesNotMatch(adminData, /fractionalOrders/);
   assert.match(adminData, /Fayda eKYC/);
   assert.match(adminData, /"ABAYB"/);
   assert.match(adminStyles, /--admin-aqua-400: #35e7d9/);

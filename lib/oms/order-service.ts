@@ -122,8 +122,6 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
     ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
     : ["Limit"];
-  const features = (settings?.features ?? {}) as Record<string, unknown>;
-  const fractional = input.source === "investor_portal" && features.fractionalOrders === true;
   const holding = account.holdings[0];
 
   const startOfDay = new Date();
@@ -147,7 +145,6 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
     orderTypeAllowed: allowedOrderTypes.some((item) => normalizeOrderType(item) === orderType),
     quantity,
     lotSize: instrument.lotSize,
-    allowFractional: fractional,
     price,
     tickSize: instrument.tickSize,
     side: input.side,
@@ -454,8 +451,6 @@ export async function approveOrder(actor: Actor, orderId: string) {
     const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
       ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
       : ["Limit"];
-    const features = (settings?.features ?? {}) as Record<string, unknown>;
-    const allowFractional = order.source === "investor_portal" && features.fractionalOrders === true;
     const controlFailure = order.account.client.brokerId !== actor.brokerId
       ? "The account no longer belongs to this tenant."
       : order.account.client.kycStatus !== "approved"
@@ -468,7 +463,7 @@ export async function approveOrder(actor: Actor, orderId: string) {
               ? "The order type is no longer enabled for this tenant."
               : !["buy", "sell"].includes(order.side) || order.quantity.lte(0) || order.price.lte(0)
                 ? "The stored order direction, quantity, or price is invalid."
-                : (!allowFractional && !order.quantity.mod(order.instrument.lotSize).isZero()) || !order.price.div(order.instrument.tickSize).isInteger()
+                : !order.quantity.mod(order.instrument.lotSize).isZero() || !order.price.div(order.instrument.tickSize).isInteger()
                   ? "The order no longer meets the instrument lot or tick-size rules."
                   : null;
     if (controlFailure) throw new Response(`${controlFailure} Run validation again before approval.`, { status: 409 });

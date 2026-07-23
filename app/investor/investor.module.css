@@ -70,8 +70,6 @@
 .loss { color: var(--investor-loss) !important; }
 .deltaPill { padding: 4px 9px; border-radius: 999px; background: #e2f6ec; }
 .deltaPill.loss { background: #fbe9e9; }
-.sparkline { width: 76px; height: 34px; display: block; overflow: visible; }
-.sparkline[viewBox="0 0 340 92"] { width: 100%; height: 92px; }
 .priceChart { margin-top: 4px; }
 .priceChart svg, .portfolioChart svg { width: 100%; height: auto; display: block; overflow: visible; }
 .priceChart svg { cursor: crosshair; touch-action: none; }
@@ -94,12 +92,6 @@
 .performanceLegend i { width: 13px; height: 2px; border-radius: 2px; background: var(--investor-accent); }
 .performanceLegend span:last-child i { height: 1px; background: var(--investor-ink-300); }
 
-.scoreRing { position: relative; width: 82px; height: 82px; flex: 0 0 auto; display: grid; place-items: center; }
-.scoreRing svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.scoreTrack, .scoreValue { fill: none; stroke-width: 8; }
-.scoreTrack { stroke: rgba(255,255,255,.16); }
-.scoreValue { stroke: var(--investor-aqua-400); stroke-linecap: round; }
-.scoreRing strong { position: absolute; color: inherit; font-family: var(--font-mono); font-size: 22px; }
 
 .screen { padding: 0 20px 112px; }
 .screenHeader { min-height: 67px; display: flex; align-items: center; gap: 10px; }
@@ -127,7 +119,7 @@
 
 .cardHeader { min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
 .cardHeader h2 { font-size: 16px; }
-.cardHeader button, .planPreview button, .coachCard button { padding: 4px 0; border: 0; background: transparent; color: var(--investor-accent); cursor: pointer; font-size: 12px; font-weight: 700; }
+.cardHeader button, .coachCard button { padding: 4px 0; border: 0; background: transparent; color: var(--investor-accent); cursor: pointer; font-size: 12px; font-weight: 700; }
 .badge { width: fit-content; display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 999px; background: var(--investor-aqua-100); color: var(--investor-teal-800); font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
 .gainBadge { background: #e2f6ec; }
 .stockRow { width: 100%; min-height: 68px; display: grid; grid-template-columns: 43px minmax(0,1fr) 68px auto; align-items: center; gap: 10px; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--investor-ink-100); background: transparent; color: inherit; cursor: pointer; text-align: left; }
@@ -159,11 +151,6 @@
 .coachCard p { margin: 0; color: var(--investor-ink-700); font-size: 12px; line-height: 1.5; }
 .coachCard button { margin-top: 7px; }
 .coachCard button em { margin-left: 7px; color: var(--investor-ink-400); font-family: var(--font-mono); font-size: 10px; font-style: normal; }
-.planPreview { display: flex; align-items: center; gap: 14px; }
-.planPreview .scoreTrack { stroke: var(--investor-ink-100); }
-.planPreview .scoreRing { color: var(--investor-ink-900); }
-.planPreview > div > b { font-size: 13px; }
-.planPreview p { margin: 3px 0 4px; color: var(--investor-ink-500); font-size: 12px; line-height: 1.45; }
 
 .searchField { min-height: 48px; display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 0 13px; border: 1px solid var(--investor-ink-200); border-radius: 14px; background: white; color: var(--investor-ink-400); }
 .searchField input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--investor-ink-900); font-size: 14px; }
@@ -226,23 +213,6 @@
 .lessonBody > div { padding-top: 12px; }
 .lessonBody b { color: var(--investor-teal-800); font-size: 11px; }
 .lessonBody p { margin: 3px 0 0; color: var(--investor-ink-600); font-size: 11px; line-height: 1.5; }
-.learnSection { margin: 0 2px 12px; }
-.learnSection small { color: var(--investor-accent); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
-.learnSection h2 { margin-top: 4px; font-size: 18px; }
-.planHero { display: flex; align-items: center; gap: 16px; border: 0; color: white; background: linear-gradient(160deg, var(--investor-teal-700), var(--investor-teal-900)); }
-.planHero h2 { margin-bottom: 4px; font-size: 17px; }
-.planHero p { margin: 0; color: rgba(255,255,255,.68); font-size: 12px; line-height: 1.45; }
-.planChoices { display: flex; flex-direction: column; gap: 14px; }
-.planChoices label { display: flex; align-items: flex-start; gap: 11px; cursor: pointer; }
-.planChoices input { position: absolute; opacity: 0; pointer-events: none; }
-.planChoices label > i { width: 20px; height: 20px; flex: 0 0 auto; border: 1.5px solid var(--investor-ink-300); border-radius: 50%; }
-.planChoices input:checked + i { border: 5px solid var(--investor-teal-700); }
-.planChoices span { display: flex; flex-direction: column; }
-.planChoices b { font-size: 14px; }
-.planChoices small { margin-top: 2px; color: var(--investor-ink-500); font-size: 11px; line-height: 1.45; }
-.goalValue { display: flex; align-items: baseline; justify-content: space-between; margin-top: 9px; }
-.goalValue span { color: var(--investor-ink-500); font-size: 12px; }
-.goalValue b { font-family: var(--font-mono); font-size: 14px; }
 .switchRow { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .switchRow > span { min-width: 0; display: flex; flex: 1; flex-direction: column; }
 .switchRow b { font-size: 13px; }
@@ -490,13 +460,12 @@
 .progressDots { min-height: 26px; display: flex; align-items: flex-end; justify-content: center; gap: 6px; }
 .progressDots i { width: 7px; height: 7px; border-radius: 5px; background: var(--investor-ink-200); transition: width 180ms ease-out, background 180ms ease-out; }
 .progressDots .currentDot { width: 20px; background: var(--investor-accent); }
-.planResult { margin-top: 8px; border: 0; color: white; background: linear-gradient(160deg, var(--investor-teal-700), var(--investor-teal-900)); }
-.planResultTop { display: flex; align-items: center; gap: 15px; }
-.planResultTop > span { display: flex; flex-direction: column; }
-.planResultTop b { font-family: var(--font-display); font-size: 16px; }
-.planResultTop small { margin-top: 3px; color: rgba(255,255,255,.78); font-size: 12px; }
-.planResultTop em { margin-top: 3px; color: rgba(255,255,255,.52); font-size: 10px; font-style: normal; }
-.planNote { flex: 1; margin: 0; padding: 0 3px; color: var(--investor-ink-500); font-size: 12px; line-height: 1.55; }
+.strategyResult { margin-top: 8px; border: 0; color: white; background: linear-gradient(160deg, var(--investor-teal-700), var(--investor-teal-900)); }
+.strategyResultTop { display: flex; align-items: center; }
+.strategyResultTop > span { display: flex; flex-direction: column; }
+.strategyResultTop b { font-family: var(--font-display); font-size: 16px; }
+.strategyResultTop small { margin-top: 3px; color: rgba(255,255,255,.78); font-size: 12px; }
+.strategyNote { flex: 1; margin: 0; padding: 0 3px; color: var(--investor-ink-500); font-size: 12px; line-height: 1.55; }
 
 .toast { position: absolute; right: 20px; bottom: 90px; left: 20px; z-index: 60; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #bde5d2; border-radius: 14px; background: white; color: var(--investor-gain); box-shadow: 0 10px 28px rgba(8,62,71,.16); animation: toastIn 200ms ease-out; }
 .toast > span { display: flex; flex-direction: column; }

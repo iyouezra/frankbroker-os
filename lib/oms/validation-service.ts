@@ -17,7 +17,6 @@ export type PreTradeValidationInput = {
   orderTypeAllowed: boolean;
   quantity: Decimal;
   lotSize: number;
-  allowFractional: boolean;
   price: Decimal;
   tickSize: Decimal;
   side: "buy" | "sell";
@@ -30,7 +29,7 @@ export type PreTradeValidationInput = {
 };
 
 export function validatePreTrade(input: PreTradeValidationInput): ValidationCheck[] {
-  const quantityAligned = input.allowFractional || input.quantity.mod(input.lotSize).isZero();
+  const quantityAligned = input.quantity.mod(input.lotSize).isZero();
   const priceAligned = input.price.div(input.tickSize).isInteger();
   return [
     { code: "TENANT_OWNERSHIP", label: "Tenant ownership", passed: input.tenantMatches, message: input.tenantMatches ? "Account belongs to this broker" : "Account belongs to another broker" },
@@ -38,7 +37,7 @@ export function validatePreTrade(input: PreTradeValidationInput): ValidationChec
     { code: "ACCOUNT_ACTIVE", label: "Account active", passed: input.accountActive && input.clientActive, message: input.accountActive && input.clientActive ? "Client and account are active" : "Client or account is not active" },
     { code: "INSTRUMENT_TRADABLE", label: "Instrument tradable", passed: input.instrumentTradable && input.instrumentEnabled, message: input.instrumentTradable && input.instrumentEnabled ? "Instrument is enabled for this tenant" : "Instrument is not tradable for this tenant" },
     { code: "ORDER_TYPE_ALLOWED", label: "Order type enabled", passed: input.orderTypeAllowed, message: input.orderTypeAllowed ? "Order type is enabled" : "Order type is disabled by tenant policy" },
-    { code: "QUANTITY_VALID", label: "Quantity valid", passed: input.quantity.gt(0) && quantityAligned, message: input.allowFractional ? "Positive fractional quantities are enabled" : `Must be a positive multiple of ${input.lotSize}` },
+    { code: "QUANTITY_VALID", label: "Quantity valid", passed: input.quantity.gt(0) && quantityAligned, message: `Must be a positive multiple of ${input.lotSize}` },
     { code: "PRICE_VALID", label: "Price valid", passed: input.price.gt(0) && priceAligned, message: `Must align to the ${input.tickSize.toString()} tick size` },
     input.side === "buy"
       ? { code: "SUFFICIENT_CASH", label: "Sufficient available cash", passed: input.availableCash.gte(input.requiredCash), message: `${input.availableCash.toString()} ETB available including estimated fees` }
