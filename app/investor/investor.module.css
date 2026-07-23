@@ -417,6 +417,16 @@
 .kycField input:focus { border-color: var(--investor-teal-600); box-shadow: 0 0 0 3px rgba(20,211,200,.16); }
 .kycField input::placeholder { color: var(--investor-ink-300); }
 .kycField small { color: var(--investor-ink-400); font-size: 10px; line-height: 1.4; }
+.onboardingBankList { padding-bottom: 4px; }
+.onboardingBankCard { margin-bottom: 11px; padding: 13px; background: var(--investor-ink-50); box-shadow: none; }
+.onboardingBankCard .formField:last-child { margin-bottom: 0; }
+.onboardingBankHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+.onboardingBankHead > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.onboardingBankHead small { color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+.onboardingBankHead b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.onboardingBankHead button { padding: 0; border: 0; background: transparent; color: var(--investor-loss); font-size: 9px; font-weight: 650; cursor: pointer; }
+.addBankButton { width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 12px; border: 1px dashed var(--investor-ink-200); border-radius: 12px; background: white; color: var(--investor-teal-700); font-size: 11px; font-weight: 700; cursor: pointer; }
+.addBankButton span { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--investor-aqua-100); font-size: 16px; font-weight: 500; }
 .accountTypeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 14px; }
 .accountTypeGrid button { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; padding: 13px; border: 1.5px solid var(--investor-ink-200); border-radius: 14px; background: white; color: inherit; cursor: pointer; text-align: left; }
 .accountTypeGrid button > i { position: absolute; top: 12px; right: 12px; width: 20px; height: 20px; display: grid; place-items: center; border: 1.5px solid var(--investor-ink-300); border-radius: 50%; color: white; }

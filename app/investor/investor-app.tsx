@@ -270,7 +270,7 @@ const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonn
 const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "Business license", proofOfAddressReference: "DEMO-POA-017", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
 
 function KycProgress({ step }: { step: number }) {
-  return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 4</small></span><i><em style={{ width: `${((step + 1) / 4) * 100}%` }} /></i></div>;
+  return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 5</small></span><i><em style={{ width: `${((step + 1) / 5) * 100}%` }} /></i></div>;
 }
 
 function KycField({ label, value, onChange, hint, placeholder, inputMode = "text", maxLength }: { label: string; value: string; onChange: (value: string) => void; hint?: string; placeholder?: string; inputMode?: "text" | "numeric" | "tel"; maxLength?: number }) {
@@ -281,20 +281,120 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<InvestorKyc>(retailDemo);
   const [consent, setConsent] = useState(false);
+  const [linkedBanks, setLinkedBanks] = useState<LinkedBankAccount[]>([
+    { id: "onboarding_bank_1", bankName: bankOptions[0], accountNumber: "100057894108", accountHolderName: retailDemo.fullName, status: "pending" },
+  ]);
   const update = (field: keyof InvestorKyc, value: string | boolean) => setProfile((current) => ({ ...current, [field]: value }));
-  const chooseType = (accountType: InvestorKyc["accountType"]) => setProfile(accountType === "retail" ? retailDemo : institutionDemo);
+  const chooseType = (accountType: InvestorKyc["accountType"]) => {
+    const nextProfile = accountType === "retail" ? retailDemo : institutionDemo;
+    setProfile(nextProfile);
+    setLinkedBanks([{ id: "onboarding_bank_1", bankName: bankOptions[0], accountNumber: accountType === "retail" ? "100057894108" : "100057890017", accountHolderName: nextProfile.fullName, status: "pending" }]);
+  };
+  const updateLinkedBank = (id: string, field: "bankName" | "accountNumber" | "accountHolderName", value: string) => {
+    setLinkedBanks((current) => current.map((account) => account.id === id ? { ...account, [field]: value } : account));
+  };
+  const addLinkedBank = () => {
+    if (linkedBanks.length >= 3) return;
+    setLinkedBanks((current) => [...current, { id: crypto.randomUUID(), bankName: bankOptions[0], accountNumber: "", accountHolderName: profile.fullName, status: "pending" }]);
+  };
+  const removeLinkedBank = (id: string) => {
+    if (linkedBanks.length <= 1) return;
+    setLinkedBanks((current) => current.filter((account) => account.id !== id));
+  };
   const phoneValid = profile.phone.replace(/\D/g, "").length >= 9;
   const faydaValid = /^\d{12}$/.test(profile.faydaId);
   const tinValid = /^\d{10}(?:-\d{2})?$/.test(profile.tin);
   const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid;
   const identityStepValid = faydaValid && tinValid && profile.address.trim().length >= 4 && profile.proofOfAddressReference.trim().length >= 4 && (profile.accountType === "retail" || (profile.registrationNumber.trim().length >= 4 && profile.representativeName.trim().length >= 3 && profile.beneficialOwnerName.trim().length >= 3));
+  const bankStepValid = linkedBanks.length > 0 && linkedBanks.length <= 3 && linkedBanks.every((account) =>
+    account.bankName.trim().length > 0
+    && account.accountNumber.replace(/\D/g, "").length >= 8
+    && account.accountHolderName.trim().toLocaleLowerCase() === profile.fullName.trim().toLocaleLowerCase()
+  );
   const masked = (value: string) => value.length <= 4 ? value : `${"•".repeat(Math.min(8, value.length - 4))} ${value.slice(-4)}`;
 
-  if (step === 3) return <div className={styles.onboarding}><KycProgress step={3} /><div className={styles.kycComplete}><span><Icon name="check" size={24} /></span><small>DEMO CHECK COMPLETE</small><h1>Your details are ready</h1><p>We checked the ID formats and captured your consent. Live Fayda and tax verification will be connected before real accounts are opened.</p><Card className={styles.kycStatusCard}><div><i><Icon name="check" size={14} /></i><span><b>Fayda ID format</b><small>12-digit FIN captured</small></span></div><div><i><Icon name="check" size={14} /></i><span><b>Tax information</b><small>TIN captured for review</small></span></div><div><i><Icon name="check" size={14} /></i><span><b>Account type</b><small>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</small></span></div></Card></div><Button className={styles.full} onClick={() => onComplete(profile)}>Build my investment plan</Button></div>;
+  if (step === 4) return <div className={styles.onboarding}>
+    <KycProgress step={4} />
+    <div className={styles.kycComplete}>
+      <span><Icon name="check" size={24} /></span>
+      <small>DEMO CHECK COMPLETE</small>
+      <h1>Your details are ready</h1>
+      <p>We checked the ID formats and captured your consent. Live Fayda and tax verification, plus bank verification, will be connected before real accounts are opened.</p>
+      <Card className={styles.kycStatusCard}>
+        <div><i><Icon name="check" size={14} /></i><span><b>Fayda ID format</b><small>12-digit FIN captured</small></span></div>
+        <div><i><Icon name="check" size={14} /></i><span><b>Tax information</b><small>TIN captured for review</small></span></div>
+        <div><i><Icon name="check" size={14} /></i><span><b>Linked banks</b><small>{linkedBanks.length} {linkedBanks.length === 1 ? "account" : "accounts"} submitted for review</small></span></div>
+        <div><i><Icon name="check" size={14} /></i><span><b>Account type</b><small>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</small></span></div>
+      </Card>
+    </div>
+    <Button className={styles.full} onClick={() => {
+      saveLinkedBanks(linkedBanks);
+      onComplete(profile);
+    }}>Build my investment plan</Button>
+  </div>;
 
-  if (step === 2) return <div className={styles.onboarding}><KycProgress step={2} /><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(1)} aria-label="Go back"><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>Check and consent</h1><p>Review the records and the agreement that will govern this account.</p></div><Card className={styles.kycReview}><dl><div><dt>Account</dt><dd>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</dd></div><div><dt>Legal name</dt><dd>{profile.fullName}</dd></div>{profile.accountType === "institution" && <><div><dt>Representative</dt><dd>{profile.representativeName}</dd></div><div><dt>Beneficial owner</dt><dd>{profile.beneficialOwnerName}</dd></div><div><dt>Registration</dt><dd>{profile.registrationNumber}</dd></div></>}<div><dt>Fayda ID</dt><dd>{masked(profile.faydaId)}</dd></div><div><dt>TIN</dt><dd>{masked(profile.tin)}</dd></div><div><dt>Address evidence</dt><dd>{profile.proofOfAddressType} · {profile.proofOfAddressReference}</dd></div></dl></Card><Card className={styles.termsCard}><small>{legalDocument ? `VERSION ${legalDocument.version} · EFFECTIVE ${legalDocument.effectiveAt}` : "DEMO TERMS"}</small><b>{legalDocument?.title ?? "Brokerage account terms"}</b><p>{legalDocument?.summary ?? "Account operation, order handling, fee disclosure, settlement, confirmation, discrepancy, restriction, and closure terms."}</p></Card><label className={styles.consentRow}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><i>{consent && <Icon name="check" size={13} />}</i><span>I confirm these details are accurate and consent to identity and tax verification.</span></label>{profile.accountType === "institution" && <label className={styles.consentRow}><input type="checkbox" checked={profile.signatoryAuthorityConfirmed} onChange={(event) => update("signatoryAuthorityConfirmed", event.target.checked)} /><i>{profile.signatoryAuthorityConfirmed && <Icon name="check" size={13} />}</i><span>I confirm the representative is authorized to open and operate this account for the institution.</span></label>}<label className={styles.consentRow}><input type="checkbox" checked={profile.termsAccepted} onChange={(event) => update("termsAccepted", event.target.checked)} /><i>{profile.termsAccepted && <Icon name="check" size={13} />}</i><span>I accept {legalDocument?.title ?? "the brokerage account terms"} and understand that fees and order details will be disclosed before submission.</span></label><label className={styles.consentRow}><input type="checkbox" checked={profile.electronicDeliveryConsent} onChange={(event) => update("electronicDeliveryConsent", event.target.checked)} /><i>{profile.electronicDeliveryConsent && <Icon name="check" size={13} />}</i><span>Send confirmations, contract notes, statements, and account notices electronically.</span></label><Button className={styles.full} disabled={!consent || !profile.termsAccepted || (profile.accountType === "institution" && !profile.signatoryAuthorityConfirmed)} onClick={() => setStep(3)}>Submit for verification</Button></div>;
+  if (step === 3) return <div className={styles.onboarding}>
+    <KycProgress step={3} />
+    <div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(2)} aria-label="Go back"><Icon name="back" size={20} /></button></div>
+    <div className={styles.onboardingCopy}><h1>Check and consent</h1><p>Review the records and the agreement that will govern this account.</p></div>
+    <Card className={styles.kycReview}><dl>
+      <div><dt>Account</dt><dd>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</dd></div>
+      <div><dt>Legal name</dt><dd>{profile.fullName}</dd></div>
+      {profile.accountType === "institution" && <>
+        <div><dt>Representative</dt><dd>{profile.representativeName}</dd></div>
+        <div><dt>Beneficial owner</dt><dd>{profile.beneficialOwnerName}</dd></div>
+        <div><dt>Registration</dt><dd>{profile.registrationNumber}</dd></div>
+      </>}
+      <div><dt>Fayda ID</dt><dd>{masked(profile.faydaId)}</dd></div>
+      <div><dt>TIN</dt><dd>{masked(profile.tin)}</dd></div>
+      <div><dt>Address evidence</dt><dd>{profile.proofOfAddressType} · {profile.proofOfAddressReference}</dd></div>
+      <div><dt>Linked banks</dt><dd>{linkedBanks.length} {linkedBanks.length === 1 ? "account" : "accounts"}</dd></div>
+    </dl></Card>
+    <Card className={styles.termsCard}><small>{legalDocument ? `VERSION ${legalDocument.version} · EFFECTIVE ${legalDocument.effectiveAt}` : "DEMO TERMS"}</small><b>{legalDocument?.title ?? "Brokerage account terms"}</b><p>{legalDocument?.summary ?? "Account operation, order handling, fee disclosure, settlement, confirmation, discrepancy, restriction, and closure terms."}</p></Card>
+    <label className={styles.consentRow}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><i>{consent && <Icon name="check" size={13} />}</i><span>I confirm these details are accurate and consent to identity and tax verification.</span></label>
+    {profile.accountType === "institution" && <label className={styles.consentRow}><input type="checkbox" checked={profile.signatoryAuthorityConfirmed} onChange={(event) => update("signatoryAuthorityConfirmed", event.target.checked)} /><i>{profile.signatoryAuthorityConfirmed && <Icon name="check" size={13} />}</i><span>I confirm the representative is authorized to open and operate this account for the institution.</span></label>}
+    <label className={styles.consentRow}><input type="checkbox" checked={profile.termsAccepted} onChange={(event) => update("termsAccepted", event.target.checked)} /><i>{profile.termsAccepted && <Icon name="check" size={13} />}</i><span>I accept {legalDocument?.title ?? "the brokerage account terms"} and understand that fees and order details will be disclosed before submission.</span></label>
+    <label className={styles.consentRow}><input type="checkbox" checked={profile.electronicDeliveryConsent} onChange={(event) => update("electronicDeliveryConsent", event.target.checked)} /><i>{profile.electronicDeliveryConsent && <Icon name="check" size={13} />}</i><span>Send confirmations, contract notes, statements, and account notices electronically.</span></label>
+    <Button className={styles.full} disabled={!consent || !profile.termsAccepted || (profile.accountType === "institution" && !profile.signatoryAuthorityConfirmed)} onClick={() => setStep(4)}>Submit for verification</Button>
+  </div>;
 
-  if (step === 1) return <div className={styles.onboarding}><KycProgress step={1} /><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(0)} aria-label="Go back"><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>{profile.accountType === "retail" ? "Confirm your identity" : "Tell us about the institution"}</h1><p>{profile.accountType === "retail" ? "Use the details linked to your Fayda ID." : "We also need the representative, authority, and ownership records."}</p></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Fayda ID number (FIN)" : "Representative’s Fayda ID (FIN)"} value={profile.faydaId} onChange={(value) => update("faydaId", value.replace(/\D/g, "").slice(0, 12))} inputMode="numeric" maxLength={12} placeholder="12 digits" hint={profile.faydaId && !faydaValid ? "Fayda FIN must contain 12 digits." : "We’ll use this for identity verification."} /><KycField label="Taxpayer Identification Number (TIN)" value={profile.tin} onChange={(value) => update("tin", value.replace(/[^0-9-]/g, "").slice(0, 13))} inputMode="numeric" placeholder="0012814908" hint={profile.tin && !tinValid ? "Enter a 10-digit TIN or a TIN with its two-digit subTIN." : "Used for tax reporting and account records."} />{profile.accountType === "institution" && <><KycField label="Business registration number" value={profile.registrationNumber} onChange={(value) => update("registrationNumber", value)} placeholder="Registration or license number" /><KycField label="Authorized representative" value={profile.representativeName} onChange={(value) => update("representativeName", value)} placeholder="Full legal name" /><KycField label="Beneficial owner / controller" value={profile.beneficialOwnerName} onChange={(value) => update("beneficialOwnerName", value)} placeholder="Primary declared owner or controller" /></>}<KycField label={profile.accountType === "retail" ? "Current address" : "Registered address"} value={profile.address} onChange={(value) => update("address", value)} placeholder="City and sub-city" /><KycField label="Proof of address type" value={profile.proofOfAddressType} onChange={(value) => update("proofOfAddressType", value)} placeholder="Utility bill, bank letter, business license…" /><KycField label="Document reference" value={profile.proofOfAddressReference} onChange={(value) => update("proofOfAddressReference", value)} placeholder="Demo document reference" /></div><div className={styles.demoNotice}><b>Demo only</b><span>No document image is uploaded. The demo stores only a reference and review status; production storage must remain in the approved jurisdiction.</span></div><Button className={styles.full} disabled={!identityStepValid} onClick={() => setStep(2)}>Review details</Button></div>;
+  if (step === 2) return <div className={styles.onboarding}>
+    <KycProgress step={2} />
+    <div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(1)} aria-label="Go back"><Icon name="back" size={20} /></button></div>
+    <div className={styles.onboardingCopy}><h1>Link a bank account</h1><p>Add an account in your name for future withdrawals. You can link up to 3.</p></div>
+    <div className={`${styles.kycForm} ${styles.onboardingBankList}`}>
+      {linkedBanks.map((account, index) => <Card className={styles.onboardingBankCard} key={account.id}>
+        <div className={styles.onboardingBankHead}><span><small>BANK ACCOUNT {index + 1}</small><b>{account.bankName}</b></span>{linkedBanks.length > 1 && <button onClick={() => removeLinkedBank(account.id)}>Remove</button>}</div>
+        <label className={styles.formField}><span>Bank name</span><div className={styles.selectField}><select value={account.bankName} onChange={(event) => updateLinkedBank(account.id, "bankName", event.target.value)}>{bankOptions.map((bank) => <option key={bank}>{bank}</option>)}</select></div></label>
+        <label className={styles.formField}><span>Account number</span><div><input inputMode="numeric" value={account.accountNumber} onChange={(event) => updateLinkedBank(account.id, "accountNumber", event.target.value.replace(/\D/g, "").slice(0, 24))} placeholder="Enter the full account number" /></div></label>
+        <label className={styles.formField}><span>Account holder name</span><div><input value={account.accountHolderName} onChange={(event) => updateLinkedBank(account.id, "accountHolderName", event.target.value)} placeholder="As shown on the bank account" /></div>{account.accountHolderName.trim() && account.accountHolderName.trim().toLocaleLowerCase() !== profile.fullName.trim().toLocaleLowerCase() && <small className={styles.fieldError}>Use the same name shown in your verified records.</small>}</label>
+      </Card>)}
+      {linkedBanks.length < 3 && <button className={styles.addBankButton} onClick={addLinkedBank}><span>+</span>Add another bank account</button>}
+      <div className={styles.accountNameWarning}><b>Account holder name must match verified records</b><span>We will check the bank account against {profile.fullName}.</span></div>
+      <div className={styles.cashNotice}><b>What happens next</b><span>Your broker reviews the account details. Once approved, the bank account will appear as a withdrawal option.</span></div>
+    </div>
+    <Button className={styles.full} disabled={!bankStepValid} onClick={() => setStep(3)}>Review details</Button>
+  </div>;
+
+  if (step === 1) return <div className={styles.onboarding}>
+    <KycProgress step={1} />
+    <div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(0)} aria-label="Go back"><Icon name="back" size={20} /></button></div>
+    <div className={styles.onboardingCopy}><h1>{profile.accountType === "retail" ? "Confirm your identity" : "Tell us about the institution"}</h1><p>{profile.accountType === "retail" ? "Use the details linked to your Fayda ID." : "We also need the representative, authority, and ownership records."}</p></div>
+    <div className={styles.kycForm}>
+      <KycField label={profile.accountType === "retail" ? "Fayda ID number (FIN)" : "Representative’s Fayda ID (FIN)"} value={profile.faydaId} onChange={(value) => update("faydaId", value.replace(/\D/g, "").slice(0, 12))} inputMode="numeric" maxLength={12} placeholder="12 digits" hint={profile.faydaId && !faydaValid ? "Fayda FIN must contain 12 digits." : "We’ll use this for identity verification."} />
+      <KycField label="Taxpayer Identification Number (TIN)" value={profile.tin} onChange={(value) => update("tin", value.replace(/[^0-9-]/g, "").slice(0, 13))} inputMode="numeric" placeholder="0012814908" hint={profile.tin && !tinValid ? "Enter a 10-digit TIN or a TIN with its two-digit subTIN." : "Used for tax reporting and account records."} />
+      {profile.accountType === "institution" && <>
+        <KycField label="Business registration number" value={profile.registrationNumber} onChange={(value) => update("registrationNumber", value)} placeholder="Registration or license number" />
+        <KycField label="Authorized representative" value={profile.representativeName} onChange={(value) => update("representativeName", value)} placeholder="Full legal name" />
+        <KycField label="Beneficial owner / controller" value={profile.beneficialOwnerName} onChange={(value) => update("beneficialOwnerName", value)} placeholder="Primary declared owner or controller" />
+      </>}
+      <KycField label={profile.accountType === "retail" ? "Current address" : "Registered address"} value={profile.address} onChange={(value) => update("address", value)} placeholder="City and sub-city" />
+      <KycField label="Proof of address type" value={profile.proofOfAddressType} onChange={(value) => update("proofOfAddressType", value)} placeholder="Utility bill, bank letter, business license…" />
+      <KycField label="Document reference" value={profile.proofOfAddressReference} onChange={(value) => update("proofOfAddressReference", value)} placeholder="Demo document reference" />
+    </div>
+    <div className={styles.demoNotice}><b>Demo only</b><span>No document image is uploaded. The demo stores only a reference and review status; production storage must remain in the approved jurisdiction.</span></div>
+    <Button className={styles.full} disabled={!identityStepValid} onClick={() => setStep(2)}>Continue</Button>
+  </div>;
 
   return <div className={styles.onboarding}><KycProgress step={0} /><div className={styles.kycBrand}><AppLogo /></div><div className={styles.onboardingCopy}><h1>Open your investment account</h1><p>First, tell us who will own this account. It takes a few minutes.</p></div><div className={styles.accountTypeGrid}><button className={profile.accountType === "retail" ? styles.accountTypeSelected : ""} onClick={() => chooseType("retail")}><i>{profile.accountType === "retail" && <Icon name="check" size={13} />}</i><b>Retail investor</b><small>An account for you</small></button><button className={profile.accountType === "institution" ? styles.accountTypeSelected : ""} onClick={() => chooseType("institution")}><i>{profile.accountType === "institution" && <Icon name="check" size={13} />}</i><b>Institution</b><small>A company or organization</small></button></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Full legal name" : "Legal organization name"} value={profile.fullName} onChange={(value) => update("fullName", value)} placeholder="As shown on official records" /><KycField label="Mobile number" value={profile.phone} onChange={(value) => update("phone", value.replace(/[^0-9+]/g, ""))} inputMode="tel" placeholder="09… or +251…" hint="We’ll use this for account updates and security." /></div><div className={styles.demoNotice}><b>Demo only</b><span>These fictional details can be persisted to the shared demo database when connected.</span></div><Button className={styles.full} disabled={!firstStepValid} onClick={() => setStep(1)}>Continue</Button></div>;
 }
