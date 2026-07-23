@@ -3,13 +3,20 @@
 import Image from "next/image";
 import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
+  calculateBondOrder,
   coachTips,
   formatEtb,
+  formatMarketTimestamp,
+  getBondCouponPayment,
+  getBondPricePerUnit,
   getInvestorHistory,
   getInvestorSession,
+  getMarketSnapshot,
   investorBonds,
   investorHoldings,
+  investorMarketContext,
   investorStocks,
+  type InvestorBond,
   type InvestorStock,
   type MarketRange,
 } from "../../lib/investor-data";
@@ -50,15 +57,49 @@ type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: nu
 type CashMovementInput = { movementType: "deposit" | "withdrawal"; pooledBankAccountId: string; amount: number; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string };
 type LinkedBankAccount = { id: string; bankName: string; accountNumber: string; accountHolderName: string; status: "approved" | "pending" };
 type InvestorFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
+type InvestorInstrument = {
+  ticker: string;
+  name: string;
+  assetClass: string;
+  issuer?: string | null;
+  price: number;
+  status: string;
+  lotSize: number;
+  tickSize?: number;
+  settlementCycle?: string;
+  faceValue?: number | null;
+  maturityDate?: string | null;
+  couponRate?: number | null;
+  couponFrequency?: string | null;
+};
 type InvestorBootstrap = {
   tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
   profile: { fullName: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
   account: { id: string; totalCash: number; availableCash: number; blockedCash: number; holdings: Array<{ ticker: string; quantity: number; averageCost: number; price: number }>; orders: Array<{ id: string }> } | null;
-  instruments: Array<{ ticker: string; assetClass: string; status: string }>;
+  instruments: InvestorInstrument[];
   serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null }>;
   cashPools: CashPool[];
   cashMovements: CashMovementView[];
 };
+
+function mergeBondInstrument(bond: InvestorBond, instrument?: InvestorInstrument): InvestorBond {
+  if (!instrument) return bond;
+  const maturityDate = instrument.maturityDate ?? bond.maturityDate;
+  return {
+    ...bond,
+    name: instrument.name || bond.name,
+    issuer: instrument.issuer || bond.issuer,
+    quotedPricePct: instrument.price || bond.quotedPricePct,
+    faceValue: instrument.faceValue || bond.faceValue,
+    couponRate: instrument.couponRate || bond.couponRate,
+    maturityDate,
+    maturityLabel: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${maturityDate}T12:00:00Z`)),
+    couponFrequency: instrument.couponFrequency === "semi_annual" ? "Semiannual" : bond.couponFrequency,
+    settlementCycle: instrument.settlementCycle || bond.settlementCycle,
+    status: instrument.status === "halted" ? "halted" : "tradable",
+    liquidity: instrument.status === "halted" ? "Trading paused" : bond.liquidity,
+  };
+}
 
 const INVESTOR_TENANT_ID = "brk_abyssinia";
 const INVESTOR_CLIENT_ID = "cli_investor_demo";
@@ -482,15 +523,16 @@ function HomeScreen({ openStock, go, account, unread, onBell, onCash }: { openSt
   const holdings = account?.holdings.length ? account.holdings.filter((holding) => investorStocks.some((stock) => stock.ticker === holding.ticker)) : investorHoldings;
   const stockValue = holdings.reduce((sum, holding) => sum + investorStocks.find((stock) => stock.ticker === holding.ticker)!.price * holding.quantity, 0);
   const totalValue = stockValue + 25_000 + (account?.availableCash ?? 4_210);
-  return <div className={styles.screen}><div className={styles.homeHeader}><AppLogo /><button className={styles.iconButton} aria-label="Notifications" onClick={onBell}><Icon name="bell" size={20} />{unread > 0 && <i />}</button></div><Card className={styles.heroCard}><small>Your money, all together</small><strong>{formatEtb(totalValue)}</strong><div><Delta value={1.8} pill /><span>ESX open · closes 15:30</span></div></Card><div className={styles.quickActions}><Button onClick={() => go("markets")}><Icon name="plus" size={18} /> Invest</Button><Button variant="secondary" onClick={onCash}>Add or withdraw</Button></div><Card><div className={styles.cardHeader}><h2>Companies you own</h2><button onClick={() => go("portfolio")}>Details</button></div>{holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; return <StockRow key={stock.ticker} stock={stock} holdingValue={stock.price * holding.quantity} onClick={() => openStock(stock)} />; })}</Card><Card className={styles.coachCard}><span><Icon name="bulb" size={20} /></span><div><small>FRANK COACH</small><h3>{coachTips[tip].title}</h3><p>{coachTips[tip].body}</p><button onClick={() => setTip((tip + 1) % coachTips.length)}>Next tip <em>{tip + 1}/{coachTips.length}</em></button></div></Card></div>;
+  return <div className={styles.screen}><div className={styles.homeHeader}><AppLogo /><button className={styles.iconButton} aria-label="Notifications" onClick={onBell}><Icon name="bell" size={20} />{unread > 0 && <i />}</button></div><Card className={styles.heroCard}><small>Your money, all together</small><strong>{formatEtb(totalValue)}</strong><div><Delta value={1.8} pill /><span>{investorMarketContext.statusLabel} · updated {formatMarketTimestamp(investorMarketContext.quoteAsOf)}</span></div></Card><div className={styles.quickActions}><Button onClick={() => go("markets")}><Icon name="plus" size={18} /> Invest</Button><Button variant="secondary" onClick={onCash}>Add or withdraw</Button></div><Card><div className={styles.cardHeader}><h2>Companies you own</h2><button onClick={() => go("portfolio")}>Details</button></div>{holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; return <StockRow key={stock.ticker} stock={stock} holdingValue={stock.price * holding.quantity} onClick={() => openStock(stock)} />; })}</Card><Card className={styles.coachCard}><span><Icon name="bulb" size={20} /></span><div><small>FRANK COACH</small><h3>{coachTips[tip].title}</h3><p>{coachTips[tip].body}</p><button onClick={() => setTip((tip + 1) % coachTips.length)}>Next tip <em>{tip + 1}/{coachTips.length}</em></button></div></Card></div>;
 }
 
-function MarketsScreen({ openStock, enabledTickers, bondsEnabled }: { openStock: (stock: InvestorStock) => void; enabledTickers: string[] | null; bondsEnabled: boolean }) {
+function MarketsScreen({ openStock, openBond, enabledTickers, bondsEnabled, bonds }: { openStock: (stock: InvestorStock) => void; openBond: (bond: InvestorBond) => void; enabledTickers: string[] | null; bondsEnabled: boolean; bonds: InvestorBond[] }) {
   const [asset, setAsset] = useState<"Stocks" | "Bonds">("Stocks");
   const [sector, setSector] = useState("All");
   const [query, setQuery] = useState("");
   const stocks = investorStocks.filter((stock) => (!enabledTickers || enabledTickers.includes(stock.ticker)) && (sector === "All" || stock.sector === sector) && `${stock.ticker} ${stock.name}`.toLowerCase().includes(query.toLowerCase()));
-  return <div className={styles.screen}><ScreenHeader title="Markets" /><label className={styles.searchField}><Icon name="search" size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search companies or tickers" /></label><div className={styles.segmented}>{(["Stocks", "Bonds"] as const).filter((item) => item === "Stocks" || bondsEnabled).map((item) => <button key={item} className={asset === item ? styles.segmentActive : ""} onClick={() => setAsset(item)}>{item}</button>)}</div>{asset === "Stocks" || !bondsEnabled ? <><div className={styles.chips}>{["All", "Banks", "Telecom"].map((item) => <button key={item} className={sector === item ? styles.chipActive : ""} onClick={() => setSector(item)}>{item}</button>)}</div><Card><p className={styles.cardIntro}>Companies enabled by your broker</p>{stocks.map((stock) => <StockRow key={stock.ticker} stock={stock} onClick={() => openStock(stock)} />)}{stocks.length === 0 && <p className={styles.empty}>No enabled instruments match this search.</p>}</Card></> : <Card><p className={styles.cardIntro}>Bonds: you lend, they pay you back with interest.</p>{investorBonds.filter((bond) => !enabledTickers || enabledTickers.includes(bond.ticker)).map((bond) => <button className={styles.bondRow} key={bond.ticker}><span><Icon name="shield" size={20} /></span><span><b>{bond.name}</b><small>{bond.maturity} · from {bond.minimum}</small></span><span><b>{bond.rate}</b><small>per year</small></span></button>)}</Card>}</div>;
+  const matchingBonds = bonds.filter((bond) => (!enabledTickers || enabledTickers.includes(bond.ticker)) && `${bond.ticker} ${bond.name}`.toLowerCase().includes(query.toLowerCase()));
+  return <div className={styles.screen}><ScreenHeader title="Markets" /><p className={styles.marketContext}><i />{investorMarketContext.statusLabel}<span>Prices updated {formatMarketTimestamp(investorMarketContext.quoteAsOf)}</span></p><label className={styles.searchField}><Icon name="search" size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search companies or tickers" /></label><div className={styles.segmented}>{(["Stocks", "Bonds"] as const).filter((item) => item === "Stocks" || bondsEnabled).map((item) => <button key={item} className={asset === item ? styles.segmentActive : ""} onClick={() => setAsset(item)}>{item}</button>)}</div>{asset === "Stocks" || !bondsEnabled ? <><div className={styles.chips}>{["All", "Banks", "Telecom"].map((item) => <button key={item} className={sector === item ? styles.chipActive : ""} onClick={() => setSector(item)}>{item}</button>)}</div><Card><p className={styles.cardIntro}>Companies enabled by your broker</p>{stocks.map((stock) => <StockRow key={stock.ticker} stock={stock} onClick={() => openStock(stock)} />)}{stocks.length === 0 && <p className={styles.empty}>No enabled instruments match this search.</p>}</Card></> : <Card><p className={styles.cardIntro}>Bonds let you lend money and earn regular interest.</p>{matchingBonds.map((bond) => <button className={styles.bondRow} key={bond.ticker} onClick={() => openBond(bond)}><span><Icon name="shield" size={20} /></span><span><b>{bond.name}</b><small>Matures {bond.maturityLabel} · from {formatEtb(bond.minimumInvestment)}</small></span><span><b>{bond.couponRate.toFixed(1)}%</b><small>{bond.status === "halted" ? "paused" : "coupon"}</small></span></button>)}{matchingBonds.length === 0 && <p className={styles.empty}>No enabled bonds match this search.</p>}</Card>}</div>;
 }
 
 function PortfolioScreen({ openStock, account }: { openStock: (stock: InvestorStock) => void; account: InvestorBootstrap["account"] }) {
@@ -758,7 +800,114 @@ function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrderTypes, 
     }
     finally { setPlacing(false); }
   };
-  return <><div className={styles.sheetBackdrop} onClick={onClose}><section className={styles.orderSheet} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="order-title"><i className={styles.sheetHandle} /><h2 id="order-title">{side} {stock.ticker}</h2><div className={styles.chips}>{options.map((option) => <button key={option} className={orderType === option ? styles.chipActive : ""} onClick={() => setOrderType(option)}>{option}</button>)}</div><p className={styles.orderHint}>{orderType === "Market" ? "Trades at the best available ESX price." : orderType === "Limit" ? `${side}s only at your selected price or better.` : "Sells at the next available price after your trigger is reached."}</p>{orderType === "Limit" && <label className={styles.formField}><span>{isSell ? "Sell at or above" : "Buy at or below"}</span><div><em>ETB</em><input inputMode="decimal" value={limitPrice} onChange={(event) => setLimitPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div></label>}<label className={styles.formField}><span>Shares</span><div><input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))} /><em>× {formatEtb(executionPrice)}</em></div><small>{isSell ? `You hold ${holdingQuantity} shares` : "Enter a whole number of shares"}</small></label><dl className={styles.orderTotals}><div><dt>Gross consideration</dt><dd>{formatEtb(gross)}</dd></div><div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div>{fees.regulator > 0 && <div><dt>Regulatory fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>}{fees.exchange > 0 && <div><dt>Exchange fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>}{fees.csd > 0 && <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>}<div><dt>Total estimated fees</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{isSell ? "Estimated net proceeds" : "Estimated cash required"}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl>{heldChecks.length > 0 && <div role="alert" style={{ margin: "0 0 14px", padding: "12px 14px", borderRadius: 14, background: "#FBE9E9", border: "1px solid #F1C9C9", color: "#B4322E", fontSize: 13, lineHeight: 1.5 }}><b style={{ display: "block", marginBottom: 4 }}>Order held — {heldChecks.length === 1 ? "1 check needs attention" : `${heldChecks.length} checks need attention`}</b><ul style={{ margin: 0, paddingLeft: 18 }}>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}<Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity)} onClick={() => setReviewing(true)}>Review order</Button></section></div>{reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">Confirm order</h2><p>You&apos;re {isSell ? "selling" : "buying"} <b>{shares.toFixed(0)} shares of {stock.ticker}</b> for about <b>{formatEtb(gross)}</b>, plus estimated fees of <b>{formatEtb(fees.total)}</b>. A market order can execute at a different price; a limit order may not fill.</p><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the instrument, quantity, order type, estimated value, fee breakdown, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : side}</Button></div></section></div>}</>;
+  return <><div className={styles.sheetBackdrop} onClick={onClose}><section className={styles.orderSheet} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="order-title"><i className={styles.sheetHandle} /><h2 id="order-title">{side} {stock.ticker}</h2><div className={styles.chips}>{options.map((option) => <button key={option} className={orderType === option ? styles.chipActive : ""} onClick={() => setOrderType(option)}>{option}</button>)}</div><p className={styles.orderHint}>{orderType === "Market" ? "Trades at the best available ESX price." : orderType === "Limit" ? `${side}s only at your selected price or better.` : "Sells at the next available price after your trigger is reached."}</p>{orderType === "Limit" && <label className={styles.formField}><span>{isSell ? "Sell at or above" : "Buy at or below"}</span><div><em>ETB</em><input inputMode="decimal" value={limitPrice} onChange={(event) => setLimitPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div></label>}<label className={styles.formField}><span>Shares</span><div><input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))} /><em>× {formatEtb(executionPrice)}</em></div><small>{isSell ? `You hold ${holdingQuantity} shares` : "Enter a whole number of shares"}</small></label><dl className={styles.orderTotals}><div><dt>Gross consideration</dt><dd>{formatEtb(gross)}</dd></div><div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div>{fees.regulator > 0 && <div><dt>Regulatory fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>}{fees.exchange > 0 && <div><dt>Exchange fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>}{fees.csd > 0 && <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>}<div><dt>Total estimated fees</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{isSell ? "Estimated net proceeds" : "Estimated cash required"}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl>{heldChecks.length > 0 && <div role="alert" style={{ margin: "0 0 14px", padding: "12px 14px", borderRadius: 14, background: "#FBE9E9", border: "1px solid #F1C9C9", color: "#B4322E", fontSize: 13, lineHeight: 1.5 }}><b style={{ display: "block", marginBottom: 4 }}>Order held: {heldChecks.length === 1 ? "1 check needs attention" : `${heldChecks.length} checks need attention`}</b><ul style={{ margin: 0, paddingLeft: 18 }}>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}<Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity)} onClick={() => setReviewing(true)}>Review order</Button></section></div>{reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">Confirm order</h2><p>You&apos;re {isSell ? "selling" : "buying"} <b>{shares.toFixed(0)} shares of {stock.ticker}</b> for about <b>{formatEtb(gross)}</b>, plus estimated fees of <b>{formatEtb(fees.total)}</b>. A market order can execute at a different price; a limit order may not fill.</p><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the instrument, quantity, order type, estimated value, fee breakdown, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : side}</Button></div></section></div>}</>;
+}
+
+function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes, onClose, onPlaced }: { bond: InvestorBond; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
+  const pricePerBond = getBondPricePerUnit(bond);
+  const suggestedAmount = Math.ceil((bond.minimumInvestment + pricePerBond + feeRule.minimumFee) / 100) * 100;
+  const [amount, setAmount] = useState(String(suggestedAmount));
+  const [reviewing, setReviewing] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [disclosureAccepted, setDisclosureAccepted] = useState(false);
+  const [heldChecks, setHeldChecks] = useState<OrderCheck[]>([]);
+  const value = Number(amount) || 0;
+  const allocation = calculateBondOrder(value, pricePerBond, (gross) => calculateInvestorFees(gross, feeRule).total);
+  const fees = calculateInvestorFees(allocation.gross, feeRule);
+  const meetsMinimum = allocation.gross >= bond.minimumInvestment;
+  const hasCash = allocation.total <= availableCash;
+  const limitAllowed = allowedOrderTypes.includes("Limit");
+  const valid = bond.status === "tradable" && allocation.units > 0 && meetsMinimum && hasCash && limitAllowed;
+  const place = async () => {
+    setPlacing(true);
+    setHeldChecks([]);
+    try {
+      const result = await onPlaced({ symbol: bond.ticker, side: "buy", quantity: allocation.units, price: pricePerBond, orderType: "Limit", disclosureAccepted: true, disclosureVersion: "order-v1" });
+      const failed = (result?.checks ?? []).filter((check) => !check.passed);
+      if (failed.length) {
+        setHeldChecks(failed);
+        setReviewing(false);
+      }
+    } finally { setPlacing(false); }
+  };
+  return <>
+    <div className={styles.sheetBackdrop} onClick={onClose}>
+      <section className={`${styles.orderSheet} ${styles.bondOrderSheet}`} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="bond-order-title">
+        <i className={styles.sheetHandle} />
+        <div className={styles.bondOrderHead}><span><small>BUY GOVERNMENT BOND</small><h2 id="bond-order-title">{bond.ticker}</h2></span><em>Limit order</em></div>
+        <p className={styles.orderHint}>Enter the most you want to spend. We will fit the largest whole number of bonds within it, including estimated fees.</p>
+        <label className={styles.formField}><span>Amount to invest</span><div><em>ETB</em><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))} /></div><small>Available cash: {formatEtb(availableCash)}</small></label>
+        {!meetsMinimum && value > 0 && <p className={styles.inlineError}>The bond value must be at least {formatEtb(bond.minimumInvestment)}.</p>}
+        {!hasCash && <p className={styles.inlineError}>Enter an amount within your available cash.</p>}
+        {!limitAllowed && <p className={styles.inlineError}>Your broker has not enabled limit orders for this account.</p>}
+        <dl className={styles.orderTotals}>
+          <div><dt>Whole bonds</dt><dd>{allocation.units}</dd></div>
+          <div><dt>Price per bond</dt><dd>{formatEtb(pricePerBond)}</dd></div>
+          <div><dt>Bond value</dt><dd>{formatEtb(allocation.gross)}</dd></div>
+          <div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div>
+          {fees.regulator > 0 && <div><dt>Regulatory fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>}
+          {fees.exchange > 0 && <div><dt>Exchange fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>}
+          {fees.csd > 0 && <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>}
+          <div><dt>Total required</dt><dd>{formatEtb(allocation.total)}</dd></div>
+          <div><dt>Amount left</dt><dd>{formatEtb(allocation.unused)}</dd></div>
+        </dl>
+        {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>Order held: {heldChecks.length === 1 ? "1 check needs attention" : `${heldChecks.length} checks need attention`}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
+        <Button className={styles.full} disabled={!valid} onClick={() => setReviewing(true)}>Review order</Button>
+      </section>
+    </div>
+    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="bond-confirm-title"><h2 id="bond-confirm-title">Confirm bond order</h2><p>You&apos;re buying <b>{allocation.units} {allocation.units === 1 ? "bond" : "bonds"} of {bond.ticker}</b> for <b>{formatEtb(allocation.gross)}</b>, plus estimated fees of <b>{formatEtb(fees.total)}</b>. This limit order may not fill.</p><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the bond, quantity, price, estimated value, fees, maturity, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : "Buy bond"}</Button></div></section></div>}
+  </>;
+}
+
+function BondDetail({ bond, account, onBack, placeOrder, feeRule, allowedOrderTypes }: { bond: InvestorBond; account: InvestorBootstrap["account"]; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
+  const [buying, setBuying] = useState(false);
+  const pricePerBond = getBondPricePerUnit(bond);
+  const couponPayment = getBondCouponPayment(bond);
+  const availableCash = account?.availableCash ?? 75_000;
+  const halted = bond.status === "halted";
+  return <div className={styles.detailScreen}>
+    <ScreenHeader title={bond.ticker} onBack={onBack} right={<span className={`${styles.badge} ${halted ? styles.haltedBadge : ""}`}>{halted ? "Trading paused" : "Government bond"}</span>} />
+    <div className={styles.detailBody}>
+      <p className={styles.companyName}>{bond.name}</p>
+      <div className={styles.bondQuote}><span><small>Price</small><strong>{bond.quotedPricePct.toFixed(2)}%</strong><em>of face value</em></span><span><small>Yield to maturity</small><b>{bond.yieldToMaturity.toFixed(1)}%</b><em>per year if held</em></span></div>
+      <p className={styles.quoteContext}><i className={halted ? styles.pausedDot : ""} />{halted ? "Trading paused" : investorMarketContext.statusLabel}<span>{halted ? "New orders are not being accepted" : `Price updated ${formatMarketTimestamp(investorMarketContext.quoteAsOf)}`}</span></p>
+      {halted && <div className={styles.tradingNotice}><b>You cannot buy this bond right now</b><span>Trading can resume after the market or your broker lifts the pause.</span></div>}
+      <Card className={styles.bondFacts}>
+        <div className={styles.cardHeader}><h2>Key facts</h2></div>
+        <div>{[
+          ["Coupon", `${bond.couponRate.toFixed(1)}% per year`],
+          ["Matures", bond.maturityLabel],
+          ["Price per bond", formatEtb(pricePerBond)],
+          ["Face value", formatEtb(bond.faceValue)],
+          ["Interest paid", "Every 6 months"],
+          ["Next payment", bond.nextPayment],
+          ["Minimum order", formatEtb(bond.minimumInvestment)],
+          ["Settlement", bond.settlementCycle],
+          ["Liquidity", bond.liquidity],
+        ].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div>
+      </Card>
+      <Card>
+        <div className={styles.cardHeader}><h2>How payments work</h2></div>
+        <p className={styles.sectionIntro}>For each bond you hold, the issuer pays interest and returns the face value at maturity.</p>
+        <div className={styles.cashFlow}>
+          <span><i>1</i><small>Every 6 months</small><b>{formatEtb(couponPayment)}</b><em>interest per bond</em></span>
+          <span><i>2</i><small>Until</small><b>{bond.maturityLabel}</b><em>the maturity date</em></span>
+          <span><i>3</i><small>At maturity</small><b>{formatEtb(bond.faceValue)}</b><em>principal per bond</em></span>
+        </div>
+      </Card>
+      <Card>
+        <div className={styles.cardHeader}><h2>About this bond</h2></div>
+        <p className={styles.about}>This bond is issued by the {bond.issuer}. Buying it means lending money to the issuer in return for scheduled interest payments.</p>
+      </Card>
+      <Card>
+        <div className={styles.cardHeader}><h2>Things to consider</h2></div>
+        <ul className={styles.riskList}>{bond.riskNotes.map((risk) => <li key={risk}>{risk}</li>)}</ul>
+      </Card>
+      <p className={styles.disclaimer}>Yield assumes the bond is held to maturity and all scheduled payments are made.</p>
+    </div>
+    <div className={`${styles.tradeBar} ${styles.bondTradeBar}`}><Button disabled={halted} onClick={() => setBuying(true)}>{halted ? "Trading paused" : "Buy bond"}</Button></div>
+    {buying && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status !== "validation_failed") setBuying(false); return result; }} />}
+  </div>;
 }
 
 function StockDetail({ stock, account, onBack, placeOrder, feeRule, allowedOrderTypes }: { stock: InvestorStock; account: InvestorBootstrap["account"]; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
@@ -766,13 +915,55 @@ function StockDetail({ stock, account, onBack, placeOrder, feeRule, allowedOrder
   const [range, setRange] = useState<MarketRange>("1M");
   const holding = account?.holdings.find((item) => item.ticker === stock.ticker) ?? investorHoldings.find((item) => item.ticker === stock.ticker);
   const session = getInvestorSession(stock);
-  return <div className={styles.detailScreen}><ScreenHeader title={stock.ticker} onBack={onBack} right={<span className={styles.badge}>{stock.sector}</span>} /><div className={styles.detailBody}><p className={styles.companyName}>{stock.name}</p><div className={styles.quote}><strong>{formatEtb(stock.price)}</strong><Delta value={stock.delta} pill /></div><PriceChart key={`${stock.ticker}-${range}`} stock={stock} range={range} /><div className={styles.rangeTabs}>{(["1W", "1M", "3M", "1Y", "All"] as MarketRange[]).map((item) => <button key={item} className={range === item ? styles.rangeActive : ""} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div><Card className={styles.marketStats}>{[["Open", formatEtb(session.open)], ["Day range", `${formatEtb(session.low)} – ${formatEtb(session.high)}`], ["Volume", `${session.volume.toLocaleString("en-US")} shares`], ["Listed", "ESX Main Market"]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</Card>{holding && <Card className={styles.positionCard}><small>YOUR POSITION</small><div>{[["Shares", `${holding.quantity} sh`], ["Avg cost", formatEtb(holding.averageCost)], ["Value", formatEtb(holding.quantity * stock.price)], ["Unrealized", `${holding.quantity * (stock.price - holding.averageCost) >= 0 ? "+" : "−"}${formatEtb(Math.abs(holding.quantity * (stock.price - holding.averageCost))).replace("ETB ", "")}`]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div></Card>}<Card><div className={styles.cardHeader}><h2>Company insights</h2></div><div className={styles.insights}>{[["Dividend yield", stock.dividendYield], ["P/E", stock.pe], ["YTD", `${stock.ytd >= 0 ? "+" : ""}${stock.ytd}%`], ["Revenue", stock.revenueGrowth], ["Next dividend", stock.nextDividend], ["Sector", stock.sector]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div><div className={styles.frankTake}><small>FRANK&apos;S TAKE</small><p>{stock.frankTake}</p></div></Card><Card><div className={styles.cardHeader}><h2>About</h2></div><p className={styles.about}>{stock.about}</p></Card><p className={styles.disclaimer}>Prices move. Invest money you won&apos;t need soon.</p></div><div className={styles.tradeBar}><Button onClick={() => setSide("Buy")}>Buy</Button><Button variant="secondary" disabled={!holding} onClick={() => setSide("Sell")}>Sell</Button></div>{side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status !== "validation_failed") setSide(null); return result; }} />}</div>;
+  const snapshot = getMarketSnapshot(stock);
+  return <div className={styles.detailScreen}>
+    <ScreenHeader title={stock.ticker} onBack={onBack} right={<span className={styles.badge}>{stock.sector}</span>} />
+    <div className={styles.detailBody}>
+      <p className={styles.companyName}>{stock.name}</p>
+      <div className={styles.quote}><strong>{formatEtb(stock.price)}</strong><Delta value={stock.delta} pill /></div>
+      <p className={styles.quoteContext}><i />{snapshot.statusLabel}<span>Updated {formatMarketTimestamp(snapshot.quoteAsOf)} · Last trade {formatMarketTimestamp(snapshot.lastTradeAt)}</span></p>
+      <PriceChart key={`${stock.ticker}-${range}`} stock={stock} range={range} />
+      <div className={styles.rangeTabs}>{(["1W", "1M", "3M", "1Y", "All"] as MarketRange[]).map((item) => <button key={item} className={range === item ? styles.rangeActive : ""} onClick={() => setRange(item)} aria-pressed={range === item}>{item}</button>)}</div>
+      <Card className={styles.marketStats}>{[["Open", formatEtb(session.open)], ["Day range", `${formatEtb(session.low)} – ${formatEtb(session.high)}`], ["Volume", `${session.volume.toLocaleString("en-US")} shares`], ["Listed", "ESX Main Market"]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</Card>
+      <Card className={styles.liquidityCard}>
+        <div className={styles.cardHeader}><h2>Market activity</h2><span className={styles.badge}>Top prices</span></div>
+        <div className={styles.liquidityGrid}>
+          <span><small>Best buyer</small><b>{formatEtb(snapshot.bid.price)}</b><em>{snapshot.bid.quantity.toLocaleString("en-US")} shares</em></span>
+          <span><small>Best seller</small><b>{formatEtb(snapshot.ask.price)}</b><em>{snapshot.ask.quantity.toLocaleString("en-US")} shares</em></span>
+          <span><small>Difference</small><b>{formatEtb(snapshot.spread)}</b><em>{snapshot.spreadPct.toFixed(2)}%</em></span>
+        </div>
+        <p>These are the closest prices buyers and sellers are currently offering.</p>
+      </Card>
+      {holding && <Card className={styles.positionCard}><small>YOUR POSITION</small><div>{[["Shares", `${holding.quantity} sh`], ["Avg cost", formatEtb(holding.averageCost)], ["Value", formatEtb(holding.quantity * stock.price)], ["Unrealized", `${holding.quantity * (stock.price - holding.averageCost) >= 0 ? "+" : "−"}${formatEtb(Math.abs(holding.quantity * (stock.price - holding.averageCost))).replace("ETB ", "")}`]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div></Card>}
+      <Card>
+        <div className={styles.cardHeader}><h2>Company insights</h2></div>
+        <div className={styles.insights}>{[["Dividend yield", stock.dividendYield], ["P/E", stock.pe], ["YTD", `${stock.ytd >= 0 ? "+" : ""}${stock.ytd}%`], ["Revenue", stock.revenueGrowth], ["Next dividend", stock.nextDividend], ["Sector", stock.sector]].map(([label, value]) => <span key={label}><small>{label}</small><b>{value}</b></span>)}</div>
+        <div className={styles.frankTake}><small>FRANK&apos;S TAKE</small><p>{stock.frankTake}</p></div>
+      </Card>
+      <Card>
+        <div className={styles.cardHeader}><h2>What this company does</h2></div>
+        <p className={styles.about}>{stock.about}</p>
+      </Card>
+      <Card>
+        <div className={styles.cardHeader}><h2>Latest updates</h2></div>
+        <div className={styles.companyUpdates}>{stock.updates.map((update) => <article key={update.title}><span><b>{update.title}</b><small>{update.date}</small></span><p>{update.summary}</p><em>{update.source}</em></article>)}</div>
+      </Card>
+      <Card>
+        <div className={styles.cardHeader}><h2>Things to consider</h2></div>
+        <ul className={styles.riskList}>{stock.riskNotes.map((risk) => <li key={risk}>{risk}</li>)}</ul>
+      </Card>
+      <p className={styles.disclaimer}>Prices move. Invest money you won&apos;t need soon.</p>
+    </div>
+    <div className={styles.tradeBar}><Button onClick={() => setSide("Buy")}>Buy</Button><Button variant="secondary" disabled={!holding} onClick={() => setSide("Sell")}>Sell</Button></div>
+    {side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status !== "validation_failed") setSide(null); return result; }} />}
+  </div>;
 }
 
 export default function InvestorApp() {
   const [phase, setPhase] = useState<"onboarding" | "app">("onboarding");
   const [tab, setTab] = useState<Tab>("home");
   const [stock, setStock] = useState<InvestorStock | null>(null);
+  const [bond, setBond] = useState<InvestorBond | null>(null);
   const [toast, setToast] = useState("");
   const [profileName, setProfileName] = useState("Selam Mekonnen");
   const [bootstrap, setBootstrap] = useState<InvestorBootstrap | null>(null);
@@ -781,7 +972,9 @@ export default function InvestorApp() {
   const [cashOpen, setCashOpen] = useState(false);
   const featured = useMemo(() => investorStocks.slice(0, 3), []);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
-  const navigate = (next: Tab) => { setTab(next); setStock(null); };
+  const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); };
+  const openStock = (next: InvestorStock) => { setBond(null); setStock(next); };
+  const openBond = (next: InvestorBond) => { setStock(null); setBond(next); };
   useEffect(() => {
     const controller = new AbortController();
     void fetch("/api/notifications", { headers: investorHeaders, signal: controller.signal })
@@ -908,10 +1101,14 @@ export default function InvestorApp() {
   const equityFeeRule = bootstrap?.tenant.feeSchedule?.rules.find((rule) => rule.assetClass === "equity") ?? {
     assetClass: "equity", marketSegment: "main", brokeragePct: feePct, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee, maximumFee: null,
   };
+  const bondFeeRule = bootstrap?.tenant.feeSchedule?.rules.find((rule) => rule.assetClass === "bond") ?? {
+    assetClass: "bond", marketSegment: "main", brokeragePct: feePct, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee, maximumFee: null,
+  };
   const allowedOrderTypes = bootstrap?.tenant.allowedOrderTypes ?? ["Market", "Limit", "Stop-loss"];
   const enabledTickers = bootstrap ? bootstrap.instruments.map((instrument) => instrument.ticker) : null;
+  const availableBonds = investorBonds.map((item) => mergeBondInstrument(item, bootstrap?.instruments.find((instrument) => instrument.ticker === item.ticker)));
   const bondsEnabled = bootstrap?.tenant.features.bonds ?? true;
   const theme = { "--investor-accent": bootstrap?.tenant.primaryColor ?? "#0c8189" } as CSSProperties;
 
-  return <main className={styles.investorPage} style={theme}><section className={styles.desktopStory}><AppLogo /><span className={styles.licenseBadge}>Platform demo</span><h1>Own a piece of Ethiopia&apos;s growth</h1><p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, and learn which mix may fit your goals."}</p><Button onClick={() => setPhase("app")}>Explore the investor app</Button><div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div><small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small></section><section className={styles.appFrame} aria-label="Frank Money investor app"><div className={styles.appViewport}>{phase === "onboarding" ? <Onboarding onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} /> : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} /> : <><div className={styles.scrollArea}>{tab === "home" ? <HomeScreen openStock={setStock} go={navigate} account={bootstrap?.account ?? null} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => setCashOpen(true)} /> : tab === "markets" ? <MarketsScreen openStock={setStock} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} /> : tab === "portfolio" ? <PortfolioScreen openStock={setStock} account={bootstrap?.account ?? null} /> : tab === "learn" ? <LearnScreen /> : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}</div><BottomNav active={tab} onChange={navigate} /></>}{cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} />}{bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}{toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}</div></section></main>;
+  return <main className={styles.investorPage} style={theme}><section className={styles.desktopStory}><AppLogo /><span className={styles.licenseBadge}>Platform demo</span><h1>Own a piece of Ethiopia&apos;s growth</h1><p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, and learn which mix may fit your goals."}</p><Button onClick={() => setPhase("app")}>Explore the investor app</Button><div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div><small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small></section><section className={styles.appFrame} aria-label="Frank Money investor app"><div className={styles.appViewport}>{phase === "onboarding" ? <Onboarding onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} /> : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} /> : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} /> : <><div className={styles.scrollArea}>{tab === "home" ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => setCashOpen(true)} /> : tab === "markets" ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} /> : tab === "portfolio" ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} /> : tab === "learn" ? <LearnScreen /> : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}</div><BottomNav active={tab} onChange={navigate} /></>}{cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} />}{bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}{toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}</div></section></main>;
 }

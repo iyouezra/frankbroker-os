@@ -154,6 +154,9 @@
 
 .searchField { min-height: 48px; display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 0 13px; border: 1px solid var(--investor-ink-200); border-radius: 14px; background: white; color: var(--investor-ink-400); }
 .searchField input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--investor-ink-900); font-size: 14px; }
+.marketContext { display: flex; align-items: center; gap: 6px; margin: -7px 2px 12px; color: var(--investor-teal-800); font-size: 10px; font-weight: 700; }
+.marketContext i, .quoteContext > i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--investor-gain); box-shadow: 0 0 0 3px rgba(14,159,91,.1); }
+.marketContext span { margin-left: auto; color: var(--investor-ink-400); font-weight: 500; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 12px; padding: 4px; border-radius: 12px; background: var(--investor-ink-100); }
 .segmented button { min-height: 37px; border: 0; border-radius: 9px; background: transparent; color: var(--investor-ink-500); cursor: pointer; font-weight: 650; }
 .segmented .segmentActive { background: white; color: var(--investor-ink-900); box-shadow: 0 1px 4px rgba(8,62,71,.08); }
@@ -252,6 +255,9 @@
 .companyName { margin: -3px 0 3px; color: var(--investor-ink-500); }
 .quote { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
 .quote > strong { font-family: var(--font-mono); font-size: 30px; letter-spacing: -.04em; }
+.quoteContext { display: flex; align-items: center; gap: 6px; margin: -5px 0 11px; color: var(--investor-teal-800); font-size: 9px; font-weight: 700; }
+.quoteContext span { margin-left: auto; color: var(--investor-ink-400); font-weight: 500; }
+.quoteContext > .pausedDot { background: #d08a18; box-shadow: 0 0 0 3px rgba(208,138,24,.12); }
 .rangeTabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin: 10px 0 14px; }
 .rangeTabs button { min-height: 33px; border: 0; border-radius: 9px; background: transparent; color: var(--investor-ink-500); cursor: pointer; font-size: 11px; font-weight: 650; }
 .rangeTabs .rangeActive { background: var(--investor-ink-900); color: white; }
@@ -263,10 +269,53 @@
 .positionCard > small { display: block; margin-bottom: 11px; color: var(--investor-ink-500); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
 .positionCard > div, .insights { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .insights { grid-template-columns: repeat(3, 1fr); }
+.liquidityCard { padding-bottom: 14px; }
+.liquidityGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.liquidityGrid > span { min-width: 0; display: flex; flex-direction: column; padding: 10px; border-radius: 12px; background: var(--investor-ink-50); }
+.liquidityGrid small { color: var(--investor-ink-500); font-size: 9px; }
+.liquidityGrid b { margin-top: 4px; overflow: hidden; font-family: var(--font-mono); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.liquidityGrid em { margin-top: 3px; color: var(--investor-ink-400); font-size: 8.5px; font-style: normal; }
+.liquidityCard > p { margin: 10px 1px 0; color: var(--investor-ink-500); font-size: 9.5px; line-height: 1.45; }
 .frankTake { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--investor-ink-100); }
 .frankTake small { color: var(--investor-teal-700); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
 .frankTake p, .about { margin: 5px 0 0; color: var(--investor-ink-700); font-size: 12px; line-height: 1.55; }
+.companyUpdates article { padding: 11px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.companyUpdates article:first-child { padding-top: 3px; }
+.companyUpdates article:last-child { padding-bottom: 0; border-bottom: 0; }
+.companyUpdates article > span { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.companyUpdates b { font-size: 11.5px; }
+.companyUpdates small { color: var(--investor-ink-400); font-family: var(--font-mono); font-size: 8.5px; }
+.companyUpdates p { margin: 4px 0; color: var(--investor-ink-600); font-size: 10.5px; line-height: 1.5; }
+.companyUpdates em { color: var(--investor-teal-700); font-size: 8.5px; font-style: normal; font-weight: 700; }
+.riskList { display: flex; flex-direction: column; gap: 8px; margin: 2px 0 0; padding: 0; list-style: none; }
+.riskList li { position: relative; padding-left: 16px; color: var(--investor-ink-600); font-size: 10.5px; line-height: 1.5; }
+.riskList li::before { content: ""; position: absolute; top: 6px; left: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--investor-aqua-400); box-shadow: 0 0 0 3px var(--investor-aqua-100); }
 .tradeBar { position: absolute; inset: auto 0 0; z-index: 10; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 20px 20px; border-top: 1px solid var(--investor-ink-100); background: rgba(255,255,255,.91); backdrop-filter: blur(16px); }
+.bondTradeBar { grid-template-columns: 1fr; }
+
+.bondQuote { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; margin: 10px 0 13px; }
+.bondQuote > span { min-width: 0; display: flex; flex-direction: column; }
+.bondQuote > span:last-child { padding-left: 13px; border-left: 1px solid var(--investor-ink-200); }
+.bondQuote small { color: var(--investor-ink-500); font-size: 9px; }
+.bondQuote strong, .bondQuote b { margin-top: 2px; font-family: var(--font-mono); font-size: 25px; letter-spacing: -.04em; }
+.bondQuote b { font-size: 20px; }
+.bondQuote em { margin-top: 2px; color: var(--investor-ink-400); font-size: 8.5px; font-style: normal; }
+.haltedBadge { background: #fff3d6; color: #956510; }
+.tradingNotice { display: flex; flex-direction: column; gap: 3px; margin-bottom: 14px; padding: 12px 13px; border: 1px solid #f0d8a5; border-radius: 14px; background: #fff9ec; color: #76551b; }
+.tradingNotice b { font-size: 11px; }
+.tradingNotice span { font-size: 9.5px; line-height: 1.45; }
+.bondFacts > div:last-child { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bondFacts > div:last-child span { min-width: 0; display: flex; flex-direction: column; }
+.bondFacts > div:last-child small { color: var(--investor-ink-500); font-size: 9px; }
+.bondFacts > div:last-child b { margin-top: 3px; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 10.5px; }
+.sectionIntro { margin: 0 0 12px; color: var(--investor-ink-500); font-size: 10.5px; line-height: 1.5; }
+.cashFlow { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cashFlow::before { content: ""; position: absolute; top: 12px; right: 16%; left: 16%; height: 1px; background: var(--investor-ink-200); }
+.cashFlow > span { position: relative; min-width: 0; display: flex; align-items: center; flex-direction: column; text-align: center; }
+.cashFlow i { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--investor-ink-200); border-radius: 50%; background: white; color: var(--investor-teal-700); font-size: 9px; font-style: normal; font-weight: 800; }
+.cashFlow small { margin-top: 7px; color: var(--investor-ink-500); font-size: 8px; }
+.cashFlow b { margin-top: 3px; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 9px; }
+.cashFlow em { margin-top: 2px; color: var(--investor-ink-400); font-size: 7.5px; font-style: normal; line-height: 1.3; }
 
 .sheetBackdrop, .dialogBackdrop { position: absolute; inset: 0; z-index: 30; display: flex; align-items: flex-end; background: rgba(8,39,44,.46); animation: fadeIn 150ms ease-out; }
 .orderSheet { width: 100%; padding: 16px 20px 26px; border-radius: 28px 28px 0 0; background: white; box-shadow: 0 -16px 42px rgba(8,62,71,.18); animation: sheetIn 200ms ease-out; }
@@ -290,6 +339,16 @@
 .notifItem small { font-size: 12px; color: var(--investor-ink-400); }
 .orderSheet h2 { margin-bottom: 13px; font-size: 20px; }
 .orderHint { margin: -2px 0 12px; color: var(--investor-ink-500); font-size: 11px; line-height: 1.5; }
+.bondOrderSheet { max-height: 92%; overflow-y: auto; }
+.bondOrderHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bondOrderHead > span { display: flex; flex-direction: column; }
+.bondOrderHead small { color: var(--investor-teal-700); font-size: 8.5px; font-weight: 800; letter-spacing: .09em; }
+.bondOrderHead h2 { margin: 3px 0 11px; }
+.bondOrderHead > em { padding: 5px 8px; border-radius: 999px; background: var(--investor-aqua-100); color: var(--investor-teal-800); font-size: 8.5px; font-style: normal; font-weight: 700; }
+.inlineError { margin: -6px 0 10px; color: var(--investor-loss); font-size: 9.5px; }
+.orderAlert { margin: 0 0 14px; padding: 11px 12px; border: 1px solid #f1c9c9; border-radius: 13px; background: #fbe9e9; color: #b4322e; font-size: 10px; line-height: 1.45; }
+.orderAlert b { display: block; margin-bottom: 3px; }
+.orderAlert ul { margin: 0; padding-left: 16px; }
 .formField { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .formField > span { font-size: 12px; font-weight: 650; }
 .formField > div { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--investor-ink-200); border-radius: 12px; }

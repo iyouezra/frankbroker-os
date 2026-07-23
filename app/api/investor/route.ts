@@ -133,7 +133,16 @@ export async function GET(request: Request) {
       cashMovements: (client?.cashMovements ?? []).map(serializeCashMovement),
       instruments: broker.instrumentAccess.map(({ instrument }) => ({
         id: instrument.id, ticker: instrument.symbol, name: instrument.name, assetClass: instrument.assetClass,
-        price: toNum(instrument.lastPrice), status: instrument.tradingStatus, lotSize: instrument.lotSize,
+        issuer: instrument.issuer,
+        price: toNum(instrument.lastPrice),
+        status: instrument.tradingStatus,
+        lotSize: instrument.lotSize,
+        tickSize: toNum(instrument.tickSize),
+        settlementCycle: instrument.settlementCycle,
+        faceValue: instrument.faceValue ? toNum(instrument.faceValue) : null,
+        maturityDate: instrument.maturityDate?.toISOString().slice(0, 10) ?? null,
+        couponRate: instrument.couponRate ? toNum(instrument.couponRate) : null,
+        couponFrequency: instrument.couponFrequency,
       })),
     });
   } catch (error) { return routeError(error); }
