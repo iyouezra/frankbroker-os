@@ -39,6 +39,7 @@ type InvestorKyc = {
   accountType: "retail" | "institution";
   fullName: string;
   phone: string;
+  email: string;
   faydaId: string;
   tin: string;
   address: string;
@@ -304,15 +305,15 @@ function ProgressDots({ step }: { step: number }) {
   return <div className={styles.progressDots} aria-label={`Onboarding step ${Math.min(step, 3) + 1} of 4`}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
 }
 
-const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", faydaId: "123456789012", tin: "0012814908", address: "", proofOfAddressType: "Drivers License", proofOfAddressReference: "", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
-const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "", proofOfAddressReference: "", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
+const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", email: "selam.mekonnen@example.et", faydaId: "123456789012", tin: "0012814908", address: "", proofOfAddressType: "Drivers License", proofOfAddressReference: "", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
+const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", email: "finance@bluenile.example", faydaId: "234567890123", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "", proofOfAddressReference: "", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
 
 function KycProgress({ step }: { step: number }) {
   return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 5</small></span><i><em style={{ width: `${((step + 1) / 5) * 100}%` }} /></i></div>;
 }
 
-function KycField({ label, value, onChange, hint, placeholder, inputMode = "text", maxLength }: { label: string; value: string; onChange: (value: string) => void; hint?: string; placeholder?: string; inputMode?: "text" | "numeric" | "tel"; maxLength?: number }) {
-  return <label className={styles.kycField}><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} inputMode={inputMode} maxLength={maxLength} autoComplete="off" />{hint && <small>{hint}</small>}</label>;
+function KycField({ label, value, onChange, hint, placeholder, inputMode = "text", maxLength, type = "text", autoComplete = "off" }: { label: string; value: string; onChange: (value: string) => void; hint?: string; placeholder?: string; inputMode?: "text" | "numeric" | "tel" | "email"; maxLength?: number; type?: "text" | "email"; autoComplete?: string }) {
+  return <label className={styles.kycField}><span>{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} inputMode={inputMode} maxLength={maxLength} autoComplete={autoComplete} />{hint && <small>{hint}</small>}</label>;
 }
 
 function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: InvestorKyc) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
@@ -322,9 +323,13 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [businessLicenseFile, setBusinessLicenseFile] = useState<File | null>(null);
   const [tinCertificateFile, setTinCertificateFile] = useState<File | null>(null);
+  const [certificateOfIncorporationFile, setCertificateOfIncorporationFile] = useState<File | null>(null);
+  const [articleOfAssociationFile, setArticleOfAssociationFile] = useState<File | null>(null);
   const proofUploadId = useId();
   const businessLicenseUploadId = useId();
   const tinCertificateUploadId = useId();
+  const certificateOfIncorporationUploadId = useId();
+  const articleOfAssociationUploadId = useId();
   const [linkedBanks, setLinkedBanks] = useState<LinkedBankAccount[]>([
     { id: "onboarding_bank_1", bankName: bankOptions[0], accountNumber: "100057894108", accountHolderName: retailDemo.fullName, status: "pending" },
   ]);
@@ -335,6 +340,8 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
     setProofFile(null);
     setBusinessLicenseFile(null);
     setTinCertificateFile(null);
+    setCertificateOfIncorporationFile(null);
+    setArticleOfAssociationFile(null);
     setLinkedBanks([{ id: "onboarding_bank_1", bankName: bankOptions[0], accountNumber: accountType === "retail" ? "100057894108" : "100057890017", accountHolderName: nextProfile.fullName, status: "pending" }]);
   };
   const updateLinkedBank = (id: string, field: "bankName" | "accountNumber" | "accountHolderName", value: string) => {
@@ -349,9 +356,10 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
     setLinkedBanks((current) => current.filter((account) => account.id !== id));
   };
   const phoneValid = profile.phone.replace(/\D/g, "").length >= 9;
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email) && profile.email.length <= 160;
   const faydaValid = /^\d{12}$/.test(profile.faydaId);
   const tinValid = /^\d{10}(?:-\d{2})?$/.test(profile.tin);
-  const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid;
+  const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid && emailValid;
   const identityStepValid = faydaValid
     && tinValid
     && (profile.accountType === "retail" || (profile.address.trim().length >= 4 && profile.registrationNumber.trim().length >= 4 && profile.representativeName.trim().length >= 3 && profile.beneficialOwnerName.trim().length >= 3));
@@ -389,6 +397,7 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
     <Card className={styles.kycReview}><dl>
       <div><dt>Account</dt><dd>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</dd></div>
       <div><dt>Legal name</dt><dd>{profile.fullName}</dd></div>
+      <div><dt>Email</dt><dd>{profile.email}</dd></div>
       {profile.accountType === "institution" && <>
         <div><dt>Representative</dt><dd>{profile.representativeName}</dd></div>
         <div><dt>Beneficial owner</dt><dd>{profile.beneficialOwnerName}</dd></div>
@@ -398,7 +407,7 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
       <div><dt>TIN</dt><dd>{masked(profile.tin)}</dd></div>
       {profile.accountType === "retail"
         ? <div><dt>Address evidence</dt><dd>{profile.proofOfAddressType}{profile.proofOfAddressReference ? ` · ${profile.proofOfAddressReference}` : ""}</dd></div>
-        : <div><dt>Documents</dt><dd>{[businessLicenseFile, tinCertificateFile].filter(Boolean).length} uploaded</dd></div>}
+        : <div><dt>Documents</dt><dd>{[businessLicenseFile, tinCertificateFile, certificateOfIncorporationFile, articleOfAssociationFile].filter(Boolean).length} of 4 uploaded</dd></div>}
       <div><dt>Linked banks</dt><dd>{linkedBanks.length} {linkedBanks.length === 1 ? "account" : "accounts"}</dd></div>
     </dl></Card>
     <Card className={styles.termsCard}><small>{legalDocument ? `VERSION ${legalDocument.version} · EFFECTIVE ${legalDocument.effectiveAt}` : "DEMO TERMS"}</small><b>{legalDocument?.title ?? "Brokerage account terms"}</b><p>{legalDocument?.summary ?? "Account operation, order handling, fee disclosure, settlement, confirmation, discrepancy, restriction, and closure terms."}</p></Card>
@@ -486,12 +495,30 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
             <em>{tinCertificateFile ? "✓" : "+"}</em>
           </label>
         </div>
+        <div className={styles.uploadField}>
+          <span>Certificate of Incorporation</span>
+          <input id={certificateOfIncorporationUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setCertificateOfIncorporationFile(event.target.files?.[0] ?? null)} />
+          <label htmlFor={certificateOfIncorporationUploadId}>
+            <b>{certificateOfIncorporationFile ? certificateOfIncorporationFile.name : "Upload Certificate of Incorporation"}</b>
+            <small>{certificateOfIncorporationFile ? `${(certificateOfIncorporationFile.size / 1024).toFixed(0)} KB · Choose a different file` : "PDF, PNG or JPG"}</small>
+            <em>{certificateOfIncorporationFile ? "✓" : "+"}</em>
+          </label>
+        </div>
+        <div className={styles.uploadField}>
+          <span>Article of Association</span>
+          <input id={articleOfAssociationUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setArticleOfAssociationFile(event.target.files?.[0] ?? null)} />
+          <label htmlFor={articleOfAssociationUploadId}>
+            <b>{articleOfAssociationFile ? articleOfAssociationFile.name : "Upload Article of Association"}</b>
+            <small>{articleOfAssociationFile ? `${(articleOfAssociationFile.size / 1024).toFixed(0)} KB · Choose a different file` : "PDF, PNG or JPG"}</small>
+            <em>{articleOfAssociationFile ? "✓" : "+"}</em>
+          </label>
+        </div>
       </>}
     </div>
     <Button className={styles.full} disabled={!identityStepValid} onClick={() => setStep(2)}>Continue</Button>
   </div>;
 
-  return <div className={styles.onboarding}><KycProgress step={0} /><div className={styles.kycBrand}><AppLogo /></div><div className={styles.onboardingCopy}><h1>Open your investment account</h1><p>First, tell us who will own this account. It takes a few minutes.</p></div><div className={styles.accountTypeGrid}><button className={profile.accountType === "retail" ? styles.accountTypeSelected : ""} onClick={() => chooseType("retail")}><i>{profile.accountType === "retail" && <Icon name="check" size={13} />}</i><b>Retail investor</b><small>An account for you</small></button><button className={profile.accountType === "institution" ? styles.accountTypeSelected : ""} onClick={() => chooseType("institution")}><i>{profile.accountType === "institution" && <Icon name="check" size={13} />}</i><b>Institution</b><small>A company or organization</small></button></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Full legal name" : "Legal organization name"} value={profile.fullName} onChange={(value) => update("fullName", value)} placeholder="As shown on official records" /><KycField label="Mobile number" value={profile.phone} onChange={(value) => update("phone", value.replace(/[^0-9+]/g, ""))} inputMode="tel" placeholder="09… or +251…" hint="We’ll use this for account updates and security." /></div><div className={styles.demoNotice}><b>Demo only</b><span>These fictional details can be persisted to the shared demo database when connected.</span></div><Button className={styles.full} disabled={!firstStepValid} onClick={() => setStep(1)}>Continue</Button></div>;
+  return <div className={styles.onboarding}><KycProgress step={0} /><div className={styles.kycBrand}><AppLogo /></div><div className={styles.onboardingCopy}><h1>Open your investment account</h1><p>First, tell us who will own this account. It takes a few minutes.</p></div><div className={styles.accountTypeGrid}><button className={profile.accountType === "retail" ? styles.accountTypeSelected : ""} onClick={() => chooseType("retail")}><i>{profile.accountType === "retail" && <Icon name="check" size={13} />}</i><b>Retail investor</b><small>An account for you</small></button><button className={profile.accountType === "institution" ? styles.accountTypeSelected : ""} onClick={() => chooseType("institution")}><i>{profile.accountType === "institution" && <Icon name="check" size={13} />}</i><b>Institution</b><small>A company or organization</small></button></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Full legal name" : "Legal organization name"} value={profile.fullName} onChange={(value) => update("fullName", value)} placeholder="As shown on official records" /><KycField label="Mobile number" value={profile.phone} onChange={(value) => update("phone", value.replace(/[^0-9+]/g, ""))} inputMode="tel" placeholder="09… or +251…" hint="We’ll use this for account updates and security." /><KycField label="Email address" value={profile.email} onChange={(value) => update("email", value.trimStart())} type="email" inputMode="email" autoComplete="email" placeholder="name@example.com" hint={profile.email && !emailValid ? "Enter a valid email address." : "We’ll use this for confirmations and account notices."} /></div><div className={styles.demoNotice}><b>Demo only</b><span>These fictional details can be persisted to the shared demo database when connected.</span></div><Button className={styles.full} disabled={!firstStepValid} onClick={() => setStep(1)}>Continue</Button></div>;
 }
 
 function Onboarding({ onDone, legalDocument }: { onDone: (profile: InvestorKyc) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {

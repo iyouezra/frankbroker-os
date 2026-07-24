@@ -272,10 +272,12 @@ export async function POST(request: Request) {
 
     if (payload.action === "kyc") {
       const fullName = String(payload.fullName ?? "").trim();
+      const email = String(payload.email ?? "").trim();
       const faydaId = String(payload.faydaId ?? "").replace(/\D/g, "");
       const tin = String(payload.tin ?? "").replace(/\D/g, "");
-      if (!fullName || fullName.length > 160 || faydaId.length < 4 || faydaId.length > 32 || tin.length < 4 || tin.length > 32) {
-        return Response.json({ error: "Name, Fayda ID, and TIN are required." }, { status: 400 });
+      const emailValid = email.length <= 160 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!fullName || fullName.length > 160 || !emailValid || faydaId.length < 4 || faydaId.length > 32 || tin.length < 4 || tin.length > 32) {
+        return Response.json({ error: "Name, email, Fayda ID, and TIN are required." }, { status: 400 });
       }
       const [client, settings, legalDocument] = await Promise.all([
         prisma.client.findFirst({ where: { id: clientId, brokerId } }),
@@ -306,6 +308,7 @@ export async function POST(request: Request) {
           fullName,
           clientType: payload.accountType === "institution" ? "institution" : "individual",
           phone: String(payload.phone ?? "") || null,
+          email,
           identityReference: `demo_fayda_${crypto.randomUUID()}`,
           faydaLast4: faydaId.slice(-4), taxIdLast4: tin.slice(-4), taxId: null,
           address: String(payload.address ?? "").trim() || null,

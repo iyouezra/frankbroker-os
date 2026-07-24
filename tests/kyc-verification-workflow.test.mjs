@@ -14,6 +14,23 @@ test("digital KYC remains pending broker review and returns generated identifier
   assert.match(clientService, /const accountNumber = `TRD-/);
 });
 
+test("investor onboarding captures email and the full institutional document set", async () => {
+  const [investor, route] = await Promise.all([
+    read("app/investor/investor-app.tsx"),
+    read("app/api/investor/route.ts"),
+  ]);
+  assert.match(investor, /label="Email address"/);
+  assert.match(investor, /Certificate of Incorporation/);
+  assert.match(investor, /Article of Association/);
+  assert.match(investor, /emailValid/);
+  assert.match(route, /const email = String\(payload\.email/);
+  assert.match(route, /emailValid/);
+  assert.match(route, /\n\s+email,\n/);
+
+  const identityValidation = investor.slice(investor.indexOf("const identityStepValid"), investor.indexOf("const bankStepValid"));
+  assert.doesNotMatch(identityValidation, /businessLicenseFile|tinCertificateFile|certificateOfIncorporationFile|articleOfAssociationFile/);
+});
+
 test("order authorization is exact-payload-bound, expiring, attempt-limited, and single-use", async () => {
   const [verification, orderService] = await Promise.all([read("lib/verification-service.ts"), read("lib/oms/order-service.ts")]);
   for (const field of ["accountId", "instrumentId", "side", "quantity", "price", "triggerPrice", "orderType", "source", "submissionReference"]) {
