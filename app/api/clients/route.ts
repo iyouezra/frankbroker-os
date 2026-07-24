@@ -3,6 +3,7 @@ import { requirePermission } from "../../../lib/server-auth";
 import { toNum } from "../../../lib/money";
 import { apiError } from "../../../lib/api";
 import { createClientForApproval, type CreateClientInput } from "../../../lib/client-service";
+import { parseLinkedBanks, prepareDocuments } from "../../../lib/onboarding-evidence";
 
 export const runtime = "nodejs";
 
@@ -116,7 +117,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = requirePermission(request, "create");
-    const payload = await request.json() as Partial<CreateClientInput>;
+    const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    const formData = multipart ? await request.formData() : null;
+    const payload = multipart
+      ? JSON.parse(String(formData?.get("payload") ?? "{}")) as Partial<CreateClientInput>
+      : await request.json() as Partial<CreateClientInput>;
+    const documents = formData ? await prepareDocuments(formData) : [];
+    const linkedBanks = parseLinkedBanks(payload.linkedBanks ?? (
+      payload.bankName && payload.bankAccountNumber
+        ? [{ bankName: payload.bankName, accountNumber: payload.bankAccountNumber, accountHolderName: payload.bankAccountName ?? payload.fullName }]
+        : []
+    ));
     const clientType = payload.clientType === "institution"
       ? "institution"
       : payload.clientType === "corporate"
@@ -126,12 +137,12 @@ export async function POST(request: Request) {
       clientType,
       fullName: String(payload.fullName ?? ""),
       phone: String(payload.phone ?? ""),
-      email: payload.email ? String(payload.email) : undefined,
+      email: String(payload.email ?? ""),
       faydaId: String(payload.faydaId ?? ""),
       tin: String(payload.tin ?? ""),
-      address: String(payload.address ?? ""),
-      proofOfAddressType: String(payload.proofOfAddressType ?? ""),
-      proofOfAddressReference: String(payload.proofOfAddressReference ?? ""),
+      address: payload.address ? String(payload.address) : undefined,
+      proofOfAddressType: payload.proofOfAddressType ? String(payload.proofOfAddressType) : undefined,
+      proofOfAddressReference: payload.proofOfAddressReference ? String(payload.proofOfAddressReference) : undefined,
       businessRegistrationNumber: payload.businessRegistrationNumber ? String(payload.businessRegistrationNumber) : undefined,
       authorizedRepresentativeName: payload.authorizedRepresentativeName ? String(payload.authorizedRepresentativeName) : undefined,
       beneficialOwnerName: payload.beneficialOwnerName ? String(payload.beneficialOwnerName) : undefined,
@@ -154,6 +165,8 @@ export async function POST(request: Request) {
       bankName: payload.bankName ? String(payload.bankName) : undefined,
       bankAccountName: payload.bankAccountName ? String(payload.bankAccountName) : undefined,
       bankAccountNumber: payload.bankAccountNumber ? String(payload.bankAccountNumber) : undefined,
+      documents,
+      linkedBanks,
     });
     return Response.json({ client: result }, { status: 201 });
   } catch (error) {

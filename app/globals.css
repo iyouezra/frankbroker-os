@@ -515,6 +515,17 @@ button.document-row:hover { background: var(--fx-sunken); }
 .document-row small { margin-top: 4px; color: var(--muted); font-size: 9.5px; }
 .document-row strong { flex: 0 0 auto; color: var(--fx-teal); font-size: 9px; text-transform: uppercase; }
 .document-row.disabled { opacity: .65; }
+.document-review-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px 14px; align-items: center; padding: 14px 17px; border-bottom: 1px solid var(--soft-line); }
+.document-review-row:last-child { border-bottom: 0; }
+.document-review-row > span { min-width: 0; display: flex; flex-direction: column; }
+.document-review-row b { font-size: 10.5px; }
+.document-review-row small { margin-top: 4px; color: var(--muted); font-size: 9.5px; line-height: 1.4; }
+.document-review-row em { margin-top: 5px; color: var(--red); font-size: 9px; font-style: normal; }
+.document-review-row > strong { padding: 4px 7px; border-radius: 999px; background: var(--fx-sunken); color: var(--muted); font-size: 8.5px; text-transform: uppercase; }
+.document-review-row > strong[data-status="approved"] { background: var(--mint); color: var(--fx-teal); }
+.document-review-row > strong[data-status="rejected"] { background: var(--red-soft); color: var(--red); }
+.document-review-row > div { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; }
+.onboarding-documents, .linked-bank-review { grid-column: 1 / -1; }
 .notes-layout { display: grid; grid-template-columns: minmax(280px,.7fr) minmax(0,1.3fr); gap: 15px; }
 .note-composer, .notes-list { overflow: hidden; }
 .note-form { display: flex; flex-direction: column; gap: 13px; padding: 17px; }
@@ -542,6 +553,23 @@ button.document-row:hover { background: var(--fx-sunken); }
 .client-audit summary { color: var(--fx-teal); cursor: pointer; font-size: 9.5px; font-weight: 750; }
 .client-audit pre { max-height: 160px; overflow: auto; margin: 8px 0 0; padding: 9px; border-radius: 8px; background: var(--fx-sunken); font-family: var(--font-mono); font-size: 8.5px; white-space: pre-wrap; }
 .client-onboarding-form .form-section { margin-bottom: 10px; }
+.form-section-copy { margin: -2px 0 12px; color: var(--muted); font-size: 9.5px; line-height: 1.5; }
+.broker-document-uploads { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.broker-document-upload { position: relative; min-height: 82px; justify-content: center; padding: 11px 12px; border: 1px dashed #94c9c6; border-radius: 10px; background: var(--fx-sunken); cursor: pointer; }
+.broker-document-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.broker-document-upload span { overflow: hidden; color: var(--fx-teal); font-size: 10px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.broker-document-upload small { color: var(--muted); font-size: 8.5px; text-transform: none; letter-spacing: 0; }
+.broker-linked-banks { display: flex; flex-direction: column; gap: 9px; margin-bottom: 10px; }
+.broker-linked-bank { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; padding: 11px; border: 1px solid var(--soft-line); border-radius: 11px; background: var(--fx-sunken); }
+.broker-linked-bank header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; }
+.broker-linked-bank header b { font-size: 10.5px; }
+.broker-linked-bank header button { border: 0; background: transparent; color: var(--red); cursor: pointer; font-size: 9px; font-weight: 750; }
+.broker-linked-bank label:last-child { grid-column: 1 / -1; }
+.onboarding-record { grid-column: 1 / -1; }
+.onboarding-record dl { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
+.onboarding-record dl div { min-width: 0; padding: 12px 17px; border-top: 1px solid var(--soft-line); }
+.onboarding-record dt { color: var(--muted); font-size: 8.5px; text-transform: uppercase; }
+.onboarding-record dd { overflow: hidden; margin: 4px 0 0; font-size: 10px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .optional-label { margin-left: 5px; color: var(--muted); font-size: 8.5px; font-weight: 600; text-transform: uppercase; }
 .form-section .control-checkbox { position: relative; flex-direction: row; align-items: flex-start; gap: 10px; padding: 11px; margin: 8px 0 0; border: 1px solid var(--soft-line); border-radius: 10px; background: var(--fx-sunken); cursor: pointer; text-transform: none; letter-spacing: 0; }
 .control-checkbox input { position: absolute; opacity: 0; pointer-events: none; }
@@ -666,12 +694,15 @@ select option { background: var(--fx-card); color: var(--ink); }
   .client-360-meta span { border-bottom: 1px solid var(--soft-line); }
   .client-360-hero-actions { position: static; }
   .documents-grid { grid-template-columns: 1fr; }
+  .onboarding-record dl { grid-template-columns: 1fr 1fr; }
   .client-360-tabs { top: 62px; }
   .client-directory-controls { grid-template-columns: 1fr 1fr; }
   .client-directory-search { grid-column: 1 / -1; }
   .client-directory-summary span:not(:first-child) { display: none; }
 }
 @media (max-width: 540px) {
+  .broker-document-uploads, .broker-linked-bank { grid-template-columns: 1fr; }
+  .broker-linked-bank label:last-child { grid-column: auto; }
   .account-balance-grid { grid-template-columns: 1fr; }
   .account-balance-grid span { border-right: 0; border-bottom: 1px solid var(--soft-line) !important; }
   .account-balance-grid span:last-child { border-bottom: 0 !important; }

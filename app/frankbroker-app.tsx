@@ -14,6 +14,8 @@ import { isOrderEligibleClient } from "../lib/client-readiness";
 type View = "dashboard" | "performance" | "orders" | "clients" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "settings";
 type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationId: string; verificationCode: string; demoCode: string };
+type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
+type NewClientBank = { id: string; bankName: string; accountNumber: string; accountHolderName: string };
 type NewClientValue = {
   clientType: "individual" | "corporate" | "institution";
   fullName: string;
@@ -44,6 +46,8 @@ type NewClientValue = {
   bankName: string;
   bankAccountName: string;
   bankAccountNumber: string;
+  documentFiles: Partial<Record<OnboardingDocumentType, File>>;
+  linkedBanks: NewClientBank[];
 };
 type ClientDirectoryResponse = {
   clients: BrokerClient[];
@@ -70,7 +74,7 @@ type CashOperationsData = { summary: { bankBookTotal: number; statementTotal: nu
 type BrokerCashInput = { clientId: string; accountId?: string; pooledBankAccountId: string; movementType: "deposit" | "withdrawal"; amount: number; submissionReference: string; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string; notes?: string };
 type Client360Tab = "overview" | "assets" | "orders" | "trades" | "transactions" | "settlements" | "documents" | "notes" | "audit";
 type Client360Detail = {
-  client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string; createdBy: string | null; submittedAt: string | null; approvedBy: string | null; approvedAt: string | null; rejectionReason: string | null };
+  client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string; createdBy: string | null; submittedAt: string | null; approvedBy: string | null; approvedAt: string | null; rejectionReason: string | null; onboardingChannel?: string; address?: string | null; identityMasked?: string | null; taxIdMasked?: string | null; businessRegistrationNumber?: string | null; authorizedRepresentativeName?: string | null; beneficialOwners?: unknown; signatoryAuthorityConfirmed?: boolean };
   readiness: { canTrade: boolean; blockingReasons: string[]; items: Array<{ key: string; label: string; state: "pass" | "fail" | "warning"; detail: string }> };
   cash: { total: number; available: number; blocked: number; unsettled: number; pendingDeposits: number; pendingWithdrawals: number; currency: string } | null;
   holdings: Array<{ id: string; instrumentId: string; symbol: string; name: string; assetClass: string; total: number; available: number; blocked: number; unsettled: number; averageCost: number; lastPrice: number; marketValue: number; updatedAt: string }>;
@@ -81,11 +85,13 @@ type Client360Detail = {
   legal: { required: boolean; accepted: boolean; latestRequiredVersion: string | null; latestAcceptedVersion: string | null; lastAcceptedAt: string | null; missingDocuments: string[] };
   restrictions: { restricted: boolean; reason: string | null; restrictedAt: string | null; flags: string[] };
   documents: {
-    kyc: Array<{ id: string; name: string; status: string }>;
+    expected?: string[];
+    kyc: Array<{ id: string; type?: string; name: string; mimeType?: string; sizeBytes?: number; source?: string; status: string; uploadedAt?: string; reviewedAt?: string | null; rejectionReason?: string | null; hasFile?: boolean }>;
     legal: Array<{ id: string; name: string; version: string; acceptedAt: string; status: string }>;
     contractNotes: Array<{ orderId: string; number: string | null; generatedAt: string | null; status: string }>;
     statements: Array<{ type: string; status: string }>;
   };
+  linkedBanks?: Array<{ id: string; bankName: string; accountNumberMasked: string; accountHolderName: string; source: string; status: string; createdAt: string; reviewedAt: string | null; rejectionReason: string | null }>;
   requests: NonNullable<BrokerClient["serviceRequests"]>;
   notes: Array<{ id: string; text: string; category: string; visibility: string; createdBy: string; createdAt: string }>;
   auditTrail: Array<{ id: string; timestamp: string; user: string; action: string; entityType: string; entityId: string | null; oldValue: string | null; newValue: string | null; reason: string }>;
@@ -122,7 +128,7 @@ const newClientDefaults = (): NewClientValue => ({
   faydaId: "",
   tin: "",
   address: "",
-  proofOfAddressType: "Bank letter",
+  proofOfAddressType: "Drivers License",
   proofOfAddressReference: "",
   businessRegistrationNumber: "",
   authorizedRepresentativeName: "",
@@ -144,6 +150,8 @@ const newClientDefaults = (): NewClientValue => ({
   bankName: "",
   bankAccountName: "",
   bankAccountNumber: "",
+  documentFiles: {},
+  linkedBanks: [{ id: crypto.randomUUID(), bankName: "Commercial Bank of Ethiopia", accountNumber: "", accountHolderName: "" }],
 });
 
 function displayLabel(value: string) {
@@ -775,10 +783,16 @@ export default function FrankBrokerApp() {
     event.preventDefault();
     setBusyAction("create_client");
     try {
+      const formData = new FormData();
+      const { documentFiles, ...payload } = newClient;
+      formData.set("payload", JSON.stringify(payload));
+      Object.entries(documentFiles).forEach(([type, file]) => {
+        if (file) formData.set(type, file);
+      });
       const result = await apiRequest<{ client: { id: string; clientCode: string; status: string } }>("/api/clients", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-frank-demo-role": role },
-        body: JSON.stringify(newClient),
+        headers: { "x-frank-demo-role": role },
+        body: formData,
       });
       await refreshOmsData();
       setSelectedClientId(result.client.id);
@@ -1174,7 +1188,8 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
     settlements: fallbackTrades.map((trade) => ({ id: `STL-${trade.id}`, tradeId: trade.id, orderId: trade.orderId, symbol: trade.symbol, tradeDate: trade.tradeDate, settlementDate: trade.settlementDate, cashStatus: trade.cashStatus, securitiesStatus: trade.securitiesStatus, status: trade.settlementStatus, exception: false, notes: null })),
     legal: { required: true, accepted: Boolean(selected.termsAcceptedVersion), latestRequiredVersion: "1.0", latestAcceptedVersion: selected.termsAcceptedVersion ?? null, lastAcceptedAt: null, missingDocuments: selected.termsAcceptedVersion ? [] : ["Brokerage account terms"] },
     restrictions: { restricted: Boolean(selected.restrictionReason || selected.status !== "active"), reason: selected.restrictionReason ?? null, restrictedAt: null, flags: selected.kyc !== "approved" ? ["Missing or incomplete KYC"] : selected.termsAcceptedVersion ? [] : ["Missing current legal consent"] },
-    documents: { kyc: [], legal: [], contractNotes: fallbackOrders.filter((order) => order.trades?.length).map((order) => ({ orderId: order.id, number: order.contractNoteNumber ?? null, generatedAt: order.contractNoteGeneratedAt ?? null, status: order.contractNoteNumber ? "available" : "not_generated" })), statements: [{ type: "Account statement", status: "not_implemented" }, { type: "Cash statement", status: "not_implemented" }, { type: "Holdings statement", status: "not_implemented" }] },
+    documents: { expected: selected.type === "individual" ? ["proof_of_address"] : ["business_license", "tin_certificate", "certificate_of_incorporation", "article_of_association"], kyc: [], legal: [], contractNotes: fallbackOrders.filter((order) => order.trades?.length).map((order) => ({ orderId: order.id, number: order.contractNoteNumber ?? null, generatedAt: order.contractNoteGeneratedAt ?? null, status: order.contractNoteNumber ? "available" : "not_generated" })), statements: [{ type: "Account statement", status: "not_implemented" }, { type: "Cash statement", status: "not_implemented" }, { type: "Holdings statement", status: "not_implemented" }] },
+    linkedBanks: [],
     requests: selected.serviceRequests ?? [],
     notes: [],
     auditTrail: [],
@@ -1186,6 +1201,11 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
   };
   const canAdjust = hasPermission(role, "adjust");
   const act = async (action: "approve_client" | "reject_client" | "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note", requestId?: string) => {
+    if (action === "approve_client") {
+      const outstandingDocuments = (model.documents.expected ?? []).filter((type) => !model.documents.kyc.some((document) => document.type === type));
+      const pendingBanks = (model.linkedBanks ?? []).filter((bank) => bank.status !== "approved");
+      if ((outstandingDocuments.length || pendingBanks.length) && !window.confirm(`Approve this client with ${outstandingDocuments.length} document item(s) not received and ${pendingBanks.length} bank account(s) not approved?`)) return;
+    }
     const key = requestId ?? action;
     setBusy(key);
     setMessage("");
@@ -1210,6 +1230,28 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
       setMessage(action === "add_note" ? "Internal note added and audit logged." : action === "approve_client" ? "Client approved and activated. The account is now eligible for New Order." : action === "reject_client" ? "Client onboarding rejected and retained in the audit trail." : "Control action recorded in the client audit trail.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Client action failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const reviewEvidence = async (kind: "documents" | "bank-accounts", id: string, action: "approve" | "reject") => {
+    const reason = action === "reject" ? window.prompt("Why was this not approved?")?.trim() ?? "" : "";
+    if (action === "reject" && reason.length < 5) return setMessage("Enter a clear reason before rejecting this item.");
+    setBusy(id);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/clients/${encodeURIComponent(selected.id)}/${kind}/${encodeURIComponent(id)}/action`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role },
+        body: JSON.stringify({ action, reason }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Review action failed.");
+      setRefreshKey((current) => current + 1);
+      await onRefresh();
+      setMessage(action === "approve" ? "Item approved." : "Item not approved. The reason was recorded.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Review action failed.");
     } finally {
       setBusy(null);
     }
@@ -1258,6 +1300,7 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
     {message && <p className="control-message client-360-message">{message}</p>}
 
     {tab === "overview" && <div className="client-360-grid">
+      <section className="panel onboarding-record"><div className="panel-head"><div><span className="eyebrow">ONBOARDING RECORD</span><h2>Submitted client details</h2></div><span className="account-number">{displayLabel(model.client.onboardingChannel ?? "in_person")}</span></div><dl><div><dt>Email</dt><dd>{model.client.email ?? "Not recorded"}</dd></div><div><dt>Phone</dt><dd>{model.client.phone ?? "Not recorded"}</dd></div><div><dt>Fayda FIN</dt><dd>{model.client.identityMasked ?? "Not recorded"}</dd></div><div><dt>TIN</dt><dd>{model.client.taxIdMasked ?? "Not recorded"}</dd></div>{model.client.type !== "individual" && <><div><dt>Registered address</dt><dd>{model.client.address ?? "Not recorded"}</dd></div><div><dt>Registration number</dt><dd>{model.client.businessRegistrationNumber ?? "Not recorded"}</dd></div><div><dt>Authorized representative</dt><dd>{model.client.authorizedRepresentativeName ?? "Not recorded"}</dd></div><div><dt>Signatory authority</dt><dd>{model.client.signatoryAuthorityConfirmed ? "Confirmed" : "Not confirmed"}</dd></div></>}</dl></section>
       <section className="panel readiness-panel"><div className="panel-head"><div><span className="eyebrow">TRADING READINESS</span><h2>{model.readiness.canTrade ? "Client can trade" : "Action required"}</h2></div><span className={`readiness-score ${model.readiness.canTrade ? "ready" : "blocked"}`}>{model.readiness.items.filter((item) => item.state === "pass").length}/{model.readiness.items.length}</span></div>{!model.readiness.canTrade && model.readiness.blockingReasons.length > 0 && <div className="readiness-callout"><b>Trading is blocked</b><span>{model.readiness.blockingReasons.join(" · ")}</span></div>}<div className="readiness-list">{model.readiness.items.map((item) => <div key={item.key}><i className={item.state}>{item.state === "pass" ? "✓" : item.state === "fail" ? "!" : "—"}</i><span><b>{item.label}</b><small>{item.detail}</small></span></div>)}</div></section>
       <section className="panel overview-cash"><div className="panel-head"><div><span className="eyebrow">CASH POSITION</span><h2>Available to trade</h2></div><button onClick={() => setTab("assets")}>View ledger →</button></div><strong>{etb(model.cash?.available ?? 0)}</strong><div><span><small>Total cash</small><b>{etb(model.cash?.total ?? 0)}</b></span><span><small>Blocked</small><b>{etb(model.cash?.blocked ?? 0)}</b></span><span><small>Unsettled</small><b>{etb(model.cash?.unsettled ?? 0)}</b></span></div></section>
       <section className="panel legal-status-card"><div className="panel-head"><div><span className="eyebrow">LEGAL & DOCUMENTS</span><h2>Consent status</h2></div><span className={`status ${model.legal.accepted ? "status-success" : "status-warning"}`}><i />{model.legal.accepted ? "Accepted" : "Consent required"}</span></div><div className="legal-status-body"><span><small>Required version</small><b>{model.legal.latestRequiredVersion ?? "None configured"}</b></span><span><small>Accepted version</small><b>{model.legal.latestAcceptedVersion ?? "Not accepted"}</b></span><span><small>Last accepted</small><b>{model.legal.lastAcceptedAt ? new Date(model.legal.lastAcceptedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—"}</b></span></div>{model.legal.missingDocuments.length > 0 && <div className="missing-docs"><small>MISSING / ACTION REQUIRED</small>{model.legal.missingDocuments.map((item) => <span key={item}>{item}</span>)}</div>}</section>
@@ -1275,7 +1318,17 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
 
     {tab === "settlements" && <section className="panel client-360-table"><div className="panel-head"><div><span className="eyebrow">POST-TRADE CONTROL</span><h2>Settlement items</h2></div></div>{model.settlements.length ? <div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Instrument</th><th>Trade date</th><th>Settlement date</th><th>Cash</th><th>Securities</th><th>Overall</th><th>Exception / notes</th><th /></tr></thead><tbody>{model.settlements.map((item) => <tr key={item.id} onClick={() => openOrder(item.orderId)}><td><b>{item.tradeId}</b><small>{item.orderId}</small></td><td><b>{item.symbol}</b></td><td>{item.tradeDate}</td><td><b>{item.settlementDate}</b></td><td><span className={`leg ${item.cashStatus === "settled" ? "done" : "pending"}`}>{displayLabel(item.cashStatus)}</span></td><td><span className={`leg ${item.securitiesStatus === "settled" ? "done" : "pending"}`}>{displayLabel(item.securitiesStatus)}</span></td><td>{displayLabel(item.status)}</td><td>{item.exception ? <span className="negative">{item.notes ?? "Exception requires review"}</span> : "None"}</td><td><button className="btn secondary small" onClick={(event) => { event.stopPropagation(); openOrder(item.orderId); }}>View settlement</button></td></tr>)}</tbody></table></div> : <EmptyState title="No settlement items" copy="Settlement records will appear after an execution is captured." />}</section>}
 
-    {tab === "documents" && <div className="documents-grid"><section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">KYC DOCUMENTS</span><h2>Identity and authority</h2></div></div>{model.documents.kyc.length ? model.documents.kyc.map((document) => <div className="document-row" key={document.id}><span><b>{document.name}</b><small>{document.id}</small></span><strong>{displayLabel(document.status)}</strong></div>) : <EmptyState title="No documents uploaded" copy="KYC document references will appear here after evidence is recorded." />}</section><section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">LEGAL ACCEPTANCE</span><h2>Accepted agreements</h2></div></div>{model.documents.legal.length ? model.documents.legal.map((document) => <div className="document-row" key={document.id}><span><b>{document.name}</b><small>Version {document.version} · {new Date(document.acceptedAt).toLocaleDateString("en-GB")}</small></span><strong>{displayLabel(document.status)}</strong></div>) : <EmptyState title="No legal acceptance" copy="The current brokerage terms have not been accepted by this client." />}</section><section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">CONTRACT NOTES</span><h2>Trade documents</h2></div></div>{model.documents.contractNotes.length ? model.documents.contractNotes.map((document) => <button className="document-row" key={document.orderId} onClick={() => openOrder(document.orderId)}><span><b>{document.number ?? `Contract note for ${document.orderId}`}</b><small>{document.generatedAt ? new Date(document.generatedAt).toLocaleString("en-GB") : "Generation required"}</small></span><strong>{displayLabel(document.status)}</strong></button>) : <EmptyState title="No contract notes" copy="Contract notes become available after trade capture and controlled generation." />}</section><section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">STATEMENTS</span><h2>Account reporting</h2></div></div>{model.documents.statements.map((document) => <div className="document-row disabled" key={document.type}><span><b>{document.type}</b><small>Placeholder for the reporting phase</small></span><strong>{displayLabel(document.status)}</strong></div>)}</section></div>}
+    {tab === "documents" && <div className="documents-grid">
+      <section className="panel document-card onboarding-documents"><div className="panel-head"><div><span className="eyebrow">ONBOARDING DOCUMENTS</span><h2>Identity and authority</h2></div><span className="account-number">{model.documents.kyc.length} received</span></div>
+        {(model.documents.expected ?? []).map((type) => {
+          const document = model.documents.kyc.find((item) => item.type === type);
+          return <div className="document-review-row" key={type}><span><b>{displayLabel(type)}</b><small>{document ? `${document.name}${document.sizeBytes ? ` · ${(document.sizeBytes / 1024).toFixed(0)} KB` : ""}${document.uploadedAt ? ` · ${new Date(document.uploadedAt).toLocaleDateString("en-GB")}` : ""}` : "Not received"}</small>{document?.rejectionReason && <em>{document.rejectionReason}</em>}</span><strong data-status={document?.status ?? "not_received"}>{document ? displayLabel(document.status) : "Not received"}</strong>{document && <div>{document.hasFile && <a className="btn secondary small" href={`/api/clients/${encodeURIComponent(selected.id)}/documents/${encodeURIComponent(document.id)}`} target="_blank" rel="noreferrer">Open</a>}{hasPermission(role, "approve") && document.status !== "approved" && <button className="btn primary small" disabled={busy === document.id} onClick={() => void reviewEvidence("documents", document.id, "approve")}>Approve</button>}{hasPermission(role, "reject") && document.status !== "rejected" && <button className="btn danger small" disabled={busy === document.id} onClick={() => void reviewEvidence("documents", document.id, "reject")}>Not approve</button>}</div>}</div>;
+        })}
+      </section>
+      <section className="panel document-card linked-bank-review"><div className="panel-head"><div><span className="eyebrow">LINKED BANKS</span><h2>Withdrawal destinations</h2></div><span className="account-number">{model.linkedBanks?.length ?? 0} of 3</span></div>{model.linkedBanks?.length ? model.linkedBanks.map((bank) => <div className="document-review-row" key={bank.id}><span><b>{bank.bankName}</b><small>{bank.accountNumberMasked} · {bank.accountHolderName}</small>{bank.rejectionReason && <em>{bank.rejectionReason}</em>}</span><strong data-status={bank.status}>{displayLabel(bank.status)}</strong><div>{hasPermission(role, "approve") && bank.status !== "approved" && <button className="btn primary small" disabled={busy === bank.id} onClick={() => void reviewEvidence("bank-accounts", bank.id, "approve")}>Approve</button>}{hasPermission(role, "reject") && bank.status !== "rejected" && <button className="btn danger small" disabled={busy === bank.id} onClick={() => void reviewEvidence("bank-accounts", bank.id, "reject")}>Not approve</button>}</div></div>) : <EmptyState title="No linked banks" copy="Linked bank accounts will appear here when the client submits them." />}</section>
+      <section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">LEGAL ACCEPTANCE</span><h2>Accepted agreements</h2></div></div>{model.documents.legal.length ? model.documents.legal.map((document) => <div className="document-row" key={document.id}><span><b>{document.name}</b><small>Version {document.version} · {new Date(document.acceptedAt).toLocaleDateString("en-GB")}</small></span><strong>{displayLabel(document.status)}</strong></div>) : <EmptyState title="No legal acceptance" copy="The current brokerage terms have not been accepted by this client." />}</section>
+      <section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">CONTRACT NOTES</span><h2>Trade documents</h2></div></div>{model.documents.contractNotes.length ? model.documents.contractNotes.map((document) => <button className="document-row" key={document.orderId} onClick={() => openOrder(document.orderId)}><span><b>{document.number ?? `Contract note for ${document.orderId}`}</b><small>{document.generatedAt ? new Date(document.generatedAt).toLocaleString("en-GB") : "Generation required"}</small></span><strong>{displayLabel(document.status)}</strong></button>) : <EmptyState title="No contract notes" copy="Contract notes become available after trade capture and controlled generation." />}</section>
+    </div>}
 
     {tab === "notes" && <div className="notes-layout"><section className="panel note-composer"><div className="panel-head"><div><span className="eyebrow">INTERNAL ONLY</span><h2>Add broker note</h2></div></div>{canAdjust ? <div className="note-form"><label>Category<select value={noteCategory} onChange={(event) => setNoteCategory(event.target.value)}>{["general", "compliance", "support", "trading", "settlement"].map((category) => <option key={category} value={category}>{displayLabel(category)}</option>)}</select></label><label>Note<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="Record a concise operational fact, decision, or follow-up…" rows={5} /></label><small>Internal notes are visible only to broker staff and are permanently audit logged.</small><button className="btn primary" disabled={busy === "add_note" || noteText.trim().length < 3} onClick={() => void act("add_note")}>{busy === "add_note" ? "Adding note…" : "Add internal note"}</button></div> : <div className="permission-note">Read-only role: internal notes can be viewed but not created.</div>}</section><section className="panel notes-list"><div className="panel-head"><div><span className="eyebrow">BROKER RECORD</span><h2>Internal notes</h2></div></div>{model.notes.length ? model.notes.map((note) => <article key={note.id}><span>{displayLabel(note.category)}</span><p>{note.text}</p><footer><b>{note.createdBy}</b><time>{new Date(note.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</time><em>{displayLabel(note.visibility)}</em></footer></article>) : <EmptyState title="No internal notes" copy="Authorized broker users can record general, compliance, support, trading, or settlement notes." />}</section></div>}
 
@@ -1421,12 +1474,18 @@ function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: N
   const organization = value.clientType === "institution" || value.clientType === "corporate";
   const faydaValid = /^\d{12}$/.test(value.faydaId);
   const tinValid = /^\d{10,12}$/.test(value.tin.replace(/\D/g, ""));
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email);
+  const banksValid = value.linkedBanks.length >= 1 && value.linkedBanks.length <= 3 && value.linkedBanks.every((bank) =>
+    bank.bankName.trim().length >= 2
+    && bank.accountNumber.replace(/\s/g, "").length >= 8
+    && bank.accountHolderName.trim().toLocaleLowerCase() === value.fullName.trim().toLocaleLowerCase()
+  );
   const ready = value.fullName.trim().length >= 3
     && value.phone.trim().length >= 7
+    && emailValid
     && faydaValid
     && tinValid
-    && value.address.trim().length >= 4
-    && value.proofOfAddressReference.trim().length >= 4
+    && (!organization || value.address.trim().length >= 4)
     && value.sourceOfFunds.trim().length >= 3
     && value.investmentObjective.trim().length >= 3
     && value.taxResidency.trim().length >= 3
@@ -1436,30 +1495,77 @@ function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: N
       && value.authorizedRepresentativeName.trim().length >= 3
       && value.beneficialOwnerName.trim().length >= 3
       && value.signatoryAuthorityConfirmed
-    ));
+    ))
+    && banksValid;
   const set = <K extends keyof NewClientValue>(key: K, next: NewClientValue[K]) => setValue({ ...value, [key]: next });
+  const setLegalName = (next: string) => setValue({
+    ...value,
+    fullName: next,
+    linkedBanks: value.linkedBanks.map((bank) => ({
+      ...bank,
+      accountHolderName: !bank.accountHolderName || bank.accountHolderName === value.fullName ? next : bank.accountHolderName,
+    })),
+  });
+  const setDocument = (type: OnboardingDocumentType, file: File | null) => setValue({
+    ...value,
+    documentFiles: { ...value.documentFiles, [type]: file ?? undefined },
+  });
+  const updateBank = (id: string, field: keyof Omit<NewClientBank, "id">, next: string) => setValue({
+    ...value,
+    linkedBanks: value.linkedBanks.map((bank) => bank.id === id ? { ...bank, [field]: next } : bank),
+  });
+  const addBank = () => value.linkedBanks.length < 3 && setValue({
+    ...value,
+    linkedBanks: [...value.linkedBanks, { id: crypto.randomUUID(), bankName: "Commercial Bank of Ethiopia", accountNumber: "", accountHolderName: value.fullName }],
+  });
+  const removeBank = (id: string) => value.linkedBanks.length > 1 && setValue({ ...value, linkedBanks: value.linkedBanks.filter((bank) => bank.id !== id) });
+  const chooseClientType = (clientType: NewClientValue["clientType"]) => {
+    const nextOrganization = clientType !== "individual";
+    setValue({
+      ...value,
+      clientType,
+      proofOfAddressType: nextOrganization ? "" : "Drivers License",
+      proofOfAddressReference: "",
+      documentFiles: nextOrganization
+        ? { ...value.documentFiles, proof_of_address: undefined }
+        : {
+          proof_of_address: value.documentFiles.proof_of_address,
+          business_license: undefined,
+          tin_certificate: undefined,
+          certificate_of_incorporation: undefined,
+          article_of_association: undefined,
+        },
+    });
+  };
+  const documentFields: Array<[OnboardingDocumentType, string]> = organization
+    ? [
+      ["business_license", "Business license"],
+      ["tin_certificate", "TIN certificate"],
+      ["certificate_of_incorporation", "Certificate of Incorporation"],
+      ["article_of_association", "Article of Association"],
+    ]
+    : [["proof_of_address", "Proof of address document"]];
   return <form onSubmit={onSubmit} className="drawer-content client-onboarding-form">
     <div className="drawer-title"><span className="eyebrow">CONTROLLED CLIENT ONBOARDING</span><h2>Add a client</h2><p>Capture identity, documents, authority, and consent. The account remains unavailable for trading until an authorized second user approves it.</p></div>
     <div className="stepper"><span className="active">1 <b>Client record</b></span><i /><span className={ready ? "active" : ""}>2 <b>Approval</b></span><i /><span>3 <b>Trading active</b></span></div>
     <section className="form-section">
       <h3>Account owner</h3>
       <div className="field-row"><label>Onboarding source<select value={value.onboardingChannel} onChange={(event) => set("onboardingChannel", event.target.value as NewClientValue["onboardingChannel"])}><option value="digital">Digital</option><option value="in_person">In person</option><option value="neway">Neway</option><option value="phone">Phone</option></select></label><label>External reference <span className="optional-label">optional</span><input value={value.externalClientReference} onChange={(event) => set("externalClientReference", event.target.value)} placeholder="e.g. Neway reference" /></label></div>
-      <div className="segmented three"><button type="button" className={value.clientType === "individual" ? "active buy" : ""} onClick={() => set("clientType", "individual")}>INDIVIDUAL</button><button type="button" className={value.clientType === "corporate" ? "active buy" : ""} onClick={() => set("clientType", "corporate")}>CORPORATE</button><button type="button" className={value.clientType === "institution" ? "active buy" : ""} onClick={() => set("clientType", "institution")}>INSTITUTIONAL</button></div>
-      <label>{organization ? "Legal organization name" : "Full legal name"}<input value={value.fullName} onChange={(event) => set("fullName", event.target.value)} placeholder="As shown on official records" /></label>
+      <div className="segmented three"><button type="button" className={value.clientType === "individual" ? "active buy" : ""} onClick={() => chooseClientType("individual")}>INDIVIDUAL</button><button type="button" className={value.clientType === "corporate" ? "active buy" : ""} onClick={() => chooseClientType("corporate")}>CORPORATE</button><button type="button" className={value.clientType === "institution" ? "active buy" : ""} onClick={() => chooseClientType("institution")}>INSTITUTIONAL</button></div>
+      <label>{organization ? "Legal organization name" : "Full legal name"}<input value={value.fullName} onChange={(event) => setLegalName(event.target.value)} placeholder="As shown on official records" /></label>
       <div className="field-row"><label>Phone<input value={value.phone} onChange={(event) => set("phone", event.target.value.replace(/[^0-9+]/g, ""))} placeholder="+251…" /></label><label>Email<input type="email" value={value.email} onChange={(event) => set("email", event.target.value)} placeholder="client@example.et" /></label></div>
-      <label>{organization ? "Registered address" : "Current address"}<input value={value.address} onChange={(event) => set("address", event.target.value)} placeholder="City, sub-city, and locality" /></label>
+      {organization && <label>Registered address<input value={value.address} onChange={(event) => set("address", event.target.value)} placeholder="City, sub-city, and locality" /></label>}
       <div className="field-row"><label>Nationality<input value={value.nationality} onChange={(event) => set("nationality", event.target.value)} /></label><label>Country of residence<input value={value.countryOfResidence} onChange={(event) => set("countryOfResidence", event.target.value)} /></label></div>
     </section>
     <section className="form-section">
       <h3>Identity and tax</h3>
       <div className="field-row"><label>{organization ? "Representative Fayda FIN" : "Fayda FIN"}<input inputMode="numeric" maxLength={12} value={value.faydaId} onChange={(event) => set("faydaId", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digits" /><small>{value.faydaId && !faydaValid ? "FIN must contain 12 digits." : "Only a masked reference is retained."}</small></label><label>TIN<input inputMode="numeric" value={value.tin} onChange={(event) => set("tin", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="10–12 digits" /><small>{value.tin && !tinValid ? "Enter a valid TIN." : "Used for tax and account records."}</small></label></div>
-      <div className="field-row"><label>Proof of address<select value={value.proofOfAddressType} onChange={(event) => set("proofOfAddressType", event.target.value)}><option>Bank letter</option><option>Utility bill</option><option>Government correspondence</option><option>Business license</option><option>Lease agreement</option></select></label><label>Document reference<input value={value.proofOfAddressReference} onChange={(event) => set("proofOfAddressReference", event.target.value)} placeholder="Internal document reference" /></label></div>
+      {!organization && <label>Proof of address type<select value={value.proofOfAddressType} onChange={(event) => set("proofOfAddressType", event.target.value)}><option>Drivers License</option><option>Kebele ID</option></select></label>}
+      <div className="broker-document-uploads">{documentFields.map(([type, label]) => <label className="broker-document-upload" key={type}>{label}<input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setDocument(type, event.target.files?.[0] ?? null)} /><span>{value.documentFiles[type] ? value.documentFiles[type]!.name : `Upload ${label.toLocaleLowerCase()}`}</span><small>PDF, PNG or JPG, up to 10 MB</small></label>)}</div>
       <label>CSD account/reference <span className="optional-label">optional</span><input value={value.csdReference} onChange={(event) => set("csdReference", event.target.value)} placeholder="Record when available" /></label>
       <div className="field-row"><label>Occupation / business activity<input value={value.occupation} onChange={(event) => set("occupation", event.target.value)} /></label><label>Source of funds<input value={value.sourceOfFunds} onChange={(event) => set("sourceOfFunds", event.target.value)} placeholder="Employment, business, pension…" /></label></div>
       <div className="field-row"><label>Investment objective<input value={value.investmentObjective} onChange={(event) => set("investmentObjective", event.target.value)} /></label><label>Tax residency<input value={value.taxResidency} onChange={(event) => set("taxResidency", event.target.value)} /></label></div>
       <label>PEP declaration<select value={value.pepStatus} onChange={(event) => set("pepStatus", event.target.value as NewClientValue["pepStatus"])}><option value="not_pep">Not a politically exposed person</option><option value="pep">Politically exposed person</option><option value="related_to_pep">Family member / close associate</option></select></label>
-      <div className="field-row"><label>Bank name <span className="optional-label">optional</span><input value={value.bankName} onChange={(event) => set("bankName", event.target.value)} /></label><label>Bank account name<input value={value.bankAccountName} onChange={(event) => set("bankAccountName", event.target.value)} /></label></div>
-      <label>Bank account number <span className="optional-label">masked after capture</span><input value={value.bankAccountNumber} onChange={(event) => set("bankAccountNumber", event.target.value.replace(/\s/g, ""))} /></label>
     </section>
     {organization && <section className="form-section">
       <h3>{value.clientType === "corporate" ? "Corporate authority" : "Institutional authority"}</h3>
@@ -1467,6 +1573,13 @@ function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: N
       <div className="field-row"><label>Authorized representative<input value={value.authorizedRepresentativeName} onChange={(event) => set("authorizedRepresentativeName", event.target.value)} /></label><label>Beneficial owner / controller<input value={value.beneficialOwnerName} onChange={(event) => set("beneficialOwnerName", event.target.value)} /></label></div>
       <label className="control-checkbox"><input type="checkbox" checked={value.signatoryAuthorityConfirmed} onChange={(event) => set("signatoryAuthorityConfirmed", event.target.checked)} /><i>{value.signatoryAuthorityConfirmed ? "✓" : ""}</i><span><b>Signatory authority confirmed</b><small>The representative is authorized to open and operate the account.</small></span></label>
     </section>}
+    <section className="form-section">
+      <h3>Linked bank accounts</h3>
+      <p className="form-section-copy">Add accounts in the client&apos;s legal name. The broker must approve each account before it can receive a withdrawal.</p>
+      <div className="broker-linked-banks">{value.linkedBanks.map((bank, index) => <div className="broker-linked-bank" key={bank.id}><header><b>Bank account {index + 1}</b>{value.linkedBanks.length > 1 && <button type="button" onClick={() => removeBank(bank.id)}>Remove</button>}</header><label>Bank name<input value={bank.bankName} onChange={(event) => updateBank(bank.id, "bankName", event.target.value)} /></label><label>Account number<input value={bank.accountNumber} onChange={(event) => updateBank(bank.id, "accountNumber", event.target.value.replace(/\s/g, ""))} /></label><label>Account holder name<input value={bank.accountHolderName} onChange={(event) => updateBank(bank.id, "accountHolderName", event.target.value)} /><small>{bank.accountHolderName && bank.accountHolderName.trim().toLocaleLowerCase() !== value.fullName.trim().toLocaleLowerCase() ? "Account holder name must match verified records." : "Must match the client’s verified legal name."}</small></label></div>)}</div>
+      {value.linkedBanks.length < 3 && <button type="button" className="btn secondary small" onClick={addBank}>＋ Add another bank</button>}
+      <div className="client-approval-callout"><span>REVIEW</span><div><b>What happens next</b><small>Each bank account is reviewed separately. Client approval can continue while a bank is waiting for review.</small></div></div>
+    </section>
     <section className="form-section">
       <h3>Risk and consent</h3>
       <label>Initial risk rating<select value={value.riskRating} onChange={(event) => set("riskRating", event.target.value as NewClientValue["riskRating"])}><option value="standard">Standard</option><option value="enhanced">Enhanced due diligence</option><option value="review">Compliance review</option></select></label>

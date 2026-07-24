@@ -7,6 +7,13 @@ import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
 import { confirmOtpChallenge, createOtpChallenge, orderPayloadHash } from "../../../lib/verification-service";
 import { sortInvestorActivity, type InvestorActivity } from "../../../lib/investor-activity";
+import {
+  parseLinkedBanks,
+  prepareDocuments,
+  saveOnboardingEvidence,
+  serializeClientDocument,
+  serializeLinkedBank,
+} from "../../../lib/onboarding-evidence";
 
 export const runtime = "nodejs";
 
@@ -50,6 +57,8 @@ export async function GET(request: Request) {
           consents: { orderBy: { acceptedAt: "desc" } },
           serviceRequests: { orderBy: { submittedAt: "desc" }, take: 20 },
           cashMovements: { include: { pooledBankAccount: true }, orderBy: { submittedAt: "desc" }, take: 25 },
+          documents: { include: { content: { select: { documentId: true } } }, orderBy: { uploadedAt: "desc" } },
+          linkedBankAccounts: { orderBy: { createdAt: "asc" } },
         },
       }),
     ]);
@@ -197,6 +206,8 @@ export async function GET(request: Request) {
         beneficialBalance: toNum(account?.clientMoneyPositions.find((position) => position.pooledBankAccountId === pool.id)?.balance),
       })),
       cashMovements: (client?.cashMovements ?? []).map(serializeCashMovement),
+      documents: (client?.documents ?? []).map(serializeClientDocument),
+      linkedBanks: (client?.linkedBankAccounts ?? []).map(serializeLinkedBank),
       activity,
       instruments: broker.instrumentAccess.map(({ instrument }) => ({
         id: instrument.id, ticker: instrument.symbol, name: instrument.name, assetClass: instrument.assetClass,
@@ -218,7 +229,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { brokerId, clientId } = resolveInvestorContext(request);
-    const payload = await request.json() as Record<string, unknown>;
+    const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    const formData = multipart ? await request.formData() : null;
+    const payload = multipart
+      ? JSON.parse(String(formData?.get("payload") ?? "{}")) as Record<string, unknown>
+      : await request.json() as Record<string, unknown>;
 
     if (payload.action === "request_kyc_otp" || payload.action === "confirm_otp") {
       const client = await prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true } });
@@ -256,6 +271,7 @@ export async function POST(request: Request) {
         destinationBankName: String(payload.destinationBankName ?? ""),
         destinationAccountName: String(payload.destinationAccountName ?? ""),
         destinationAccountMasked: String(payload.destinationAccountMasked ?? ""),
+        linkedBankAccountId: String(payload.linkedBankAccountId ?? "") || undefined,
         notes: String(payload.notes ?? ""),
       });
       const account = await prisma.account.findUnique({ where: { id: movement.accountId } });
@@ -332,6 +348,18 @@ export async function POST(request: Request) {
           occupation: String(payload.occupation ?? "").trim() || null,
           electronicDeliveryConsentAt: payload.electronicDeliveryConsent === true ? new Date() : null,
         } });
+        const documents = formData ? await prepareDocuments(formData) : [];
+        const linkedBanks = parseLinkedBanks(payload.linkedBanks);
+        await saveOnboardingEvidence(tx, {
+          brokerId,
+          clientId: client.id,
+          source: "investor_portal",
+          legalName: fullName,
+          clientType: payload.accountType === "institution" ? "institution" : "individual",
+          documents,
+          banks: linkedBanks,
+          replaceBanks: true,
+        });
         await tx.account.updateMany({ where: { clientId: client.id }, data: { status: "pending_approval" } });
         if (legalDocument && payload.termsAccepted === true) {
           await tx.clientConsent.create({ data: {

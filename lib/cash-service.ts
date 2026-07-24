@@ -26,6 +26,7 @@ export type CashMovementInput = {
   destinationBankName?: string;
   destinationAccountName?: string;
   destinationAccountMasked?: string;
+  linkedBankAccountId?: string;
   notes?: string;
 };
 
@@ -56,10 +57,10 @@ function assertInput(input: CashMovementInput) {
     throw fail("Enter the bank transfer or deposit-slip reference.", 400);
   }
   if (input.movementType === "withdrawal") {
-    if (!clean(input.destinationBankName, 120) || !clean(input.destinationAccountName, 160) || !clean(input.destinationAccountMasked, 32)) {
+    if (!input.linkedBankAccountId && (!clean(input.destinationBankName, 120) || !clean(input.destinationAccountName, 160) || !clean(input.destinationAccountMasked, 32))) {
       throw fail("Destination bank, account name, and masked account number are required.", 400);
     }
-    if ((input.destinationAccountMasked ?? "").replace(/\D/g, "").length < 4) {
+    if (!input.linkedBankAccountId && (input.destinationAccountMasked ?? "").replace(/\D/g, "").length < 4) {
       throw fail("Keep only at least the last four destination-account digits.", 400);
     }
   }
@@ -167,6 +168,24 @@ export async function submitCashMovement(
       where: { id: input.pooledBankAccountId, brokerId: context.brokerId, status: "active", currency: account.currency },
     });
     if (!pool) throw fail("The selected pooled account is unavailable for this client.", 404);
+    const linkedBank = input.movementType === "withdrawal" && input.linkedBankAccountId
+      ? await tx.linkedBankAccount.findFirst({
+        where: {
+          id: input.linkedBankAccountId,
+          clientId: client.id,
+          brokerId: context.brokerId,
+          status: "approved",
+        },
+      })
+      : null;
+    if (input.movementType === "withdrawal" && input.linkedBankAccountId && !linkedBank) {
+      throw fail("Choose an approved linked bank account.", 409);
+    }
+    const destinationBankName = linkedBank?.bankName ?? clean(input.destinationBankName, 120);
+    const destinationAccountName = linkedBank?.accountHolderName ?? clean(input.destinationAccountName, 160);
+    const destinationAccountMasked = linkedBank
+      ? `•••••• ${linkedBank.accountNumber.slice(-6)}`
+      : clean(input.destinationAccountMasked, 32);
 
     await lockAccount(tx, account.id);
     const lockedAccount = await tx.account.findUniqueOrThrow({ where: { id: account.id } });
@@ -192,9 +211,10 @@ export async function submitCashMovement(
         status: input.movementType === "deposit" ? "pending_verification" : "pending_approval",
         bankReference: clean(input.bankReference, 120),
         proofReference: clean(input.proofReference, 180),
-        destinationBankName: clean(input.destinationBankName, 120),
-        destinationAccountName: clean(input.destinationAccountName, 160),
-        destinationAccountMasked: clean(input.destinationAccountMasked, 32),
+        destinationBankName,
+        destinationAccountName,
+        destinationAccountMasked,
+        linkedBankAccountId: linkedBank?.id ?? null,
         requestedByChannel: context.channel,
         submittedByUserId: context.actorId,
         notes: clean(input.notes, 500),

@@ -29,6 +29,8 @@ model Broker {
   pooledBankAccounts    PooledBankAccount[]
   cashMovements         CashMovement[]
   verificationChallenges VerificationChallenge[]
+  clientDocuments       ClientDocument[]
+  linkedBankAccounts    LinkedBankAccount[]
 
   @@map("brokers")
 }
@@ -63,6 +65,8 @@ model User {
   completedCashMovements        CashMovement[]            @relation("CashMovementCompleter")
   clientMoneyLedgerEntries      ClientMoneyLedgerEntry[]  @relation("ClientMoneyLedgerCreator")
   pooledBankLedgerEntries       PooledBankLedgerEntry[]   @relation("PooledBankLedgerCreator")
+  reviewedClientDocuments       ClientDocument[]          @relation("ClientDocumentReviewer")
+  reviewedLinkedBankAccounts    LinkedBankAccount[]       @relation("LinkedBankReviewer")
 
   @@index([brokerId])
   @@map("users")
@@ -126,10 +130,69 @@ model Client {
   approver                     User?                  @relation("ClientApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   cashMovements                CashMovement[]
   verificationChallenges      VerificationChallenge[]
+  documents                   ClientDocument[]
+  linkedBankAccounts          LinkedBankAccount[]
 
   @@index([brokerId])
   @@index([status, kycStatus])
   @@map("clients")
+}
+
+model ClientDocument {
+  id              String                 @id
+  brokerId        String                 @map("broker_id")
+  clientId        String                 @map("client_id")
+  documentType    String                 @map("document_type")
+  originalName    String                 @map("original_name")
+  mimeType        String                 @map("mime_type")
+  sizeBytes       Int                    @map("size_bytes")
+  source          String
+  status          String                 @default("pending_review")
+  reviewedBy      String?                @map("reviewed_by")
+  reviewedAt      DateTime?              @map("reviewed_at")
+  rejectionReason String?                @map("rejection_reason")
+  uploadedAt      DateTime               @default(now()) @map("uploaded_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  broker          Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client          Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewer        User?                  @relation("ClientDocumentReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  content         ClientDocumentContent?
+
+  @@unique([clientId, documentType])
+  @@index([brokerId, status, uploadedAt])
+  @@map("client_documents")
+}
+
+model ClientDocumentContent {
+  documentId String         @id @map("document_id")
+  bytes      Bytes
+  document   ClientDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("client_document_contents")
+}
+
+model LinkedBankAccount {
+  id                String         @id
+  brokerId          String         @map("broker_id")
+  clientId          String         @map("client_id")
+  bankName          String         @map("bank_name")
+  accountNumber     String         @map("account_number")
+  accountHolderName String         @map("account_holder_name")
+  source            String
+  status            String         @default("pending_review")
+  reviewedBy        String?        @map("reviewed_by")
+  reviewedAt        DateTime?      @map("reviewed_at")
+  rejectionReason   String?        @map("rejection_reason")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  broker            Broker         @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client            Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewer          User?          @relation("LinkedBankReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  cashMovements     CashMovement[]
+
+  @@unique([clientId, bankName, accountNumber])
+  @@index([brokerId, status, createdAt])
+  @@map("linked_bank_accounts")
 }
 
 model Account {
@@ -664,6 +727,7 @@ model CashMovement {
   destinationBankName      String?                  @map("destination_bank_name")
   destinationAccountName   String?                  @map("destination_account_name")
   destinationAccountMasked String?                  @map("destination_account_masked")
+  linkedBankAccountId      String?                  @map("linked_bank_account_id")
   requestedByChannel       String                   @map("requested_by_channel")
   submittedByUserId        String?                  @map("submitted_by_user_id")
   reviewedByUserId         String?                  @map("reviewed_by_user_id")
@@ -680,6 +744,7 @@ model CashMovement {
   client                   Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   account                  Account                  @relation(fields: [accountId], references: [id], onDelete: Restrict)
   pooledBankAccount        PooledBankAccount        @relation(fields: [pooledBankAccountId], references: [id], onDelete: Restrict)
+  linkedBankAccount        LinkedBankAccount?       @relation(fields: [linkedBankAccountId], references: [id], onDelete: SetNull)
   submittedBy              User?                    @relation("CashMovementSubmitter", fields: [submittedByUserId], references: [id], onDelete: SetNull)
   reviewedBy               User?                    @relation("CashMovementReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   completedBy              User?                    @relation("CashMovementCompleter", fields: [completedByUserId], references: [id], onDelete: SetNull)
@@ -691,6 +756,7 @@ model CashMovement {
   @@index([brokerId, status, submittedAt])
   @@index([clientId, submittedAt])
   @@index([accountId, status])
+  @@index([linkedBankAccountId])
   @@map("cash_movements")
 }
 

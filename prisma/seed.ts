@@ -40,8 +40,34 @@ async function main() {
       { id: "cli_wegagen", brokerId: "brk_abyssinia", clientCode: "CL-10008", fullName: "Wegagen Pension Fund", clientType: "institution", phone: "+251115000008", email: "ops@wegagen-pension.example", kycStatus: "approved", riskRating: "enhanced", status: "active" },
       { id: "cli_selam", brokerId: "brk_abyssinia", clientCode: "CL-10052", fullName: "Selamawit Tesfaye", clientType: "individual", phone: "+251911000052", email: "selam@example.et", kycStatus: "pending", riskRating: "review", status: "restricted" },
       { id: "cli_blue", brokerId: "brk_abyssinia", clientCode: "CL-10017", fullName: "Blue Nile Trading PLC", clientType: "corporate", phone: "+251115000017", email: "finance@bluenile.example", kycStatus: "approved", riskRating: "standard", status: "active" },
-      { id: "cli_investor_demo", brokerId: "brk_abyssinia", clientCode: "CL-INV-001", fullName: "Selam Mekonnen", clientType: "individual", phone: "+251911000041", email: "selam.mekonnen@example.et", identityReference: "demo_seed_reference", faydaLast4: "9012", taxIdLast4: "4908", address: "Bole, Addis Ababa", proofOfAddressType: "Utility bill", proofOfAddressReference: "DEMO-POA-001", proofOfAddressStatus: "received", kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date("2026-07-14T08:00:00Z"), electronicDeliveryConsentAt: new Date("2026-07-14T08:00:00Z"), kycReviewDueAt: new Date("2027-07-14T08:00:00Z") },
+      { id: "cli_investor_demo", brokerId: "brk_abyssinia", clientCode: "CL-INV-001", fullName: "Selam Mekonnen", clientType: "individual", phone: "+251911000041", email: "selam.mekonnen@example.et", identityReference: "demo_seed_reference", faydaLast4: "9012", taxIdLast4: "4908", proofOfAddressType: "Drivers License", proofOfAddressReference: "selam-drivers-license.pdf", proofOfAddressStatus: "received", kycStatus: "approved", riskRating: "standard", status: "active", kycConsentAt: new Date("2026-07-14T08:00:00Z"), electronicDeliveryConsentAt: new Date("2026-07-14T08:00:00Z"), kycReviewDueAt: new Date("2027-07-14T08:00:00Z") },
       { id: "cli_pending_demo", brokerId: "brk_abyssinia", clientCode: "CL-2026-P001", fullName: "Hana Tesfaye", clientType: "individual", phone: "+251911000077", email: "hana.tesfaye@example.et", identityReference: "demo_pending_fayda", faydaLast4: "1122", taxIdLast4: "7788", address: "Yeka, Addis Ababa", proofOfAddressType: "Bank letter", proofOfAddressReference: "POA-HANA-001", proofOfAddressStatus: "received", kycStatus: "pending_review", riskRating: "standard", status: "pending_approval", kycConsentAt: new Date("2026-07-15T09:00:00Z"), electronicDeliveryConsentAt: new Date("2026-07-15T09:00:00Z"), createdBy: "usr_trader", submittedAt: new Date("2026-07-15T09:05:00Z") },
+    ],
+    skipDuplicates: true,
+  });
+
+  const seededDocument = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF");
+  const seededDocuments = [
+    { id: "DOC-INVESTOR-POA", clientId: "cli_investor_demo", originalName: "selam-drivers-license.pdf", source: "investor_portal", status: "approved", reviewedBy: "usr_compliance", reviewedAt: new Date("2026-07-14T09:00:00Z"), uploadedAt: new Date("2026-07-14T08:00:00Z") },
+    { id: "DOC-PENDING-POA", clientId: "cli_pending_demo", originalName: "hana-kebele-id.pdf", source: "in_person", status: "pending_review", reviewedBy: null, reviewedAt: null, uploadedAt: new Date("2026-07-15T09:03:00Z") },
+  ];
+  for (const item of seededDocuments) {
+    const document = await prisma.clientDocument.upsert({
+      where: { clientId_documentType: { clientId: item.clientId, documentType: "proof_of_address" } },
+      create: { ...item, brokerId: "brk_abyssinia", documentType: "proof_of_address", mimeType: "application/pdf", sizeBytes: seededDocument.byteLength },
+      update: { originalName: item.originalName, mimeType: "application/pdf", sizeBytes: seededDocument.byteLength, source: item.source, status: item.status, reviewedBy: item.reviewedBy, reviewedAt: item.reviewedAt, uploadedAt: item.uploadedAt },
+    });
+    await prisma.clientDocumentContent.upsert({
+      where: { documentId: document.id },
+      create: { documentId: document.id, bytes: seededDocument },
+      update: { bytes: seededDocument },
+    });
+  }
+  await prisma.linkedBankAccount.createMany({
+    data: [
+      { id: "BANK-INVESTOR-CBE", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057894108", accountHolderName: "Selam Mekonnen", source: "investor_portal", status: "approved", reviewedBy: "usr_compliance", reviewedAt: new Date("2026-07-14T09:00:00Z") },
+      { id: "BANK-INVESTOR-AWASH", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", bankName: "Awash Bank", accountNumber: "0132098765432", accountHolderName: "Selam Mekonnen", source: "investor_portal", status: "approved", reviewedBy: "usr_compliance", reviewedAt: new Date("2026-07-14T09:05:00Z") },
+      { id: "BANK-PENDING-CBE", brokerId: "brk_abyssinia", clientId: "cli_pending_demo", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057890077", accountHolderName: "Hana Tesfaye", source: "in_person", status: "pending_review" },
     ],
     skipDuplicates: true,
   });
@@ -82,7 +108,7 @@ async function main() {
   await prisma.cashMovement.createMany({
     data: [
       { id: "MOV-DEMO-DEP-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-FUND-001", movementType: "deposit", amount: 15_000, status: "pending_verification", bankReference: "CBE-FT-908231", proofReference: "mobile-transfer-receipt", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-16T08:42:00Z"), notes: "Awaiting independent bank evidence match" },
-      { id: "MOV-DEMO-WDR-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-WITHDRAW-001", movementType: "withdrawal", amount: 25_000, status: "completed", destinationBankName: "Commercial Bank of Ethiopia", destinationAccountName: "Selam Mekonnen", destinationAccountMasked: "•••••• 894108", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-12T07:30:00Z"), reviewedAt: new Date("2026-07-12T08:15:00Z"), completedAt: new Date("2026-07-12T11:20:00Z") },
+      { id: "MOV-DEMO-WDR-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", linkedBankAccountId: "BANK-INVESTOR-CBE", submissionReference: "INV-DEMO-WITHDRAW-001", movementType: "withdrawal", amount: 25_000, status: "completed", destinationBankName: "Commercial Bank of Ethiopia", destinationAccountName: "Selam Mekonnen", destinationAccountMasked: "•••••• 894108", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-12T07:30:00Z"), reviewedAt: new Date("2026-07-12T08:15:00Z"), completedAt: new Date("2026-07-12T11:20:00Z") },
       { id: "MOV-DEMO-DEP-000", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-FUND-000", movementType: "deposit", amount: 160_869.84, status: "completed", bankReference: "CBE-FT-612704", proofReference: "bank-transfer-receipt", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-03T06:45:00Z"), reviewedAt: new Date("2026-07-03T08:10:00Z"), completedAt: new Date("2026-07-03T09:05:00Z") },
     ],
     skipDuplicates: true,

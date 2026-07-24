@@ -2,6 +2,12 @@ import { Prisma } from "../app/generated/prisma/client";
 import { prisma } from "./prisma";
 import type { Actor } from "./server-auth";
 import { writeNotification, COMPLIANCE } from "./oms/notification-service";
+import {
+  saveOnboardingEvidence,
+  type LinkedBankInput,
+  type OnboardingSource,
+  type PreparedDocument,
+} from "./onboarding-evidence";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -9,12 +15,12 @@ export type CreateClientInput = {
   clientType: "individual" | "corporate" | "institution";
   fullName: string;
   phone: string;
-  email?: string;
+  email: string;
   faydaId: string;
   tin: string;
-  address: string;
-  proofOfAddressType: string;
-  proofOfAddressReference: string;
+  address?: string;
+  proofOfAddressType?: string;
+  proofOfAddressReference?: string;
   businessRegistrationNumber?: string;
   authorizedRepresentativeName?: string;
   beneficialOwnerName?: string;
@@ -38,6 +44,8 @@ export type CreateClientInput = {
   bankAccountName?: string;
   bankAccountNumber?: string;
   phoneVerifiedAt?: Date;
+  documents: PreparedDocument[];
+  linkedBanks: LinkedBankInput[];
 };
 
 function normalizedDigits(value: string) {
@@ -49,21 +57,26 @@ function validateCreateInput(input: CreateClientInput) {
   const tin = normalizedDigits(input.tin);
   if (input.fullName.trim().length < 3 || input.fullName.trim().length > 160) return "A valid legal name is required.";
   if (input.phone.trim().length < 7 || input.phone.trim().length > 40) return "A valid phone number is required.";
-  if (input.email && (!input.email.includes("@") || input.email.length > 160)) return "Enter a valid email address.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email) || input.email.length > 160) return "Enter a valid email address.";
   if (fayda.length !== 12) return "Fayda FIN must contain 12 digits.";
   if (tin.length < 10 || tin.length > 12) return "TIN must contain 10 to 12 digits.";
-  if (input.address.trim().length < 4) return "A current or registered address is required.";
   if (!input.sourceOfFunds?.trim()) return "Source of funds is required.";
   if (!input.investmentObjective?.trim()) return "Investment objective is required.";
   if (!input.taxResidency?.trim()) return "Tax residency is required.";
   if (!input.pepStatus) return "A politically exposed person declaration is required.";
-  if (input.proofOfAddressType.trim().length < 3 || input.proofOfAddressReference.trim().length < 4) return "Proof-of-address type and reference are required.";
   const organization = input.clientType === "institution" || input.clientType === "corporate";
   if (organization) {
+    if ((input.address?.trim().length ?? 0) < 4) return "A registered address is required for an organization.";
     if ((input.businessRegistrationNumber?.trim().length ?? 0) < 4) return "Business registration is required for an organization.";
     if ((input.authorizedRepresentativeName?.trim().length ?? 0) < 3) return "An authorized representative is required.";
     if ((input.beneficialOwnerName?.trim().length ?? 0) < 3) return "A beneficial owner or controller must be declared.";
     if (!input.signatoryAuthorityConfirmed) return "Signatory authority must be confirmed.";
+  } else if (input.proofOfAddressType && !["Drivers License", "Kebele ID"].includes(input.proofOfAddressType)) {
+    return "Proof of address must be a Drivers License or Kebele ID.";
+  }
+  if (input.linkedBanks.length < 1 || input.linkedBanks.length > 3) return "Add between one and three linked bank accounts.";
+  if (input.linkedBanks.some((bank) => bank.accountHolderName.trim().toLocaleLowerCase() !== input.fullName.trim().toLocaleLowerCase())) {
+    return "Account holder name must match the verified legal name.";
   }
   return null;
 }
@@ -99,16 +112,16 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         fullName: input.fullName.trim(),
         clientType: input.clientType,
         phone: input.phone.trim(),
-        email: input.email?.trim() || null,
+        email: input.email.trim(),
         identityReference: `broker_fayda_${crypto.randomUUID()}`,
         faydaLast4: fayda.slice(-4),
         taxIdLast4: tin.slice(-4),
         taxId: null,
         kycConsentAt: now,
-        address: input.address.trim(),
-        proofOfAddressType: input.proofOfAddressType.trim(),
-        proofOfAddressReference: input.proofOfAddressReference.trim(),
-        proofOfAddressStatus: "received",
+        address: input.address?.trim() || null,
+        proofOfAddressType: input.proofOfAddressType?.trim() || null,
+        proofOfAddressReference: input.proofOfAddressReference?.trim() || null,
+        proofOfAddressStatus: input.documents.some((document) => document.documentType === "proof_of_address") ? "received" : "pending",
         businessRegistrationNumber: input.businessRegistrationNumber?.trim() || null,
         authorizedRepresentativeName: input.authorizedRepresentativeName?.trim() || null,
         signatoryAuthorityConfirmed: input.clientType === "individual" || Boolean(input.signatoryAuthorityConfirmed),
@@ -164,6 +177,15 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         },
       });
     }
+    await saveOnboardingEvidence(tx, {
+      brokerId: actor.brokerId,
+      clientId,
+      source: (input.onboardingChannel ?? "in_person") as OnboardingSource,
+      legalName: input.fullName,
+      clientType: input.clientType,
+      documents: input.documents,
+      banks: input.linkedBanks,
+    });
     await tx.auditLog.createMany({
       data: [
         {
@@ -227,10 +249,9 @@ export async function approveClient(actor: Actor, clientId: string) {
       throw new Response("Four-eyes control: the client creator cannot approve this onboarding record.", { status: 409 });
     }
     const institutional = client.clientType === "institution" || client.clientType === "corporate";
-    const documentReady = client.proofOfAddressStatus === "received"
-      && Boolean(client.identityReference && client.faydaLast4 && client.taxIdLast4)
-      && (!institutional || Boolean(client.businessRegistrationNumber && client.authorizedRepresentativeName && client.signatoryAuthorityConfirmed && client.beneficialOwners));
-    if (!documentReady) throw new Response("Required identity, address, ownership, or authority evidence is incomplete.", { status: 409 });
+    const identityReady = Boolean(client.identityReference && client.faydaLast4 && client.taxIdLast4)
+      && (!institutional || Boolean(client.address && client.businessRegistrationNumber && client.authorizedRepresentativeName && client.signatoryAuthorityConfirmed && client.beneficialOwners));
+    if (!identityReady) throw new Response("Required identity, ownership, or authority details are incomplete.", { status: 409 });
     const acceptedCurrentTerms = !legalDocument || client.consents.some((consent) => consent.legalDocumentId === legalDocument.id && consent.accepted && !consent.withdrawnAt);
     if ((settings?.requireTermsAcceptance ?? true) && !acceptedCurrentTerms) {
       throw new Response("The current brokerage agreement has not been accepted.", { status: 409 });

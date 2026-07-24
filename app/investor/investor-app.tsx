@@ -65,8 +65,13 @@ type OrderCheck = { code: string; passed: boolean; message: string };
 type PlaceResult = { status?: string; checks?: OrderCheck[] };
 type CashPool = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; beneficialBalance: number };
 type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: number; currency: string; status: string; bankReference?: string | null; destinationBankName?: string | null; destinationAccountMasked?: string | null; submittedAt: string; pool?: CashPool };
-type CashMovementInput = { movementType: "deposit" | "withdrawal"; pooledBankAccountId: string; amount: number; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string };
-type LinkedBankAccount = { id: string; bankName: string; accountNumber: string; accountHolderName: string; status: "approved" | "pending" };
+type CashMovementInput = { movementType: "deposit" | "withdrawal"; pooledBankAccountId: string; amount: number; bankReference?: string; proofReference?: string; linkedBankAccountId?: string };
+type LinkedBankAccount = { id: string; bankName: string; accountNumber: string; accountNumberMasked?: string; accountHolderName: string; status: string };
+type OnboardingSubmission = {
+  profile: InvestorKyc;
+  linkedBanks: LinkedBankAccount[];
+  documents: Partial<Record<"proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association", File>>;
+};
 type InvestorFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
 type InvestorInstrument = {
   ticker: string;
@@ -92,6 +97,8 @@ type InvestorBootstrap = {
   cashPools: CashPool[];
   cashMovements: CashMovementView[];
   activity: InvestorActivity[];
+  linkedBanks: LinkedBankAccount[];
+  documents: Array<{ id: string; type: string; name: string; status: string; hasFile: boolean }>;
 };
 
 function mergeBondInstrument(bond: InvestorBond, instrument?: InvestorInstrument): InvestorBond {
@@ -116,24 +123,26 @@ function mergeBondInstrument(bond: InvestorBond, instrument?: InvestorInstrument
 const INVESTOR_TENANT_ID = "brk_abyssinia";
 const INVESTOR_CLIENT_ID = "cli_investor_demo";
 const investorHeaders = { "x-frank-tenant-id": INVESTOR_TENANT_ID, "x-frank-client-id": INVESTOR_CLIENT_ID };
-const demoLinkedBanks: LinkedBankAccount[] = [
-  { id: "bank_cbe_demo", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057894108", accountHolderName: "Selam Mekonnen", status: "approved" },
-  { id: "bank_awash_demo", bankName: "Awash Bank", accountNumber: "0132098765432", accountHolderName: "Selam Mekonnen", status: "approved" },
+const fallbackLinkedBanks: LinkedBankAccount[] = [
+  { id: "bank_cbe_fallback", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057894108", accountHolderName: "Selam Mekonnen", status: "approved" },
+  { id: "bank_awash_fallback", bankName: "Awash Bank", accountNumber: "0132098765432", accountHolderName: "Selam Mekonnen", status: "approved" },
 ];
 const bankOptions = ["Commercial Bank of Ethiopia", "Awash Bank", "Bank of Abyssinia", "Dashen Bank", "Cooperative Bank of Oromia", "Wegagen Bank"];
-let currentLinkedBanks = demoLinkedBanks;
-
-function readLinkedBanks() {
-  return currentLinkedBanks;
-}
-
-function saveLinkedBanks(accounts: LinkedBankAccount[]) {
-  currentLinkedBanks = accounts;
-}
 
 function maskLinkedAccount(accountNumber: string) {
   const digits = accountNumber.replace(/\D/g, "");
   return digits.length <= 6 ? digits : `${"•".repeat(Math.min(6, digits.length - 6))} ${digits.slice(-6)}`;
+}
+
+function linkedBankNumber(account: LinkedBankAccount) {
+  return account.accountNumberMasked ?? maskLinkedAccount(account.accountNumber ?? "");
+}
+
+function linkedBankStatus(status: string) {
+  if (status === "pending_review") return "Waiting for review";
+  if (status === "rejected") return "Not approved";
+  if (status === "approved") return "Approved";
+  return status.replaceAll("_", " ");
 }
 
 const iconPaths: Record<IconName, string> = {
@@ -316,7 +325,7 @@ function KycField({ label, value, onChange, hint, placeholder, inputMode = "text
   return <label className={styles.kycField}><span>{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} inputMode={inputMode} maxLength={maxLength} autoComplete={autoComplete} />{hint && <small>{hint}</small>}</label>;
 }
 
-function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: InvestorKyc) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
+function KycOnboarding({ onComplete, legalDocument }: { onComplete: (submission: OnboardingSubmission) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<InvestorKyc>(retailDemo);
   const [consent, setConsent] = useState(false);
@@ -385,8 +394,17 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
       </Card>
     </div>
     <Button className={styles.full} onClick={() => {
-      saveLinkedBanks(linkedBanks);
-      onComplete(profile);
+      onComplete({
+        profile,
+        linkedBanks,
+        documents: {
+          ...(proofFile ? { proof_of_address: proofFile } : {}),
+          ...(businessLicenseFile ? { business_license: businessLicenseFile } : {}),
+          ...(tinCertificateFile ? { tin_certificate: tinCertificateFile } : {}),
+          ...(certificateOfIncorporationFile ? { certificate_of_incorporation: certificateOfIncorporationFile } : {}),
+          ...(articleOfAssociationFile ? { article_of_association: articleOfAssociationFile } : {}),
+        },
+      });
     }}>Set my investment strategy</Button>
   </div>;
 
@@ -521,9 +539,9 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (profile: In
   return <div className={styles.onboarding}><KycProgress step={0} /><div className={styles.kycBrand}><AppLogo /></div><div className={styles.onboardingCopy}><h1>Open your investment account</h1><p>First, tell us who will own this account. It takes a few minutes.</p></div><div className={styles.accountTypeGrid}><button className={profile.accountType === "retail" ? styles.accountTypeSelected : ""} onClick={() => chooseType("retail")}><i>{profile.accountType === "retail" && <Icon name="check" size={13} />}</i><b>Retail investor</b><small>An account for you</small></button><button className={profile.accountType === "institution" ? styles.accountTypeSelected : ""} onClick={() => chooseType("institution")}><i>{profile.accountType === "institution" && <Icon name="check" size={13} />}</i><b>Institution</b><small>A company or organization</small></button></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Full legal name" : "Legal organization name"} value={profile.fullName} onChange={(value) => update("fullName", value)} placeholder="As shown on official records" /><KycField label="Mobile number" value={profile.phone} onChange={(value) => update("phone", value.replace(/[^0-9+]/g, ""))} inputMode="tel" placeholder="09… or +251…" hint="We’ll use this for account updates and security." /><KycField label="Email address" value={profile.email} onChange={(value) => update("email", value.trimStart())} type="email" inputMode="email" autoComplete="email" placeholder="name@example.com" hint={profile.email && !emailValid ? "Enter a valid email address." : "We’ll use this for confirmations and account notices."} /></div><div className={styles.demoNotice}><b>Demo only</b><span>These fictional details can be persisted to the shared demo database when connected.</span></div><Button className={styles.full} disabled={!firstStepValid} onClick={() => setStep(1)}>Continue</Button></div>;
 }
 
-function Onboarding({ onDone, legalDocument }: { onDone: (profile: InvestorKyc) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
-  const [kycProfile, setKycProfile] = useState<InvestorKyc | null>(null);
-  return kycProfile ? <InvestmentOnboarding onDone={() => onDone(kycProfile)} /> : <KycOnboarding onComplete={setKycProfile} legalDocument={legalDocument} />;
+function Onboarding({ onDone, legalDocument }: { onDone: (submission: OnboardingSubmission) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
+  const [submission, setSubmission] = useState<OnboardingSubmission | null>(null);
+  return submission ? <InvestmentOnboarding onDone={() => onDone(submission)} /> : <KycOnboarding onComplete={setSubmission} legalDocument={legalDocument} />;
 }
 
 function InvestmentOnboarding({ onDone }: { onDone: () => void }) {
@@ -749,24 +767,16 @@ function LearnScreen() {
   return <div className={styles.screen}><ScreenHeader title="Learn" /><p className={styles.learnIntro}>Short lessons to help you make clear choices with your money.</p><div className={styles.lessonList}>{lessons.map((lesson) => { const open = openLesson === lesson.id; return <Card className={`${styles.lessonCard} ${open ? styles.lessonOpen : ""}`} key={lesson.id}><button onClick={() => setOpenLesson(open ? null : lesson.id)} aria-expanded={open}><span><b>{lesson.title}</b><small>{lesson.summary}</small></span><Icon name="chevron" size={17} /></button>{open && <div className={styles.lessonBody}>{lesson.points.map(([label, text]) => <div key={label}><b>{label}</b><p>{text}</p></div>)}</div>}</Card>; })}</div></div>;
 }
 
-function ProfileScreen({ notify, name, profile, orders, requests, legalDocument, onRequest }: { notify: (message: string) => void; name: string; profile: InvestorBootstrap["profile"]; orders: Array<{ id: string }>; requests: InvestorBootstrap["serviceRequests"]; legalDocument: InvestorBootstrap["tenant"]["legalDocument"]; onRequest: (requestType: "trade_discrepancy" | "account_closure" | "profile_correction", orderId?: string) => void }) {
+function ProfileScreen({ notify, name, profile, orders, requests, legalDocument, linkedBanks, onAddBank, onDeleteBank, onRequest }: { notify: (message: string) => void; name: string; profile: InvestorBootstrap["profile"]; orders: Array<{ id: string }>; requests: InvestorBootstrap["serviceRequests"]; legalDocument: InvestorBootstrap["tenant"]["legalDocument"]; linkedBanks: LinkedBankAccount[]; onAddBank: (bankName: string, accountNumber: string) => Promise<void>; onDeleteBank: (id: string) => Promise<void>; onRequest: (requestType: "trade_discrepancy" | "account_closure" | "profile_correction", orderId?: string) => void }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "FM";
   const latestOrderId = orders[0]?.id;
   const [linkedBanksOpen, setLinkedBanksOpen] = useState(false);
-  const [linkedBanks, setLinkedBanks] = useState<LinkedBankAccount[]>(readLinkedBanks);
-  const addLinkedBank = (bankName: string, accountNumber: string) => {
+  const addLinkedBank = async (bankName: string, accountNumber: string) => {
     if (linkedBanks.length >= 3) return notify("You can link up to 3 bank accounts.");
-    if (linkedBanks.some((account) => account.bankName === bankName && account.accountNumber === accountNumber)) return notify("This bank account is already linked.");
-    const updated = [...linkedBanks, { id: crypto.randomUUID(), bankName, accountNumber, accountHolderName: name, status: "pending" as const }];
-    setLinkedBanks(updated);
-    saveLinkedBanks(updated);
-    notify("Bank account sent for review.");
+    await onAddBank(bankName, accountNumber);
   };
-  const deleteLinkedBank = (id: string) => {
-    const updated = linkedBanks.filter((account) => account.id !== id);
-    setLinkedBanks(updated);
-    saveLinkedBanks(updated);
-    notify("Linked bank account removed.");
+  const deleteLinkedBank = async (id: string) => {
+    await onDeleteBank(id);
   };
   return <div className={styles.screen}>
     <ScreenHeader title="You" />
@@ -796,7 +806,7 @@ function LinkedBanksSheet({ accounts, accountHolderName, onClose, onAdd, onDelet
     setAccountNumber("");
   };
   const remove = (account: LinkedBankAccount) => {
-    if (window.confirm(`Remove ${account.bankName} ${maskLinkedAccount(account.accountNumber)} from your linked accounts?`)) onDelete(account.id);
+    if (window.confirm(`Remove ${account.bankName} ${linkedBankNumber(account)} from your linked accounts?`)) onDelete(account.id);
   };
   return <div className={styles.sheetBackdrop} onClick={onClose}>
     <section className={`${styles.orderSheet} ${styles.linkedBanksSheet}`} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="linked-banks-title">
@@ -805,8 +815,8 @@ function LinkedBanksSheet({ accounts, accountHolderName, onClose, onAdd, onDelet
       <div className={styles.linkedBankSummary}><span><b>{accounts.length} of 3 linked</b><small>Approved accounts can receive withdrawals.</small></span></div>
       <div className={styles.linkedBankList}>
         {accounts.map((account) => <div key={account.id} className={styles.linkedBankRow}>
-          <span><b>{account.bankName}</b><small>{maskLinkedAccount(account.accountNumber)} · {account.accountHolderName}</small></span>
-          <span><em data-status={account.status}>{account.status}</em><button onClick={() => remove(account)} aria-label={`Delete ${account.bankName} account`}>Delete</button></span>
+          <span><b>{account.bankName}</b><small>{linkedBankNumber(account)} · {account.accountHolderName}</small></span>
+          <span><em data-status={account.status}>{linkedBankStatus(account.status)}</em><button onClick={() => remove(account)} aria-label={`Delete ${account.bankName} account`}>Delete</button></span>
         </div>)}
       </div>
       {!atLimit ? <div className={styles.linkBankForm}>
@@ -829,9 +839,8 @@ function calculateInvestorFees(gross: number, rule: InvestorFeeRule) {
   return { brokerage, regulator, exchange, csd, total: brokerage + regulator + exchange + csd };
 }
 
-function CashSheet({ pools: configuredPools, movements, availableCash, onClose, onSubmit, onViewActivity }: { pools: CashPool[]; movements: CashMovementView[]; availableCash: number; onClose: () => void; onSubmit: (input: CashMovementInput) => Promise<boolean>; onViewActivity: () => void }) {
+function CashSheet({ pools: configuredPools, movements, linkedBanks, availableCash, onClose, onSubmit, onViewActivity }: { pools: CashPool[]; movements: CashMovementView[]; linkedBanks: LinkedBankAccount[]; availableCash: number; onClose: () => void; onSubmit: (input: CashMovementInput) => Promise<boolean>; onViewActivity: () => void }) {
   const pools = configuredPools.length ? configuredPools : [{ id: "pool_aby_general", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", currency: "ETB", purpose: "general", beneficialBalance: availableCash || 75_000 }];
-  const linkedBanks = readLinkedBanks();
   const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
   const [amount, setAmount] = useState("15000");
   const [bankReference, setBankReference] = useState("");
@@ -861,9 +870,7 @@ function CashSheet({ pools: configuredPools, movements, availableCash, onClose, 
         amount: value,
         bankReference,
         proofReference,
-        destinationBankName: selectedDestination?.bankName,
-        destinationAccountName: selectedDestination?.accountHolderName,
-        destinationAccountMasked: selectedDestination ? maskLinkedAccount(selectedDestination.accountNumber) : undefined,
+        linkedBankAccountId: selectedDestination?.id,
       });
       if (saved) onClose();
     } finally { setBusy(false); }
@@ -920,7 +927,7 @@ function CashSheet({ pools: configuredPools, movements, availableCash, onClose, 
           </label>
           {approvedBanks.length > 0 ? <>
             <label className={styles.formField}><span>Destination bank</span><div className={styles.selectField}><select value={selectedDestination?.id ?? ""} onChange={(event) => setDestinationBankId(event.target.value)}>{approvedBanks.map((account) => <option key={account.id} value={account.id}>{account.bankName}</option>)}</select><em>⌄</em></div></label>
-            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>Account number</span><div><input value={selectedDestination ? maskLinkedAccount(selectedDestination.accountNumber) : ""} readOnly /></div></label>
+            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>Account number</span><div><input value={selectedDestination ? linkedBankNumber(selectedDestination) : ""} readOnly /></div></label>
             <label className={`${styles.formField} ${styles.readOnlyField}`}><span>Account holder name</span><div><input value={selectedDestination?.accountHolderName ?? ""} readOnly /></div></label>
           </> : <div className={styles.cashNotice}><b>No approved bank account</b><span>Add a bank account under You. It will appear here after review and approval.</span></div>}
           <div className={styles.cashNotice}><b>What happens next</b><span>{formatEtb(value)} will be reserved immediately, reviewed by your broker, then debited only after payment is confirmed. Rejection or payment failure releases the reservation.</span></div>
@@ -1214,7 +1221,8 @@ export default function InvestorApp() {
     if (!response.ok) throw new Error(data.error ?? "Unable to update the investor account.");
     return data;
   };
-  const completeOnboarding = async (profile: InvestorKyc) => {
+  const completeOnboarding = async (submission: OnboardingSubmission) => {
+    const { profile, linkedBanks, documents } = submission;
     const enterDemo = () => {
       setProfileName(profile.fullName);
       setTab("home");
@@ -1232,11 +1240,58 @@ export default function InvestorApp() {
         return;
       }
       await postInvestor({ action: "confirm_otp", verificationId: challenge.id, code });
-      const result = await postInvestor({ action: "kyc", ...profile, verificationId: challenge.id, termsVersion: bootstrap?.tenant.legalDocument?.version });
+      const formData = new FormData();
+      formData.set("payload", JSON.stringify({
+        action: "kyc",
+        ...profile,
+        linkedBanks: linkedBanks.map((bank) => ({
+          bankName: bank.bankName,
+          accountNumber: bank.accountNumber,
+          accountHolderName: bank.accountHolderName,
+        })),
+        verificationId: challenge.id,
+        termsVersion: bootstrap?.tenant.legalDocument?.version,
+      }));
+      Object.entries(documents).forEach(([type, file]) => {
+        if (file) formData.set(type, file);
+      });
+      const response = await fetch("/api/investor", { method: "POST", headers: investorHeaders, body: formData });
+      const result = await response.json() as { error?: string; profile?: { clientCode?: string; accountNumber?: string } };
+      if (!response.ok) throw new Error(result.error ?? "Unable to submit onboarding.");
       enterDemo();
       notify(`${result.profile?.clientCode ?? "Client record"} submitted for broker review · account ${result.profile?.accountNumber ?? "pending"}.`);
+      await refreshInvestor().catch(() => undefined);
     } catch {
       enterDemo();
+    }
+  };
+  const addLinkedBank = async (bankName: string, accountNumber: string) => {
+    try {
+      const response = await fetch("/api/investor/bank-accounts", {
+        method: "POST",
+        headers: { ...investorHeaders, "content-type": "application/json" },
+        body: JSON.stringify({ bankName, accountNumber, accountHolderName: profileName }),
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Unable to link the bank account.");
+      await refreshInvestor();
+      notify("Bank account sent for review.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Unable to link the bank account.");
+    }
+  };
+  const deleteLinkedBank = async (id: string) => {
+    try {
+      const response = await fetch(`/api/investor/bank-accounts?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: investorHeaders,
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Unable to remove the bank account.");
+      await refreshInvestor();
+      notify("Linked bank account removed.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Unable to remove the bank account.");
     }
   };
   const placeOrder = async (order: InvestorOrderInput): Promise<PlaceResult> => {
@@ -1345,11 +1400,11 @@ export default function InvestorApp() {
                           ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} />
                           : tab === "learn"
                             ? <LearnScreen />
-                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
                 </div>
                 <BottomNav active={tab} onChange={navigate} />
               </>}
-        {cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
+        {cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
         {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
         {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}
       </div>

@@ -4,6 +4,11 @@ import { toNum } from "../../../../lib/money";
 import { availableActions } from "../../../../lib/oms/status";
 import { prisma } from "../../../../lib/prisma";
 import { requirePermission } from "../../../../lib/server-auth";
+import {
+  expectedDocumentTypes,
+  serializeClientDocument,
+  serializeLinkedBank,
+} from "../../../../lib/onboarding-evidence";
 
 export const runtime = "nodejs";
 
@@ -36,6 +41,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         consents: { include: { legalDocument: true }, orderBy: { acceptedAt: "desc" } },
         serviceRequests: { orderBy: { submittedAt: "desc" } },
         cashMovements: { include: { pooledBankAccount: true }, orderBy: { submittedAt: "desc" } },
+        documents: { include: { content: { select: { documentId: true } } }, orderBy: { uploadedAt: "desc" } },
+        linkedBankAccounts: { orderBy: { createdAt: "asc" } },
         notes: { include: { author: true }, orderBy: { createdAt: "desc" } },
         accounts: {
           orderBy: { createdAt: "asc" },
@@ -181,6 +188,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         approvedBy: client.approver?.fullName ?? null,
         approvedAt: client.approvedAt?.toISOString() ?? null,
         rejectionReason: client.rejectionReason,
+        onboardingChannel: client.onboardingChannel,
+        address: client.address,
+        identityMasked: client.faydaLast4 ? `•••• •••• ${client.faydaLast4}` : null,
+        taxIdMasked: client.taxIdLast4 ? `•••••• ${client.taxIdLast4}` : null,
+        businessRegistrationNumber: client.businessRegistrationNumber,
+        authorizedRepresentativeName: client.authorizedRepresentativeName,
+        beneficialOwners: client.beneficialOwners,
+        signatoryAuthorityConfirmed: client.signatoryAuthorityConfirmed,
       },
       readiness: { canTrade: readiness.canTrade, blockingReasons: readiness.blockingReasons, items: readiness.items },
       cash: account ? {
@@ -270,9 +285,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         latestAcceptedVersion: acceptedConsent?.version ?? null,
         lastAcceptedAt: acceptedConsent?.acceptedAt.toISOString() ?? null,
         missingDocuments: [
-          client.proofOfAddressStatus !== "received" ? "Proof of address" : null,
-          institutional && !client.businessRegistrationNumber ? "Business registration" : null,
-          institutional && !client.signatoryAuthorityConfirmed ? "Signatory authority" : null,
+          ...expectedDocumentTypes(client.clientType)
+            .filter((type) => !client.documents.some((document) => document.documentType === type))
+            .map((type) => type.replaceAll("_", " ")),
           !readiness.consentReady ? currentLegal?.title ?? "Brokerage account terms" : null,
         ].filter((value): value is string => Boolean(value)),
       },
@@ -289,11 +304,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         ].filter((value): value is string => Boolean(value)),
       },
       documents: {
-        kyc: [
-          client.identityReference ? { id: client.identityReference, name: "Fayda identity reference", status: "recorded" } : null,
-          client.proofOfAddressReference ? { id: client.proofOfAddressReference, name: client.proofOfAddressType ?? "Proof of address", status: client.proofOfAddressStatus } : null,
-          client.businessRegistrationNumber ? { id: client.businessRegistrationNumber, name: "Business registration", status: "recorded" } : null,
-        ].filter(Boolean),
+        expected: expectedDocumentTypes(client.clientType),
+        kyc: client.documents.map(serializeClientDocument),
         legal: client.consents.filter((consent) => consent.consentType === "brokerage_terms").map((consent) => ({
           id: consent.id,
           name: consent.legalDocument?.title ?? "Brokerage account terms",
@@ -313,6 +325,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           { type: "Holdings statement", status: "not_implemented" },
         ],
       },
+      linkedBanks: client.linkedBankAccounts.map(serializeLinkedBank),
       requests: client.serviceRequests.map((item) => ({
         id: item.id,
         requestType: item.requestType,
