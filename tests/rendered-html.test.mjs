@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("ships the FrankBroker product surface and PostgreSQL model", async () => {
-  const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, investorApi, adminApi, tenantApi, ordersApi, orderActionApi, auditApi, orderInput, orderService, tradeService, ledgerService, validationService, settlementService, statusMachine, schema, migration, wiringMigration, omsMigration] = await Promise.all([
+  const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, investorApi, adminApi, tenantApi, ordersApi, orderDetailApi, orderActionApi, auditApi, orderInput, orderService, tradeService, ledgerService, validationService, settlementService, statusMachine, schema, migration, wiringMigration, omsMigration] = await Promise.all([
     readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
     readFile(new URL("app/investor/investor-app.tsx", root), "utf8"),
     readFile(new URL("lib/investor-data.ts", root), "utf8"),
@@ -21,6 +21,7 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
     readFile(new URL("app/api/admin/configuration/route.ts", root), "utf8"),
     readFile(new URL("app/api/tenant/route.ts", root), "utf8"),
     readFile(new URL("app/api/orders/route.ts", root), "utf8"),
+    readFile(new URL("app/api/orders/[id]/route.ts", root), "utf8"),
     readFile(new URL("app/api/orders/[id]/action/route.ts", root), "utf8"),
     readFile(new URL("app/api/audit/route.ts", root), "utf8"),
     readFile(new URL("lib/order-input.ts", root), "utf8"),
@@ -87,8 +88,9 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(tenantApi, /issuer: instrument\.issuer/);
   assert.match(tenantApi, /settlementCycle: instrument\.settlementCycle/);
   assert.match(validationService, /ORDER_TYPE_ALLOWED/);
-  assert.match(ordersApi, /ledgerEntries/);
-  assert.match(ordersApi, /availableActions/);
+  assert.match(ordersApi, /pagination/);
+  assert.match(orderDetailApi, /ledgerEntries/);
+  assert.match(orderDetailApi, /availableActions/);
   assert.match(orderActionApi, /captureTrade/);
   assert.match(orderActionApi, /settleNextTrade/);
   assert.match(orderActionApi, /generateContractNote/);

@@ -4,53 +4,116 @@ import { toNum } from "../../../lib/money";
 import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
-import { availableActions } from "../../../lib/oms/status";
+import { Prisma } from "../../generated/prisma/client";
+import { csvCell, ORDER_STATUS_GROUPS, orderResponsibility } from "../../../lib/order-log";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
     const actor = resolveActor(request);
-    const rows = await prisma.order.findMany({
-      where: { brokerId: actor.brokerId },
-      include: {
-        account: { include: { client: true } },
-        instrument: true,
-        assignedTrader: true,
-        trades: { include: { settlement: true, capturedByUser: true }, orderBy: { capturedAt: "asc" } },
-        events: { include: { actor: true }, orderBy: { createdAt: "asc" } },
-        cashLedgerEntries: { orderBy: { createdAt: "asc" } },
-        securityLedgerEntries: { include: { instrument: true }, orderBy: { createdAt: "asc" } },
-      },
-      orderBy: { submittedAt: "desc" },
-      take: 100,
-    });
-    const orderIds = rows.map((order) => order.id);
-    const tradeIds = rows.flatMap((order) => order.trades.map((trade) => trade.id));
-    const settlementIds = rows.flatMap((order) => order.trades.flatMap((trade) => trade.settlement ? [trade.settlement.id] : []));
-    const auditRows = await prisma.auditLog.findMany({
-      where: {
-        brokerId: actor.brokerId,
+    const url = new URL(request.url);
+    const page = boundedInteger(url.searchParams.get("page"), 1, 1, 100_000);
+    const pageSize = boundedInteger(url.searchParams.get("pageSize"), 25, 10, 100);
+    const query = url.searchParams.get("query")?.trim().slice(0, 120) ?? "";
+    const status = url.searchParams.get("status") ?? "all";
+    const side = url.searchParams.get("side") ?? "all";
+    const risk = url.searchParams.get("risk") ?? "all";
+    const orderType = url.searchParams.get("orderType")?.trim().slice(0, 40) ?? "all";
+    const source = url.searchParams.get("source")?.trim().slice(0, 40) ?? "all";
+    const period = url.searchParams.get("period") ?? "all";
+    const sort = url.searchParams.get("sort") ?? "newest";
+    const requestedStatuses = ORDER_STATUS_GROUPS[status] ?? (status !== "all" ? [status] : []);
+    const since = periodStart(period);
+    const where: Prisma.OrderWhereInput = {
+      brokerId: actor.brokerId,
+      ...(requestedStatuses.length ? { status: { in: [...requestedStatuses] } } : {}),
+      ...(["buy", "sell"].includes(side) ? { side } : {}),
+      ...(risk === "flagged" ? { riskFlag: { not: "none" } } : {}),
+      ...(orderType !== "all" ? { orderType } : {}),
+      ...(source !== "all" ? { source } : {}),
+      ...(since ? { submittedAt: { gte: since } } : {}),
+      ...(query ? {
         OR: [
-          { entityType: "order", entityId: { in: orderIds } },
-          { entityType: "trade", entityId: { in: tradeIds } },
-          { entityType: "settlement", entityId: { in: settlementIds } },
+          { id: { contains: query, mode: "insensitive" } },
+          { status: { contains: query, mode: "insensitive" } },
+          { submissionReference: { contains: query, mode: "insensitive" } },
+          { account: { accountNumber: { contains: query, mode: "insensitive" } } },
+          { account: { client: { fullName: { contains: query, mode: "insensitive" } } } },
+          { account: { client: { clientCode: { contains: query, mode: "insensitive" } } } },
+          { instrument: { symbol: { contains: query, mode: "insensitive" } } },
+          { trades: { some: { captureReference: { contains: query, mode: "insensitive" } } } },
         ],
-      },
-      include: { actor: true },
-      orderBy: { createdAt: "asc" },
-    });
-
-    return Response.json({
-      orders: rows.map((order) => {
-        const latestTrade = order.trades.at(-1);
-        const baseActions: readonly string[] = availableActions(order.status);
-        return {
+      } : {}),
+    };
+    const orderBy: Prisma.OrderOrderByWithRelationInput[] = sort === "oldest"
+      ? [{ submittedAt: "asc" }, { createdAt: "asc" }]
+      : sort === "value"
+        ? [{ estimatedNet: "desc" }, { submittedAt: "desc" }]
+        : sort === "updated"
+          ? [{ updatedAt: "desc" }]
+          : [{ submittedAt: "desc" }, { createdAt: "desc" }];
+    const select = {
+      id: true,
+      submissionReference: true,
+      accountId: true,
+      instrumentId: true,
+      side: true,
+      quantity: true,
+      price: true,
+      triggerPrice: true,
+      orderType: true,
+      validity: true,
+      estimatedGross: true,
+      estimatedFees: true,
+      estimatedNet: true,
+      filledQuantity: true,
+      remainingQuantity: true,
+      averageFillPrice: true,
+      executedGross: true,
+      executedFees: true,
+      executedNet: true,
+      blockedCash: true,
+      blockedQuantity: true,
+      status: true,
+      source: true,
+      riskFlag: true,
+      rejectionReason: true,
+      submittedAt: true,
+      approvedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      account: { select: { accountNumber: true, client: { select: { fullName: true, clientCode: true } } } },
+      instrument: { select: { symbol: true } },
+      assignedTrader: { select: { fullName: true } },
+      approver: { select: { fullName: true } },
+      trades: { select: { id: true, captureReference: true }, orderBy: { capturedAt: "asc" as const } },
+    } satisfies Prisma.OrderSelect;
+    const exporting = url.searchParams.get("format") === "csv";
+    const total = await prisma.order.count({ where });
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, pageCount);
+    const [rows, statusGroups, typeGroups, sourceGroups] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        select,
+        orderBy,
+        ...(exporting ? {} : { skip: (safePage - 1) * pageSize, take: pageSize }),
+      }),
+      prisma.order.groupBy({ by: ["status"], where: { brokerId: actor.brokerId }, _count: { _all: true } }),
+      prisma.order.groupBy({ by: ["orderType"], where: { brokerId: actor.brokerId }, _count: { _all: true } }),
+      prisma.order.groupBy({ by: ["source"], where: { brokerId: actor.brokerId }, _count: { _all: true } }),
+    ]);
+    const orders = rows.map((order) => {
+      const trader = order.assignedTrader?.fullName ?? "Unassigned";
+      return {
         id: order.id,
         createdAt: (order.submittedAt ?? order.createdAt).toISOString(),
+        updatedAt: order.updatedAt.toISOString(),
         client: order.account.client.fullName,
         clientCode: order.account.client.clientCode,
         accountId: order.accountId,
+        accountNumber: order.account.accountNumber,
         instrumentId: order.instrumentId,
         symbol: order.instrument.symbol,
         side: order.side,
@@ -58,13 +121,19 @@ export async function GET(request: Request) {
         price: toNum(order.price),
         triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
         orderType: order.orderType,
+        validity: order.validity,
+        submissionReference: order.submissionReference,
         estimatedGross: toNum(order.estimatedGross),
         estimatedFees: toNum(order.estimatedFees),
         estimatedNet: toNum(order.estimatedNet),
         status: order.status,
         source: order.source,
         riskFlag: order.riskFlag,
-        trader: order.assignedTrader?.fullName ?? "Unassigned",
+        trader,
+        approvedBy: order.approver?.fullName ?? null,
+        approvedAt: order.approvedAt?.toISOString() ?? null,
+        rejectionReason: order.rejectionReason,
+        ...orderResponsibility(order.status, trader === "Unassigned" ? null : trader),
         filledQuantity: toNum(order.filledQuantity),
         remainingQuantity: toNum(order.remainingQuantity),
         averageFillPrice: order.averageFillPrice ? toNum(order.averageFillPrice) : null,
@@ -73,106 +142,58 @@ export async function GET(request: Request) {
         executedNet: toNum(order.executedNet),
         blockedCash: toNum(order.blockedCash),
         blockedQuantity: toNum(order.blockedQuantity),
-        contractNoteNumber: order.contractNoteNumber,
-        contractNoteGeneratedAt: order.contractNoteGeneratedAt?.toISOString(),
-        availableActions: [
-          ...baseActions,
-          ...(!baseActions.includes("contract_note") && order.trades.length && (order.remainingQuantity.isZero() || ["cancelled", "failed"].includes(order.status)) ? ["contract_note"] : []),
-          ...(!baseActions.includes("settle") && order.trades.some((trade) => trade.settlement?.status !== "settled") ? ["settle"] : []),
-        ],
-        tradeId: latestTrade?.id,
-        capturedBy: latestTrade?.capturedByUser.fullName,
-        tradeDate: latestTrade?.tradeDate.toISOString().slice(0, 10),
-        settlementDate: latestTrade?.settlementDate.toISOString().slice(0, 10),
-        tradeQuantity: latestTrade ? toNum(latestTrade.quantityFilled) : undefined,
-        executionPrice: latestTrade ? toNum(latestTrade.executionPrice) : undefined,
-        tradeGross: latestTrade ? toNum(latestTrade.grossAmount) : undefined,
-        tradeFees: latestTrade ? toNum(latestTrade.fees) : undefined,
-        tradeNet: latestTrade ? toNum(latestTrade.netAmount) : undefined,
-        cashStatus: latestTrade?.settlement?.cashStatus,
-        securitiesStatus: latestTrade?.settlement?.securitiesStatus,
-        trades: order.trades.map((trade) => ({
-          id: trade.id,
-          quantity: toNum(trade.quantityFilled),
-          executionPrice: toNum(trade.executionPrice),
-          gross: toNum(trade.grossAmount),
-          fees: toNum(trade.fees),
-          net: toNum(trade.netAmount),
-          tradeDate: trade.tradeDate.toISOString().slice(0, 10),
-          settlementDate: trade.settlementDate.toISOString().slice(0, 10),
-          settlementStatus: trade.settlement?.status ?? "missing",
-          cashStatus: trade.settlement?.cashStatus ?? "missing",
-          securitiesStatus: trade.settlement?.securitiesStatus ?? "missing",
-          capturedBy: trade.capturedByUser.fullName,
-          capturedAt: trade.capturedAt.toISOString(),
-        })),
-        ledgerEntries: [
-          ...order.cashLedgerEntries.map((entry) => ({
-            id: entry.id,
-            ledger: "cash",
-            entryType: entry.entryType,
-            amount: toNum(entry.amount),
-            totalImpact: toNum(entry.totalImpact),
-            availableImpact: toNum(entry.availableImpact),
-            blockedImpact: toNum(entry.blockedImpact),
-            unsettledImpact: toNum(entry.unsettledImpact),
-            runningBalance: toNum(entry.runningBalance),
-            description: entry.description,
-            reason: entry.reason,
-            tradeId: entry.tradeId,
-            createdAt: entry.createdAt.toISOString(),
-          })),
-          ...order.securityLedgerEntries.map((entry) => ({
-            id: entry.id,
-            ledger: "securities",
-            entryType: entry.entryType,
-            quantity: toNum(entry.quantity),
-            totalImpact: toNum(entry.totalImpact),
-            availableImpact: toNum(entry.availableImpact),
-            blockedImpact: toNum(entry.blockedImpact),
-            unsettledImpact: toNum(entry.unsettledImpact),
-            runningQuantity: toNum(entry.runningQuantity),
-            description: entry.description,
-            reason: entry.reason,
-            tradeId: entry.tradeId,
-            symbol: entry.instrument.symbol,
-            createdAt: entry.createdAt.toISOString(),
-          })),
-        ].sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
-        auditTrail: auditRows
-          .filter((entry) => entry.entityId === order.id || tradeIdsForOrder(order).includes(entry.entityId ?? ""))
-          .map((entry) => ({
-            id: entry.id,
-            action: entry.action,
-            entityType: entry.entityType,
-            entityId: entry.entityId,
-            actor: entry.actor?.fullName ?? "System",
-            summary: entry.summary,
-            reason: entry.reason,
-            previousValue: entry.previousValue,
-            newValue: entry.newValue,
-            createdAt: entry.createdAt.toISOString(),
-          })),
-        events: order.events.map((event) => ({
-          id: event.id,
-          fromStatus: event.fromStatus,
-          toStatus: event.toStatus,
-          reason: event.reason,
-          actor: event.actor?.fullName ?? "System",
-          createdAt: event.createdAt.toISOString(),
-        })),
-        };
-      }),
+        executionReferences: order.trades.map((trade) => trade.captureReference).filter(Boolean),
+      };
+    });
+    if (exporting) {
+      const headers = ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated value", "Executed value", "Status", "Source", "Submission reference", "Execution references", "Assigned trader", "Next action", "Action owner", "Exception reason"];
+      const csv = [
+        headers,
+        ...orders.map((order) => [
+          order.id, order.createdAt, order.updatedAt, order.client, order.clientCode, order.accountNumber,
+          order.symbol, order.side, order.orderType, order.validity, order.price, order.triggerPrice ?? "",
+          order.quantity, order.filledQuantity, order.remainingQuantity, order.estimatedNet, order.executedNet,
+          order.status, order.source, order.submissionReference ?? "", order.executionReferences.join("; "),
+          order.trader, order.nextAction, order.actionOwner, order.rejectionReason ?? "",
+        ]),
+      ].map((row) => row.map(csvCell).join(",")).join("\n");
+      return new Response(csv, {
+        headers: {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": `attachment; filename="frankbroker-orders-${new Date().toISOString().slice(0, 10)}.csv"`,
+          "cache-control": "private, no-store",
+        },
+      });
+    }
+    return Response.json({
+      orders,
+      pagination: { page: safePage, pageSize, total, pageCount },
+      facets: {
+        statuses: Object.fromEntries(statusGroups.map((group) => [group.status, group._count._all])),
+        orderTypes: typeGroups.map((group) => group.orderType).sort(),
+        sources: sourceGroups.map((group) => group.source).sort(),
+      },
     });
   } catch (error) {
     return routeError(error);
   }
 }
 
-function tradeIdsForOrder(order: {
-  trades: Array<{ id: string; settlement: { id: string } | null }>;
-}) {
-  return order.trades.flatMap((trade) => [trade.id, ...(trade.settlement ? [trade.settlement.id] : [])]);
+function boundedInteger(value: string | null, fallback: number, minimum: number, maximum: number) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function periodStart(period: string) {
+  const now = new Date();
+  if (period === "today") {
+    const addisOffset = 3 * 60 * 60 * 1_000;
+    const addisNow = new Date(now.getTime() + addisOffset);
+    return new Date(Date.UTC(addisNow.getUTCFullYear(), addisNow.getUTCMonth(), addisNow.getUTCDate()) - addisOffset);
+  }
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : 0;
+  return days ? new Date(now.getTime() - days * 86_400_000) : null;
 }
 
 export async function POST(request: Request) {

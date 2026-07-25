@@ -7,18 +7,29 @@ export type DemoOrder = {
   client: string;
   clientCode: string;
   accountId: string;
+  accountNumber?: string;
   instrumentId: string;
   symbol: string;
   side: "buy" | "sell";
   quantity: number;
   price: number;
+  triggerPrice?: number | null;
   orderType: string;
+  validity?: string;
+  submissionReference?: string | null;
   estimatedGross: number;
   estimatedFees: number;
   estimatedNet: number;
   status: OrderStatus;
   source: string;
   trader: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  updatedAt?: string;
+  nextAction?: string;
+  actionOwner?: string;
+  rejectionReason?: string | null;
+  notes?: string | null;
   riskFlag: "none" | "review" | "high";
   settlementDate?: string;
   tradeId?: string;
@@ -56,6 +67,7 @@ export type DemoOrder = {
     securitiesStatus: string;
     capturedBy: string;
     capturedAt: string;
+    captureReference?: string | null;
   }>;
   ledgerEntries?: Array<{
     id: string;
@@ -95,6 +107,20 @@ export type DemoOrder = {
     actor: string;
     createdAt: string;
   }>;
+  validations?: Array<{
+    id: string;
+    code: string;
+    label: string;
+    passed: boolean;
+    message: string | null;
+    checkedAt: string;
+  }>;
+};
+
+export type OrderLogResponse = {
+  orders: DemoOrder[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  facets: { statuses: Record<string, number>; orderTypes: string[]; sources: string[] };
 };
 
 export type BrokerClient = {
