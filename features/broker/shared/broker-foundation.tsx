@@ -5,8 +5,8 @@ import { demoClients, demoInstruments, initialOrders, type BrokerClient, type De
 import { hasPermission, type OrderStatus, type Role } from "../../../lib/frank";
 import { orderResponsibility } from "../../../lib/order-log";
 
-export type View = "dashboard" | "performance" | "orders" | "clients" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "users" | "settings";
-export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
+export type View = "dashboard" | "performance" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "users" | "settings";
+export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
 export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
 export type NewClientBank = { id: string; bankName: string; accountNumber: string; accountHolderName: string };
@@ -66,7 +66,174 @@ export type CashPoolView = { id: string; bankName: string; accountName: string; 
 export type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: number; currency: string; status: string; bankReference: string | null; proofReference: string | null; destinationBankName: string | null; destinationAccountName: string | null; destinationAccountMasked: string | null; channel: string; submissionReference: string; submittedAt: string; rejectionReason: string | null; failureReason: string | null; client?: { id: string; code: string; name: string }; account?: { id: string; number: string }; pool?: { id: string; bankName: string; accountName: string; accountNumberMasked: string; purpose: string } };
 export type CashOperationsData = { summary: { bankBookTotal: number; statementTotal: number; beneficialTotal: number; pendingDeposits: number; pendingWithdrawals: number }; pools: CashPoolView[]; movements: CashMovementView[] };
 export type BrokerCashInput = { clientId: string; accountId?: string; pooledBankAccountId: string; movementType: "deposit" | "withdrawal"; amount: number; submissionReference: string; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string; notes?: string };
-export type Client360Tab = "overview" | "assets" | "orders" | "trades" | "transactions" | "settlements" | "documents" | "notes" | "audit";
+export type Client360Tab = "overview" | "assets" | "orders" | "trades" | "transactions" | "conversations" | "timeline" | "settlements" | "documents" | "notes" | "audit";
+
+// ---------------------------------------------------------------------------
+// Investor-servicing conversations
+// ---------------------------------------------------------------------------
+
+export type CrmAttachment = { id: string; name: string; mimeType: string; sizeBytes: number; visibility?: string };
+export type CrmMessage = {
+  id: string;
+  body: string;
+  createdAt: string;
+  visibility: string;
+  authorType: string;
+  authorUserId: string | null;
+  authorName: string;
+  attachments: CrmAttachment[];
+};
+export type CrmThreadSummary = {
+  id: string;
+  subject: string;
+  category: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  relatedType: string | null;
+  relatedId: string | null;
+  assignedToUserId: string | null;
+  assignedToName: string | null;
+  client: { id: string; code: string; name: string } | null;
+  account: { id: string; number: string } | null;
+  messageCount: number;
+  lastMessageAt: string;
+  lastMessagePreview: string | null;
+  unread: number;
+  createdAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+};
+export type CrmThreadDetail = CrmThreadSummary & { messages: CrmMessage[] };
+export type CrmThreadsResponse = {
+  threads: CrmThreadSummary[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  facets: { unreadThreads: number; mine: number; unassigned: number };
+};
+export type CrmFocus = { threadId?: string; clientId?: string; status?: string } | null;
+export type NewThreadValue = { clientId: string; category: string; priority: string; subject: string; body: string; relatedType: string; relatedId: string };
+
+export type CrmTaskView = {
+  id: string;
+  title: string;
+  description: string | null;
+  taskType: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  escalated: boolean;
+  dueDate: string | null;
+  bucket: string;
+  threadId: string | null;
+  caseId: string | null;
+  relatedType: string | null;
+  relatedId: string | null;
+  client: { id: string; code: string; name: string } | null;
+  assignedToUserId: string | null;
+  assignedToName: string | null;
+  createdByName: string | null;
+  completedAt: string | null;
+  completedByName: string | null;
+  completionNote: string | null;
+  createdAt: string;
+};
+export type CrmTasksResponse = {
+  tasks: CrmTaskView[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  facets: { overdue: number; today: number; upcoming: number; no_due_date: number; completed: number };
+};
+export type CrmCaseView = {
+  id: string;
+  subject: string;
+  category: string;
+  severity: string;
+  status: string;
+  statusLabel: string;
+  client: { id: string; code: string; name: string } | null;
+  assignedToUserId: string | null;
+  assignedToName: string | null;
+  threadId: string | null;
+  threadSubject: string | null;
+  openedAt: string;
+  targetResolutionAt: string | null;
+  overdue: boolean;
+  internalFindings: string | null;
+  resolutionSummary: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+};
+export type CrmCasesResponse = {
+  cases: CrmCaseView[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  facets: { open: number; overdue: number };
+};
+export type CrmAssignmentView = {
+  id: string;
+  clientId: string;
+  primaryOfficerId: string | null;
+  primaryOfficerName: string | null;
+  primaryOfficerRole: string | null;
+  backupOfficerId: string | null;
+  backupOfficerName: string | null;
+  team: string | null;
+  branch: string | null;
+  note: string | null;
+  assignedByName: string | null;
+  assignedAt: string;
+  endedAt: string | null;
+  current: boolean;
+};
+
+/** Offline demonstration follow-ups and cases so both screens render without a database. */
+export const fallbackCrmTasks: CrmTaskView[] = [
+  { id: "TSK-DEMO01", title: "Call Selam about the held TELE order", description: "Explain why the limit price has not filled and agree next steps.", taskType: "call_investor", status: "open", statusLabel: "Open", priority: "high", escalated: false, dueDate: "2026-07-24", bucket: "overdue", threadId: "THR-DEMO01", caseId: null, relatedType: "order", relatedId: "ORD-INV-0003", client: { id: "cli_investor_demo", code: "CL-INV-001", name: "Selam Mekonnen" }, assignedToUserId: "usr_service", assignedToName: "Bethel Tesfaye", createdByName: "Mekdes Tadesse", completedAt: null, completedByName: null, completionNote: null, createdAt: "2026-07-24T09:20:00Z" },
+  { id: "TSK-DEMO02", title: "Request bank statement for second account", description: null, taskType: "request_document", status: "awaiting_investor", statusLabel: "Awaiting investor", priority: "normal", escalated: false, dueDate: "2026-07-26", bucket: "upcoming", threadId: null, caseId: null, relatedType: null, relatedId: null, client: { id: "cli_meron", code: "CL-10041", name: "Meron Bekele" }, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu", createdByName: "Bethel Tesfaye", completedAt: null, completedByName: null, completionNote: null, createdAt: "2026-07-23T11:20:00Z" },
+  { id: "TSK-DEMO03", title: "Resolve fee complaint", description: "Review the contract note against the agreed schedule.", taskType: "resolve_complaint", status: "in_progress", statusLabel: "In progress", priority: "urgent", escalated: true, dueDate: "2026-07-25", bucket: "today", threadId: "THR-DEMO0005", caseId: "CASE-DEMO01", relatedType: "order", relatedId: "ORD-2026-1046", client: { id: "cli_wegagen", code: "CL-10008", name: "Wegagen Pension Fund" }, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu", createdByName: "Mekdes Tadesse", completedAt: null, completedByName: null, completionNote: null, createdAt: "2026-07-24T07:45:00Z" },
+  { id: "TSK-DEMO04", title: "Schedule mid-year portfolio review", description: null, taskType: "portfolio_review", status: "completed", statusLabel: "Completed", priority: "low", escalated: false, dueDate: "2026-07-20", bucket: "completed", threadId: null, caseId: null, relatedType: null, relatedId: null, client: { id: "cli_wegagen", code: "CL-10008", name: "Wegagen Pension Fund" }, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu", createdByName: "Kalkidan Alemu", completedAt: "2026-07-20T15:00:00Z", completedByName: "Kalkidan Alemu", completionNote: "Review booked for 2 August.", createdAt: "2026-07-18T09:00:00Z" },
+];
+
+export const fallbackCrmCases: CrmCaseView[] = [
+  { id: "CASE-DEMO01", subject: "Contract note shows the wrong fee", category: "complaint", severity: "high", status: "under_review", statusLabel: "Under review", client: { id: "cli_wegagen", code: "CL-10008", name: "Wegagen Pension Fund" }, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu", threadId: "THR-DEMO0005", threadSubject: "Contract note shows the wrong fee", openedAt: "2026-07-24T07:35:00Z", targetResolutionAt: "2026-07-29T07:35:00Z", overdue: false, internalFindings: "Fee schedule v1.0 applied; agreed rate was v1.1. Checking effective dates.", resolutionSummary: null, resolvedAt: null, closedAt: null },
+  { id: "CASE-DEMO02", subject: "Withdrawal delayed beyond agreed window", category: "service_failure", severity: "medium", status: "resolved", statusLabel: "Resolved", client: { id: "cli_meron", code: "CL-10041", name: "Meron Bekele" }, assignedToUserId: "usr_service", assignedToName: "Bethel Tesfaye", threadId: null, threadSubject: null, openedAt: "2026-07-15T10:00:00Z", targetResolutionAt: "2026-07-25T10:00:00Z", overdue: false, internalFindings: "Bank cut-off missed on the first attempt.", resolutionSummary: "Payment released the next business day and the investor was told what happened.", resolvedAt: "2026-07-17T09:30:00Z", closedAt: null },
+];
+
+/** Offline demonstration conversations so the inbox renders without a database. */
+export const fallbackCrmThreads: CrmThreadDetail[] = [
+  {
+    id: "THR-DEMO01", subject: "Why was my TELE order held?", category: "order", status: "pending_broker", statusLabel: "Awaiting broker",
+    priority: "high", relatedType: "order", relatedId: "ORD-INV-0003", assignedToUserId: null, assignedToName: null,
+    client: { id: "cli_investor_demo", code: "CL-INV-001", name: "Selam Mekonnen" }, account: { id: "acc_investor_demo", number: "INV-00001-01" },
+    messageCount: 3, lastMessageAt: "2026-07-24T09:12:00Z", lastMessagePreview: "I expected it to fill yesterday — can you check?", unread: 1,
+    createdAt: "2026-07-24T08:40:00Z", resolvedAt: null, closedAt: null,
+    messages: [
+      { id: "MSG-D01", body: "I placed a buy order for TELE yesterday and it still has not filled. Can you check what happened?", createdAt: "2026-07-24T08:40:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
+      { id: "MSG-D02", body: "Limit price is below the current market. Confirm with the client before amending.", createdAt: "2026-07-24T08:55:00Z", visibility: "internal", authorType: "system", authorUserId: "usr_trader", authorName: "Dawit Alemu", attachments: [] },
+      { id: "MSG-D03", body: "I expected it to fill yesterday — can you check?", createdAt: "2026-07-24T09:12:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
+    ],
+  },
+  {
+    id: "THR-DEMO02", subject: "Withdrawal still pending", category: "cash", status: "pending_client", statusLabel: "Awaiting investor",
+    priority: "normal", relatedType: "cash_movement", relatedId: "MOV-DEMO-WDR-001", assignedToUserId: "usr_service", assignedToName: "Bethel Tesfaye",
+    client: { id: "cli_meron", code: "CL-10041", name: "Meron Bekele" }, account: { id: "acc_meron", number: "TRD-10041-01" },
+    messageCount: 2, lastMessageAt: "2026-07-23T14:02:00Z", lastMessagePreview: "Could you confirm the destination account name?", unread: 0,
+    createdAt: "2026-07-23T13:20:00Z", resolvedAt: null, closedAt: null,
+    messages: [
+      { id: "MSG-D04", body: "My withdrawal has not arrived yet. When will it be paid?", createdAt: "2026-07-23T13:20:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
+      { id: "MSG-D05", body: "Could you confirm the destination account name?", createdAt: "2026-07-23T14:02:00Z", visibility: "shared", authorType: "broker", authorUserId: "usr_service", authorName: "Bethel Tesfaye", attachments: [] },
+    ],
+  },
+  {
+    id: "THR-DEMO03", subject: "Please share my mid-year statement", category: "portfolio", status: "resolved", statusLabel: "Resolved",
+    priority: "low", relatedType: null, relatedId: null, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu",
+    client: { id: "cli_wegagen", code: "CL-10008", name: "Wegagen Pension Fund" }, account: { id: "acc_wegagen", number: "TRD-10008-01" },
+    messageCount: 2, lastMessageAt: "2026-07-22T10:30:00Z", lastMessagePreview: "Statement attached — let us know if anything looks off.", unread: 0,
+    createdAt: "2026-07-22T09:05:00Z", resolvedAt: "2026-07-22T10:31:00Z", closedAt: null,
+    messages: [
+      { id: "MSG-D06", body: "Could you send the mid-year portfolio statement for our records?", createdAt: "2026-07-22T09:05:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
+      { id: "MSG-D07", body: "Statement attached — let us know if anything looks off.", createdAt: "2026-07-22T10:30:00Z", visibility: "shared", authorType: "broker", authorUserId: "usr_relationship", authorName: "Kalkidan Alemu", attachments: [] },
+    ],
+  },
+];
 export type Client360Detail = {
   client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string; createdBy: string | null; submittedAt: string | null; approvedBy: string | null; approvedAt: string | null; rejectionReason: string | null; onboardingChannel?: string; address?: string | null; identityMasked?: string | null; taxIdMasked?: string | null; businessRegistrationNumber?: string | null; authorizedRepresentativeName?: string | null; beneficialOwners?: unknown; signatoryAuthorityConfirmed?: boolean };
   readiness: { canTrade: boolean; blockingReasons: string[]; items: Array<{ key: string; label: string; state: "pass" | "fail" | "warning"; detail: string }> };
@@ -89,6 +256,11 @@ export type Client360Detail = {
   requests: NonNullable<BrokerClient["serviceRequests"]>;
   notes: Array<{ id: string; text: string; category: string; visibility: string; createdBy: string; createdAt: string }>;
   auditTrail: Array<{ id: string; timestamp: string; user: string; action: string; entityType: string; entityId: string | null; oldValue: string | null; newValue: string | null; reason: string }>;
+  // Servicing context. Optional because the offline fallback model omits them.
+  conversations?: Array<{ id: string; subject: string; category: string; status: string; assignedToName: string | null; lastMessageAt: string; lastMessagePreview: string | null; createdAt: string }>;
+  tasks?: CrmTaskView[];
+  cases?: CrmCaseView[];
+  relationship?: { current: CrmAssignmentView | null; history: CrmAssignmentView[] };
 };
 
 export const fallbackControls: TenantControls = {
@@ -177,6 +349,11 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance"] },
     { id: "cash", label: "Client money", icon: "cash", roles: ["broker_admin", "operations", "settlement"] },
   ] },
+  { label: "Client service", items: [
+    { id: "crm", label: "Conversations", icon: "conversations" },
+    { id: "crm_tasks", label: "My tasks", icon: "tasks" },
+    { id: "crm_cases", label: "Complaints", icon: "complaints" },
+  ] },
   { label: "Trading", items: [
     { id: "orders", label: "Order log", icon: "orders" },
     { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
@@ -203,6 +380,8 @@ export const roleNames: Record<Role, string> = {
   operations: "Hana Kebede",
   compliance: "Liya Girma",
   settlement: "Rahel Getachew",
+  relationship_officer: "Kalkidan Alemu",
+  service_officer: "Bethel Tesfaye",
   management: "Yonas Alemayehu",
   super_admin: "Frank",
 };
@@ -213,6 +392,9 @@ const ICON_PATHS: Record<string, string> = {
   orders: "M8 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1 M9 3h6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M8 11h8 M8 15h5",
   clients: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
   users: "M16 10h3 M16 14h3 M6.2 15a3 3 0 0 1 5.6 0 M9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+  conversations: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z M8 9h8 M8 13h5",
+  tasks: "M11 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5 M9 11l3 3L22 4 M9 15h4",
+  complaints: "M12 9v4 M12 17h.01 M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
   cash: "M3 7h18v13H3z M16 13h5 M3 7l3-3h12l3 3 M7 11h5 M7 15h3",
   settlement: "M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01l-3-3",
   reconciliation: "M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M13 6h3a2 2 0 0 1 2 2v7 M11 18H8a2 2 0 0 1-2-2V9",

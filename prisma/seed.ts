@@ -27,6 +27,8 @@ async function main() {
       { id: "usr_operations", brokerId: "brk_abyssinia", email: "hana@frankbroker.et", fullName: "Hana Kebede", role: "operations", status: "active" },
       { id: "usr_compliance", brokerId: "brk_abyssinia", email: "liya@frankbroker.et", fullName: "Liya Girma", role: "compliance", status: "active" },
       { id: "usr_settlement", brokerId: "brk_abyssinia", email: "rahel@frankbroker.et", fullName: "Rahel Getachew", role: "settlement", status: "active" },
+      { id: "usr_relationship", brokerId: "brk_abyssinia", email: "kalkidan@frankbroker.et", fullName: "Kalkidan Alemu", role: "relationship_officer", status: "active" },
+      { id: "usr_service", brokerId: "brk_abyssinia", email: "bethel@frankbroker.et", fullName: "Bethel Tesfaye", role: "service_officer", status: "active" },
       { id: "usr_platform_admin", brokerId: null, email: "platform.admin@frankmoney.et", fullName: "Fikru Yilma", role: "super_admin", status: "active", mfaEnabled: true },
       { id: "usr_blue_admin", brokerId: "brk_blue_nile", email: "samuel@bluenile.example", fullName: "Samuel Kebede", role: "broker_admin", status: "active", mfaEnabled: true },
       { id: "usr_sheba_admin", brokerId: "brk_sheba", email: "abel@sheba.example", fullName: "Abel Yohannes", role: "broker_admin", status: "suspended", mfaEnabled: true },
@@ -285,6 +287,68 @@ async function main() {
       { id: "aud_2", brokerId: "brk_abyssinia", actorId: "usr_demo_admin", action: "ORDER_VALIDATED", entityType: "order", entityId: "ORD-2026-1048", summary: "All required pre-trade checks passed", createdAt: new Date("2026-07-14T10:43:12Z") },
       { id: "aud_3", brokerId: "brk_abyssinia", actorId: "usr_trader", action: "TRADE_CAPTURED", entityType: "trade", entityId: "TRD-2026-0772", summary: "Manual trade linked to ORD-2026-1046", createdAt: new Date("2026-07-14T09:58:37Z") },
       { id: "aud_4", brokerId: "brk_abyssinia", actorId: "usr_settlement", action: "SETTLEMENT_UPDATED", entityType: "settlement", entityId: "STL-0768", summary: "Cash and securities legs confirmed", createdAt: new Date("2026-07-14T09:33:18Z") },
+    ],
+    skipDuplicates: true,
+  });
+
+  // Investor-servicing conversations. Every row is scoped to brk_abyssinia and to
+  // one client, and one thread carries an internal note so the privacy boundary
+  // is visible in the demo.
+  await prisma.communicationThread.createMany({
+    data: [
+      { id: "THR-DEMO0001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", subject: "Why was my TELE order held?", category: "order", priority: "high", status: "pending_broker", relatedType: "order", relatedId: "ORD-INV-0003", assignedToUserId: null, openedBy: "investor", messageCount: 3, lastMessageAt: new Date("2026-07-24T09:12:00Z"), lastMessagePreview: "I expected it to fill yesterday — can you check?", brokerUnreadCount: 2, investorUnreadCount: 0, createdAt: new Date("2026-07-24T08:40:00Z") },
+      { id: "THR-DEMO0002", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", subject: "Withdrawal still pending", category: "cash", priority: "normal", status: "pending_client", relatedType: "cash_movement", relatedId: "MOV-DEMO-WDR-001", assignedToUserId: "usr_service", openedBy: "investor", messageCount: 2, lastMessageAt: new Date("2026-07-23T14:02:00Z"), lastMessagePreview: "Could you confirm the destination account name?", brokerUnreadCount: 0, investorUnreadCount: 1, createdAt: new Date("2026-07-23T13:20:00Z") },
+      { id: "THR-DEMO0003", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", subject: "How are my fees calculated?", category: "portfolio", priority: "low", status: "resolved", relatedType: null, relatedId: null, assignedToUserId: "usr_relationship", openedBy: "investor", messageCount: 2, lastMessageAt: new Date("2026-07-20T16:40:00Z"), lastMessagePreview: "Brokerage is 0.65% with a 25 ETB minimum.", brokerUnreadCount: 0, investorUnreadCount: 0, resolvedAt: new Date("2026-07-20T16:41:00Z"), createdAt: new Date("2026-07-20T15:58:00Z") },
+      { id: "THR-DEMO0004", brokerId: "brk_abyssinia", clientId: "cli_meron", accountId: "acc_meron", subject: "Please send my mid-year statement", category: "kyc", priority: "normal", status: "pending_broker", relatedType: null, relatedId: null, assignedToUserId: null, openedBy: "investor", messageCount: 1, lastMessageAt: new Date("2026-07-22T09:05:00Z"), lastMessagePreview: "Could you send the mid-year statement for our records?", brokerUnreadCount: 1, investorUnreadCount: 0, createdAt: new Date("2026-07-22T09:05:00Z") },
+      { id: "THR-DEMO0005", brokerId: "brk_abyssinia", clientId: "cli_wegagen", accountId: "acc_wegagen", subject: "Contract note shows the wrong fee", category: "complaint", priority: "urgent", status: "open", relatedType: "order", relatedId: "ORD-2026-1046", assignedToUserId: "usr_relationship", openedBy: "investor", messageCount: 1, lastMessageAt: new Date("2026-07-24T07:30:00Z"), lastMessagePreview: "The brokerage on this note does not match what we agreed.", brokerUnreadCount: 1, investorUnreadCount: 0, createdAt: new Date("2026-07-24T07:30:00Z") },
+    ],
+    skipDuplicates: true,
+  });
+
+  await prisma.communicationMessage.createMany({
+    data: [
+      { id: "MSG-DEMO001", threadId: "THR-DEMO0001", visibility: "shared", authorType: "investor", authorUserId: null, body: "I placed a buy order for TELE yesterday and it still has not filled. Can you check what happened?", createdAt: new Date("2026-07-24T08:40:00Z") },
+      { id: "MSG-DEMO002", threadId: "THR-DEMO0001", visibility: "internal", authorType: "system", authorUserId: "usr_trader", body: "Limit price is 4% below the current market. Confirm with the client before amending — do not amend unilaterally.", createdAt: new Date("2026-07-24T08:55:00Z") },
+      { id: "MSG-DEMO003", threadId: "THR-DEMO0001", visibility: "shared", authorType: "investor", authorUserId: null, body: "I expected it to fill yesterday — can you check?", createdAt: new Date("2026-07-24T09:12:00Z") },
+      { id: "MSG-DEMO004", threadId: "THR-DEMO0002", visibility: "shared", authorType: "investor", authorUserId: null, body: "My withdrawal has not arrived yet. When will it be paid?", createdAt: new Date("2026-07-23T13:20:00Z") },
+      { id: "MSG-DEMO005", threadId: "THR-DEMO0002", visibility: "shared", authorType: "broker", authorUserId: "usr_service", body: "Could you confirm the destination account name so we can match the bank record?", createdAt: new Date("2026-07-23T14:02:00Z") },
+      { id: "MSG-DEMO006", threadId: "THR-DEMO0003", visibility: "shared", authorType: "investor", authorUserId: null, body: "Can you explain the fees on my last trade?", createdAt: new Date("2026-07-20T15:58:00Z") },
+      { id: "MSG-DEMO007", threadId: "THR-DEMO0003", visibility: "shared", authorType: "broker", authorUserId: "usr_relationship", body: "Brokerage is 0.65% with a 25 ETB minimum. Exchange and regulatory fees appear separately on your contract note.", createdAt: new Date("2026-07-20T16:40:00Z") },
+      { id: "MSG-DEMO008", threadId: "THR-DEMO0004", visibility: "shared", authorType: "investor", authorUserId: null, body: "Could you send the mid-year statement for our records?", createdAt: new Date("2026-07-22T09:05:00Z") },
+      { id: "MSG-DEMO009", threadId: "THR-DEMO0005", visibility: "shared", authorType: "investor", authorUserId: null, body: "The brokerage on this note does not match what we agreed. Please review and correct it.", createdAt: new Date("2026-07-24T07:30:00Z") },
+    ],
+    skipDuplicates: true,
+  });
+
+  // Phase 2 servicing records: one complaint case raised from THR-DEMO0005, the
+  // follow-up tasks officers owe investors, and relationship ownership with one
+  // handover already in its history.
+  await prisma.serviceCase.createMany({
+    data: [
+      { id: "CASE-DEMO01", brokerId: "brk_abyssinia", clientId: "cli_wegagen", threadId: "THR-DEMO0005", category: "complaint", severity: "high", status: "under_review", subject: "Contract note shows the wrong fee", assignedToUserId: "usr_compliance", openedAt: new Date("2026-07-24T07:45:00Z"), targetResolutionAt: new Date("2026-07-29T07:45:00Z"), internalFindings: "Fee schedule v2 was applied to a trade dated before it took effect. Confirming with settlement before any adjustment." },
+      { id: "CASE-DEMO02", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", threadId: null, category: "service_failure", severity: "medium", status: "resolved", subject: "Withdrawal paid three days late", assignedToUserId: "usr_service", openedAt: new Date("2026-07-16T10:00:00Z"), targetResolutionAt: new Date("2026-07-26T10:00:00Z"), resolutionSummary: "The bank file was rejected for a name mismatch and resubmitted the next business day. The investor was called, the payment cleared on 19 July, and the account-name check was added to the payments checklist.", resolvedAt: new Date("2026-07-19T15:30:00Z") },
+    ],
+    skipDuplicates: true,
+  });
+
+  await prisma.crmTask.createMany({
+    data: [
+      { id: "TSK-DEMO001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", threadId: "THR-DEMO0001", title: "Call investor about the held TELE order", description: "Explain that the limit sits 4% below market and ask whether they want to amend or cancel.", taskType: "explain_rejected_order", assignedToUserId: "usr_relationship", createdByUserId: "usr_trader", dueDate: new Date("2026-07-24"), priority: "high", status: "open", createdAt: new Date("2026-07-24T09:00:00Z") },
+      { id: "TSK-DEMO002", brokerId: "brk_abyssinia", clientId: "cli_meron", threadId: "THR-DEMO0004", title: "Send mid-year statement", description: "Generate the account statement to 30 June and send it through the conversation.", taskType: "request_document", assignedToUserId: "usr_service", createdByUserId: "usr_service", dueDate: new Date("2026-07-26"), priority: "normal", status: "in_progress", createdAt: new Date("2026-07-22T09:30:00Z") },
+      { id: "TSK-DEMO003", brokerId: "brk_abyssinia", clientId: "cli_wegagen", threadId: "THR-DEMO0005", caseId: "CASE-DEMO01", title: "Recalculate brokerage on ORD-2026-1046", description: "Confirm which fee schedule version applied on the trade date and prepare the correction for approval.", taskType: "resolve_complaint", assignedToUserId: "usr_compliance", createdByUserId: "usr_relationship", dueDate: new Date("2026-07-23"), priority: "urgent", status: "open", escalated: true, createdAt: new Date("2026-07-24T08:00:00Z") },
+      { id: "TSK-DEMO004", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", threadId: "THR-DEMO0002", title: "Confirm destination account name", description: "The bank record and the linked account name do not match exactly.", taskType: "follow_up_withdrawal", assignedToUserId: "usr_service", createdByUserId: "usr_service", dueDate: new Date("2026-07-28"), priority: "normal", status: "awaiting_investor", createdAt: new Date("2026-07-23T14:05:00Z") },
+      { id: "TSK-DEMO005", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", threadId: "THR-DEMO0003", title: "Schedule portfolio review", description: "Half-year review call.", taskType: "portfolio_review", assignedToUserId: "usr_relationship", createdByUserId: "usr_relationship", dueDate: new Date("2026-07-20"), priority: "low", status: "completed", completedAt: new Date("2026-07-20T16:45:00Z"), completedByUserId: "usr_relationship", completionNote: "Reviewed fees and holdings on a 20-minute call. The investor is happy to keep the current allocation.", createdAt: new Date("2026-07-18T11:00:00Z") },
+      { id: "TSK-DEMO006", brokerId: "brk_abyssinia", clientId: "cli_meron", title: "Review KYC before the annual refresh", description: "Identity documents are due for refresh in September.", taskType: "review_kyc", assignedToUserId: null, createdByUserId: "usr_compliance", dueDate: new Date("2026-08-14"), priority: "normal", status: "open", createdAt: new Date("2026-07-21T08:00:00Z") },
+    ],
+    skipDuplicates: true,
+  });
+
+  await prisma.investorAssignment.createMany({
+    data: [
+      { id: "ASG-DEMO001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", primaryOfficerId: "usr_service", team: "Retail servicing", branch: "Addis Ababa", assignedByUserId: "usr_demo_admin", assignedAt: new Date("2026-05-02T08:00:00Z"), endedAt: new Date("2026-07-01T08:00:00Z"), note: "Initial onboarding owner." },
+      { id: "ASG-DEMO002", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", primaryOfficerId: "usr_relationship", backupOfficerId: "usr_service", team: "Retail servicing", branch: "Addis Ababa", assignedByUserId: "usr_demo_admin", assignedAt: new Date("2026-07-01T08:00:00Z"), note: "Moved to relationship management after the account went active." },
+      { id: "ASG-DEMO003", brokerId: "brk_abyssinia", clientId: "cli_meron", primaryOfficerId: "usr_service", team: "Retail servicing", branch: "Addis Ababa", assignedByUserId: "usr_demo_admin", assignedAt: new Date("2026-06-11T08:00:00Z") },
+      { id: "ASG-DEMO004", brokerId: "brk_abyssinia", clientId: "cli_wegagen", primaryOfficerId: "usr_relationship", team: "Corporate servicing", branch: "Addis Ababa", assignedByUserId: "usr_demo_admin", assignedAt: new Date("2026-04-19T08:00:00Z") },
     ],
     skipDuplicates: true,
   });

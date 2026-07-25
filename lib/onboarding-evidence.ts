@@ -36,8 +36,8 @@ export const databaseClientDocumentStorage: ClientDocumentStorage = {
   },
 };
 
-const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
-const supportedMimeTypes = new Set(["application/pdf", "image/png", "image/jpeg"]);
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+export const supportedMimeTypes = new Set(["application/pdf", "image/png", "image/jpeg"]);
 
 function fail(message: string, status = 400): never {
   throw new Response(message, { status });
@@ -59,7 +59,7 @@ export function expectedDocumentTypes(clientType: string): ClientDocumentType[] 
     : ["business_license", "tin_certificate", "certificate_of_incorporation", "article_of_association"];
 }
 
-function matchesSignature(bytes: Uint8Array, mimeType: string) {
+export function matchesSignature(bytes: Uint8Array, mimeType: string) {
   if (mimeType === "application/pdf") {
     return bytes.length >= 5 && String.fromCharCode(...bytes.slice(0, 5)) === "%PDF-";
   }

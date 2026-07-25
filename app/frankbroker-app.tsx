@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { demoAudit, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
-import { hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
+import { CRM_PERMISSIONS, hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
 import type { Period } from "../lib/broker-analytics";
 import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/notifications-demo";
 import { isOrderEligibleClient } from "../lib/client-readiness";
@@ -19,6 +19,7 @@ import {
   etb,
   fallbackCashOperations,
   fallbackClients,
+  fallbackCrmThreads,
   fallbackControls,
   fallbackFeatures,
   fallbackInstruments,
@@ -41,6 +42,9 @@ import {
   type Drawer,
   type NewClientValue,
   type NewOrderValue,
+  type CrmFocus,
+  type CrmThreadsResponse,
+  type NewThreadValue,
   type QueueItem,
   type ReconBatch,
   type TenantApiResult,
@@ -59,6 +63,10 @@ import { CashOperationsPage } from "../features/broker/cash/cash-operations-scre
 import { ClientsPage } from "../features/broker/clients/client-directory-screen";
 import { NewClientForm } from "../features/broker/clients/new-client-form";
 import { ContractNote, NewOrderForm, OrderDetail, TradeForm } from "../features/broker/orders/order-drawers";
+import { CrmInboxPage } from "../features/broker/crm/crm-inbox-screen";
+import { MyTasksPage } from "../features/broker/crm/my-tasks-screen";
+import { ComplaintsPage } from "../features/broker/crm/complaints-screen";
+import { NewThreadForm } from "../features/broker/crm/thread-composer";
 
 export default function FrankBrokerApp() {
   const [view, setView] = useState<View>("dashboard");
@@ -91,6 +99,9 @@ export default function FrankBrokerApp() {
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
   // Set when arriving at Clients from the queue so the directory opens pre-filtered.
   const [clientsFocus, setClientsFocus] = useState<{ status: string } | null>(null);
+  const [crmFocus, setCrmFocus] = useState<CrmFocus>(null);
+  const [crmUnread, setCrmUnread] = useState(0);
+  const [newThread, setNewThread] = useState<NewThreadValue>({ clientId: "", category: "general", priority: "normal", subject: "", body: "", relatedType: "", relatedId: "" });
   const pendingOrderCount = orders.filter((order) => order.status === "pending_broker_review").length;
   const eligibleClients = clients.filter(isOrderEligibleClient);
   const pendingClientCount = clients.filter((client) => client.status === "pending_approval").length;
@@ -120,6 +131,17 @@ export default function FrankBrokerApp() {
       .catch(() => setCashOperations(fallbackCashOperations));
     return () => controller.abort();
   }, [role]);
+
+  // Unread conversation count for the sidebar badge; the facet is cheap so the
+  // list itself is not fetched here.
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/crm/threads?pageSize=10", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("CRM API unavailable")))
+      .then((result: CrmThreadsResponse) => setCrmUnread(result.facets.unreadThreads))
+      .catch(() => setCrmUnread(fallbackCrmThreads.filter((thread) => thread.unread > 0).length));
+    return () => controller.abort();
+  }, [role, view]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -289,6 +311,9 @@ export default function FrankBrokerApp() {
       const order = orders.find((row) => row.id === item.entityId);
       if (order) { openDetail(order); return; }
       setView("orders");
+    } else if (item.entityType === "communication_thread") {
+      setCrmFocus(item.entityId ? { threadId: item.entityId } : null);
+      setView("crm");
     } else if (item.entityType === "client") setView("clients");
     else if (item.entityType === "cash_movement") setView("cash");
     else if (item.entityType === "reconciliation") setView("reconciliation");
@@ -555,6 +580,43 @@ export default function FrankBrokerApp() {
     setDrawer("client");
   };
 
+  const openNewThread = () => {
+    if (!hasPermission(role, CRM_PERMISSIONS.create)) return notify(`${roleLabels[role]} cannot start conversations.`, "error");
+    setNewThread({ clientId: clients[0]?.id ?? "", category: "general", priority: "normal", subject: "", body: "", relatedType: "", relatedId: "" });
+    setDrawer("crm_thread");
+  };
+
+  /** Jump from a conversation's related-record card to the underlying record. */
+  const openRelatedRecord = (type: string, id: string) => {
+    if (type === "order" || type === "trade") {
+      const order = orders.find((item) => item.id === id);
+      if (order) { openDetail(order); return; }
+      setView("orders");
+      return;
+    }
+    if (type === "cash_movement") { setView("cash"); return; }
+    if (type === "service_request" || type === "account" || type === "kyc" || type === "document") setView("clients");
+  };
+
+  const submitThread = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusyAction("crm_thread");
+    try {
+      await apiRequest<{ thread: { id: string } }>("/api/crm/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-demo-role": role },
+        body: JSON.stringify(newThread),
+      });
+      setDrawer(null);
+      setView("crm");
+      notify("Conversation started and the investor was notified.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The conversation could not be started.", "error");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const submitClient = async (event: FormEvent) => {
     event.preventDefault();
     setBusyAction("create_client");
@@ -680,7 +742,7 @@ export default function FrankBrokerApp() {
             if (!items.length) return null;
             return <div className="nav-group" key={group.label}>
               <span className="nav-label">{group.label}</span>
-              {items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "clients" && pendingClientCount > 0 && <em className="warn">{pendingClientCount}</em>}{item.id === "cash" && pendingCashCount > 0 && <em className="warn">{pendingCashCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
+              {items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "clients" && pendingClientCount > 0 && <em className="warn">{pendingClientCount}</em>}{item.id === "cash" && pendingCashCount > 0 && <em className="warn">{pendingCashCount}</em>}{item.id === "crm" && crmUnread > 0 && <em className="warn">{crmUnread}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
             </div>;
           })}
         </nav>
@@ -700,6 +762,9 @@ export default function FrankBrokerApp() {
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} onOpen={openDetail} onNewOrder={openNewOrder} />}
           {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} focus={clientsFocus} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
+          {view === "crm" && <CrmInboxPage key={crmFocus?.threadId ?? crmFocus?.clientId ?? "inbox"} role={role} focus={crmFocus} clients={clients} onNotify={notify} onNewThread={openNewThread} onOpenRelated={openRelatedRecord} />}
+          {view === "crm_tasks" && <MyTasksPage role={role} onNotify={notify} onOpenClient={(clientId) => { setSelectedClientId(clientId); setView("clients"); }} />}
+          {view === "crm_cases" && <ComplaintsPage role={role} onNotify={notify} onOpenThread={(threadId) => { setCrmFocus({ threadId }); setView("crm"); }} />}
           {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
@@ -713,10 +778,11 @@ export default function FrankBrokerApp() {
       </div>
 
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
-        <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "client" ? "New client" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
+        <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "client" ? "New client" : drawer === "crm_thread" ? "New conversation" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
           <button className="drawer-close" onClick={() => setDrawer(null)} aria-label="Close">×</button>
           {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={eligibleClients} instruments={instruments} controls={controls} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
           {drawer === "client" && <NewClientForm value={newClient} setValue={setNewClient} busy={busyAction === "create_client"} onCancel={() => setDrawer(null)} onSubmit={submitClient} />}
+          {drawer === "crm_thread" && <NewThreadForm value={newThread} setValue={setNewThread} clients={clients} busy={busyAction === "crm_thread"} onCancel={() => setDrawer(null)} onSubmit={submitThread} />}
           {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} manualTradeCapture={features.manualTradeCapture} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onFail={() => actionOrder("fail")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
           {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} controls={controls} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
           {drawer === "contract" && <ContractNote order={selected} instruments={instruments} tenantInfo={tenantInfo} settlementCycle={controls.settlementCycle} busy={busyAction === "contract_note"} onPrint={printContractNote} />}

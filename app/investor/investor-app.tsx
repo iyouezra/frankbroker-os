@@ -40,6 +40,10 @@ import { MarketsScreen } from "../../features/investor/markets/markets-screen";
 import { PortfolioScreen } from "../../features/investor/portfolio/portfolio-screen";
 import { LearnScreen } from "../../features/investor/learn/learn-screen";
 import { ProfileScreen } from "../../features/investor/profile/profile-screen";
+import { SupportScreen, type SupportThreadSummary } from "../../features/investor/support/support-screen";
+import { SupportThreadScreen, type SupportThreadDetail } from "../../features/investor/support/support-thread-screen";
+import { NewRequestSheet, type NewRequestInput } from "../../features/investor/support/new-request-sheet";
+import { fallbackSupportDetail, fallbackSupportThreads } from "../../features/investor/support/support-demo";
 import { CashSheet } from "../../features/investor/cash/cash-sheet";
 import { BondDetail, StockDetail } from "../../features/investor/markets/security-detail-screens";
 export default function InvestorApp() {
@@ -55,9 +59,17 @@ export default function InvestorApp() {
   const [cashOpen, setCashOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityInitialItem, setActivityInitialItem] = useState<InvestorActivity | null>(null);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportThreadId, setSupportThreadId] = useState<string | null>(null);
+  const [supportThreads, setSupportThreads] = useState<SupportThreadSummary[]>([]);
+  const [supportDetail, setSupportDetail] = useState<SupportThreadDetail | null>(null);
+  const [supportUnread, setSupportUnread] = useState(0);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportBusy, setSupportBusy] = useState(false);
+  const [newRequestOpen, setNewRequestOpen] = useState(false);
   const featured = useMemo(() => investorStocks.slice(0, 3), []);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
-  const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); setActivityOpen(false); setActivityInitialItem(null); };
+  const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); setActivityOpen(false); setActivityInitialItem(null); setSupportOpen(false); setSupportThreadId(null); };
   const openStock = (next: InvestorStock) => { setBond(null); setStock(next); };
   const openBond = (next: InvestorBond) => { setStock(null); setBond(next); };
   const openActivity = (item: InvestorActivity | null = null) => {
@@ -84,6 +96,12 @@ export default function InvestorApp() {
     setNotifications((current) => current.map((row) => row.id === item.id ? { ...row, read: true } : row));
     void fetch("/api/notifications", { method: "PATCH", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify({ id: item.id }) }).catch(() => undefined);
     setBellOpen(false);
+    if (item.category === "support") {
+      navigate("profile");
+      setSupportOpen(true);
+      if (item.entityId) void openSupportThread(item.entityId);
+      return;
+    }
     if (["order", "trade", "settlement"].includes(item.category)) navigate("portfolio");
     else if (item.category === "kyc") navigate("profile");
   };
@@ -105,8 +123,17 @@ export default function InvestorApp() {
     setBootstrap({ ...data, activity: data.activity ?? [] });
     if (data.profile?.fullName) setProfileName(data.profile.fullName);
   };
-  const postInvestor = async (body: unknown) => {
-    const response = await fetch("/api/investor", { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) });
+  /** Sends JSON, or multipart when files are attached (same shape the KYC upload uses). */
+  const postInvestor = async (body: unknown, files: File[] = []) => {
+    const init: RequestInit = files.length
+      ? (() => {
+        const formData = new FormData();
+        formData.set("payload", JSON.stringify(body));
+        files.forEach((file, index) => formData.set(`attachment${index}`, file));
+        return { method: "POST", headers: investorHeaders, body: formData };
+      })()
+      : { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) };
+    const response = await fetch("/api/investor", init);
     const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; kycStatus: string } };
     if (!response.ok) throw new Error(data.error ?? "Unable to update the investor account.");
     return data;
@@ -206,6 +233,76 @@ export default function InvestorApp() {
       return { status: "error" };
     }
   };
+  // Support conversations. Reads use a dedicated endpoint because messages
+  // paginate; writes reuse the existing postInvestor transport.
+  const loadSupport = async () => {
+    setSupportLoading(true);
+    try {
+      const response = await fetch("/api/investor/support", { headers: investorHeaders });
+      if (!response.ok) throw new Error("unavailable");
+      const data = await response.json() as { threads: SupportThreadSummary[]; summary: { unread: number } };
+      setSupportThreads(data.threads);
+      setSupportUnread(data.summary.unread);
+    } catch {
+      setSupportThreads(fallbackSupportThreads);
+      setSupportUnread(fallbackSupportThreads.reduce((total, thread) => total + thread.unread, 0));
+    } finally {
+      setSupportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const load = async () => { await loadSupport(); };
+    void load();
+  }, []);
+
+  const openSupportThread = async (threadId: string) => {
+    setSupportThreadId(threadId);
+    setSupportDetail(null);
+    try {
+      const response = await fetch(`/api/investor/support?threadId=${encodeURIComponent(threadId)}`, { headers: investorHeaders });
+      if (!response.ok) throw new Error("unavailable");
+      const data = await response.json() as { thread: SupportThreadDetail };
+      setSupportDetail(data.thread);
+      await postInvestor({ action: "support_thread_read", threadId });
+      void loadSupport();
+    } catch {
+      setSupportDetail(fallbackSupportDetail(threadId));
+    }
+  };
+
+  const sendSupportReply = async (body: string, files: File[]) => {
+    if (!supportThreadId) return false;
+    setSupportBusy(true);
+    try {
+      await postInvestor({ action: "support_thread_reply", threadId: supportThreadId, body }, files);
+      await openSupportThread(supportThreadId);
+      notify("Message sent to your broker.");
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Your message could not be sent.");
+      return false;
+    } finally {
+      setSupportBusy(false);
+    }
+  };
+
+  const createSupportRequest = async (input: NewRequestInput) => {
+    setSupportBusy(true);
+    try {
+      await postInvestor({ action: "support_thread_create", category: input.category, subject: input.subject, body: input.body }, input.files);
+      setNewRequestOpen(false);
+      await loadSupport();
+      notify("Request sent. Your broker will reply here.");
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Your request could not be sent.");
+      return false;
+    } finally {
+      setSupportBusy(false);
+    }
+  };
+
   const createServiceRequest = async (requestType: "trade_discrepancy" | "account_closure" | "profile_correction", orderId?: string) => {
     const description = requestType === "trade_discrepancy"
       ? `Please review the confirmation and execution details for ${orderId}.`
@@ -280,7 +377,11 @@ export default function InvestorApp() {
             : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} />
               : <>
                 <div className={styles.scrollArea}>
-                  {activityOpen
+                  {supportOpen
+                    ? (supportThreadId
+                        ? <SupportThreadScreen thread={supportDetail} sending={supportBusy} onBack={() => setSupportThreadId(null)} onSend={sendSupportReply} />
+                        : <SupportScreen threads={supportThreads} loading={supportLoading} officer={bootstrap?.relationshipOfficer ?? null} onBack={() => setSupportOpen(false)} onOpenThread={openSupportThread} onNewRequest={() => setNewRequestOpen(true)} />)
+                    : activityOpen
                     ? <ActivityScreen activity={activity} initialItem={activityInitialItem} onBack={() => { setActivityOpen(false); setActivityInitialItem(null); }} />
                     : tab === "home"
                       ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
@@ -290,12 +391,13 @@ export default function InvestorApp() {
                           ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} />
                           : tab === "learn"
                             ? <LearnScreen />
-                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
                 </div>
                 <BottomNav active={tab} onChange={navigate} />
               </>}
         {cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
         {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
+        {newRequestOpen && <NewRequestSheet busy={supportBusy} onClose={() => setNewRequestOpen(false)} onSubmit={createSupportRequest} />}
         {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}
       </div>
     </section>

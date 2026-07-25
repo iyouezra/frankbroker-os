@@ -8,6 +8,15 @@ import { serializeCashMovement, submitInvestorCashMovement } from "../../../lib/
 import { confirmOtpChallenge, createOtpChallenge, orderPayloadHash } from "../../../lib/verification-service";
 import { sortInvestorActivity, type InvestorActivity } from "../../../lib/investor-activity";
 import {
+  createInvestorThread,
+  markThreadReadByInvestor,
+  openThreadForServiceRequest,
+  postInvestorMessage,
+} from "../../../lib/crm/thread-service";
+import { categoryForServiceRequest } from "../../../lib/crm/categories";
+import { investorRelationshipOfficer } from "../../../lib/crm/assignment-service";
+import { prepareAttachments } from "../../../lib/crm/attachments";
+import {
   parseLinkedBanks,
   prepareDocuments,
   saveOnboardingEvidence,
@@ -186,6 +195,8 @@ export async function GET(request: Request) {
           status: order.status, createdAt: order.createdAt.toISOString(),
         })),
       } : null,
+      // Customer-facing view of who looks after this account: name and role only.
+      relationshipOfficer: await investorRelationshipOfficer({ brokerId, clientId }),
       serviceRequests: (client?.serviceRequests ?? []).map((item) => ({
         id: item.id,
         requestType: item.requestType,
@@ -425,9 +436,44 @@ export async function POST(request: Request) {
           entityType: "client_service_request", entityId: next.id, summary: `${next.subject} submitted by ${client.fullName}`,
           newValue: JSON.stringify({ requestType, status: next.status, orderId }),
         } });
-        return next;
+        // Open a linked conversation so the structured request and the discussion
+        // about it live together. Same transaction, so they commit as one.
+        const thread = await openThreadForServiceRequest(tx, {
+          brokerId,
+          clientId,
+          accountId: account.id,
+          requestId: next.id,
+          subject: next.subject,
+          body: description,
+          category: categoryForServiceRequest(requestType),
+          clientName: client.fullName,
+        });
+        return { ...next, threadId: thread.id };
       });
-      return Response.json({ request: { id: created.id, status: created.status } }, { status: 201 });
+      return Response.json({ request: { id: created.id, status: created.status, threadId: created.threadId } }, { status: 201 });
+    }
+
+    if (payload.action === "support_thread_create") {
+      const attachments = formData ? await prepareAttachments(formData) : [];
+      const thread = await createInvestorThread({ brokerId, clientId }, {
+        subject: payload.subject,
+        body: payload.body,
+        category: payload.category,
+        relatedType: payload.relatedType,
+        relatedId: payload.relatedId,
+        attachments,
+      });
+      return Response.json({ thread }, { status: 201 });
+    }
+
+    if (payload.action === "support_thread_reply") {
+      const attachments = formData ? await prepareAttachments(formData) : [];
+      const result = await postInvestorMessage({ brokerId, clientId }, String(payload.threadId ?? ""), payload.body, attachments);
+      return Response.json({ ok: true, ...result }, { status: 201 });
+    }
+
+    if (payload.action === "support_thread_read") {
+      return Response.json(await markThreadReadByInvestor({ brokerId, clientId }, String(payload.threadId ?? "")));
     }
 
     if (payload.action === "order") {

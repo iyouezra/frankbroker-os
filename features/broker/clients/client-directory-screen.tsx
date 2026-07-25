@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import type { BrokerClient, DemoOrder } from "../../../lib/demo-data";
 import { hasPermission, type Role } from "../../../lib/frank";
+import { ClientConversationsTab } from "../crm/client-conversations-tab";
+import { ActivityTimeline } from "../crm/activity-timeline";
+import { RelationshipOfficerCard } from "../crm/relationship-officer-card";
+import { TaskCard } from "../crm/my-tasks-screen";
+import { isTaskClosed } from "../../../lib/crm/tasks";
 import {
   BROKER_TENANT_ID,
   EmptyState,
@@ -240,6 +245,36 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
       setBusy(null);
     }
   };
+  // Servicing actions. They post to the CRM APIs rather than the client action
+  // route, then reuse the same refresh key so Client 360 reloads in one place.
+  const openTasks = (model.tasks ?? []).filter((task) => !isTaskClosed(task.status));
+
+  const crmPost = async (url: string, body: Record<string, unknown>, key: string, success: string) => {
+    setBusy(key);
+    setMessage("");
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "The change could not be saved.");
+      setRefreshKey((current) => current + 1);
+      setMessage(success);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The change could not be saved.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const assignOfficer = (primaryOfficerId: string | null) =>
+    crmPost("/api/crm/assignments", { clientId: selected.id, primaryOfficerId }, "assign", primaryOfficerId ? "Relationship officer assigned." : "Relationship officer cleared.");
+
+  const taskAction = (taskId: string, body: Record<string, unknown>) =>
+    crmPost(`/api/crm/tasks/${encodeURIComponent(taskId)}/action`, body, taskId, "Task updated.");
+
   const reviewEvidence = async (kind: "documents" | "bank-accounts", id: string, action: "approve" | "reject") => {
     const reason = action === "reject" ? window.prompt("Why was this not approved?")?.trim() ?? "" : "";
     if (action === "reject" && reason.length < 5) return setMessage("Enter a clear reason before rejecting this item.");
@@ -268,6 +303,8 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     { id: "orders", label: "Orders", count: model.orders.length },
     { id: "trades", label: "Trades", count: model.trades.length },
     { id: "transactions", label: "Transactions", count: model.transactions.length },
+    { id: "conversations", label: "Conversations" },
+    { id: "timeline", label: "Timeline" },
     { id: "settlements", label: "Settlements", count: model.settlements.filter((item) => item.status !== "settled").length },
     { id: "documents", label: "Documents" },
     { id: "notes", label: "Notes", count: model.notes.length },
@@ -306,6 +343,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     {message && <p className="control-message client-360-message">{message}</p>}
 
     {tab === "overview" && <div className="client-360-grid">
+      <RelationshipOfficerCard current={model.relationship?.current ?? null} history={model.relationship?.history ?? []} role={role} busy={busy === "assign"} onAssign={(officerId) => void assignOfficer(officerId)} />
       <section className="panel onboarding-record"><div className="panel-head"><div><span className="eyebrow">ONBOARDING RECORD</span><h2>Submitted client details</h2></div><span className="account-number">{displayLabel(model.client.onboardingChannel ?? "in_person")}</span></div><dl><div><dt>Email</dt><dd>{model.client.email ?? "Not recorded"}</dd></div><div><dt>Phone</dt><dd>{model.client.phone ?? "Not recorded"}</dd></div><div><dt>Fayda FIN</dt><dd>{model.client.identityMasked ?? "Not recorded"}</dd></div><div><dt>TIN</dt><dd>{model.client.taxIdMasked ?? "Not recorded"}</dd></div>{model.client.type !== "individual" && <><div><dt>Registered address</dt><dd>{model.client.address ?? "Not recorded"}</dd></div><div><dt>Registration number</dt><dd>{model.client.businessRegistrationNumber ?? "Not recorded"}</dd></div><div><dt>Authorized representative</dt><dd>{model.client.authorizedRepresentativeName ?? "Not recorded"}</dd></div><div><dt>Signatory authority</dt><dd>{model.client.signatoryAuthorityConfirmed ? "Confirmed" : "Not confirmed"}</dd></div></>}</dl></section>
       <section className="panel readiness-panel"><div className="panel-head"><div><span className="eyebrow">TRADING READINESS</span><h2>{model.readiness.canTrade ? "Client can trade" : "Action required"}</h2></div><span className={`readiness-score ${model.readiness.canTrade ? "ready" : "blocked"}`}>{model.readiness.items.filter((item) => item.state === "pass").length}/{model.readiness.items.length}</span></div>{!model.readiness.canTrade && model.readiness.blockingReasons.length > 0 && <div className="readiness-callout"><b>Trading is blocked</b><span>{model.readiness.blockingReasons.join(" · ")}</span></div>}<div className="readiness-list">{model.readiness.items.map((item) => <div key={item.key}><i className={item.state}>{item.state === "pass" ? "✓" : item.state === "fail" ? "!" : "—"}</i><span><b>{item.label}</b><small>{item.detail}</small></span></div>)}</div></section>
       <section className="panel overview-cash"><div className="panel-head"><div><span className="eyebrow">CASH POSITION</span><h2>Available to trade</h2></div><button onClick={() => setTab("assets")}>View ledger →</button></div><strong>{etb(model.cash?.available ?? 0)}</strong><div><span><small>Total cash</small><b>{etb(model.cash?.total ?? 0)}</b></span><span><small>Blocked</small><b>{etb(model.cash?.blocked ?? 0)}</b></span><span><small>Unsettled</small><b>{etb(model.cash?.unsettled ?? 0)}</b></span></div></section>
@@ -336,6 +374,29 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
       <section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">CONTRACT NOTES</span><h2>Trade documents</h2></div></div>{model.documents.contractNotes.length ? model.documents.contractNotes.map((document) => <button className="document-row" key={document.orderId} onClick={() => openOrder(document.orderId)}><span><b>{document.number ?? `Contract note for ${document.orderId}`}</b><small>{document.generatedAt ? new Date(document.generatedAt).toLocaleString("en-GB") : "Generation required"}</small></span><strong>{displayLabel(document.status)}</strong></button>) : <EmptyState title="No contract notes" copy="Contract notes become available after trade capture and controlled generation." />}</section>
     </div>}
 
+    {tab === "conversations" && selected && <ClientConversationsTab clientId={selected.id} role={role} onMessage={setMessage} />}
+    {tab === "timeline" && <>
+      {openTasks.length > 0 && <section className="panel crm-task-group">
+        <div className="panel-head"><div><span className="eyebrow">OUTSTANDING</span><h2>{openTasks.length} open {openTasks.length === 1 ? "task" : "tasks"}</h2></div></div>
+        <div className="crm-task-list">{openTasks.map((task) => <TaskCard key={task.id} task={task} role={role} busy={busy === task.id} onStatus={(item, next) => void taskAction(item.id, { action: "status", status: next })} onEscalate={(item) => void taskAction(item.id, { action: "escalate", escalated: !item.escalated })} />)}</div>
+      </section>}
+      <ActivityTimeline data={{
+        threads: model.conversations ?? [],
+        tasks: model.tasks ?? [],
+        cases: model.cases ?? [],
+        orders: model.orders,
+        transactions: model.transactions.map((row) => ({ id: row.id, type: row.type, amount: row.amount ?? row.credit - row.debit, valueDate: row.createdAt, reference: row.reference })),
+        documents: model.documents.kyc.map((row) => ({ id: row.id, documentType: row.type ?? row.name, status: row.status, uploadedAt: row.uploadedAt ?? "" })).filter((row) => row.uploadedAt),
+        notes: model.notes,
+        auditTrail: model.auditTrail.map((row) => ({ id: row.id, action: row.action, summary: row.reason, createdAt: row.timestamp, actor: row.user, entityType: row.entityType, entityId: row.entityId })),
+      }} onOpenRecord={(type, id) => {
+        if (type === "thread") setTab("conversations");
+        else if (type === "order") { const order = orders.find((item) => item.id === id); if (order) onOpenOrder(order); else setTab("orders"); }
+        else if (type === "transaction") setTab("transactions");
+        else if (type === "document") setTab("documents");
+        else setTab("audit");
+      }} />
+    </>}
     {tab === "notes" && <div className="notes-layout"><section className="panel note-composer"><div className="panel-head"><div><span className="eyebrow">INTERNAL ONLY</span><h2>Add broker note</h2></div></div>{canAdjust ? <div className="note-form"><label>Category<select value={noteCategory} onChange={(event) => setNoteCategory(event.target.value)}>{["general", "compliance", "support", "trading", "settlement"].map((category) => <option key={category} value={category}>{displayLabel(category)}</option>)}</select></label><label>Note<textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="Record a concise operational fact, decision, or follow-up…" rows={5} /></label><small>Internal notes are visible only to broker staff and are permanently audit logged.</small><button className="btn primary" disabled={busy === "add_note" || noteText.trim().length < 3} onClick={() => void act("add_note")}>{busy === "add_note" ? "Adding note…" : "Add internal note"}</button></div> : <div className="permission-note">Read-only role: internal notes can be viewed but not created.</div>}</section><section className="panel notes-list"><div className="panel-head"><div><span className="eyebrow">BROKER RECORD</span><h2>Internal notes</h2></div></div>{model.notes.length ? model.notes.map((note) => <article key={note.id}><span>{displayLabel(note.category)}</span><p>{note.text}</p><footer><b>{note.createdBy}</b><time>{new Date(note.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</time><em>{displayLabel(note.visibility)}</em></footer></article>) : <EmptyState title="No internal notes" copy="Authorized broker users can record general, compliance, support, trading, or settlement notes." />}</section></div>}
 
     {tab === "audit" && <section className="panel client-audit"><div className="panel-head"><div><span className="eyebrow">CLIENT CONTROL RECORD</span><h2>Audit trail</h2></div></div>{model.auditTrail.length ? model.auditTrail.map((entry) => <div key={entry.id}><i /><time>{new Date(entry.timestamp).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}<b>{new Date(entry.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</b></time><span><small>{entry.user} · {displayLabel(entry.entityType)} {entry.entityId ?? ""}</small><h3>{displayLabel(entry.action)}</h3><p>{entry.reason}</p>{(entry.oldValue || entry.newValue) && <details><summary>Recorded change</summary><pre>{entry.oldValue ? `Before: ${entry.oldValue}\n` : ""}{entry.newValue ? `After: ${entry.newValue}` : ""}</pre></details>}</span></div>) : <EmptyState title="No client audit events" copy="Sensitive client, order, trade, ledger, settlement, consent, restriction, and note events will appear here." />}</section>}

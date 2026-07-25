@@ -191,7 +191,11 @@ export default function AdminConsole() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  useEffect(() => setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light"), []);
+  // Read the pre-hydration theme after mount so SSR and the client agree.
+  useEffect(() => {
+    const syncTheme = () => setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+    syncTheme();
+  }, []);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const [toast, setToast] = useState("");

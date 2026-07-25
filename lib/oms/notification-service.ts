@@ -17,13 +17,15 @@ export const TRADERS = ["broker_admin", "trader", "operations"];
 export const SETTLEMENT = ["broker_admin", "settlement", "operations"];
 export const COMPLIANCE = ["broker_admin", "compliance"];
 export const OPS = ["broker_admin", "operations"];
+// Investor-servicing staff — the people who answer client conversations.
+export const SERVICE = ["broker_admin", "service_officer", "relationship_officer", "operations"];
 
 export type NotifyInput = {
   scope: "broker" | "investor" | "platform";
   brokerId?: string | null;
   roles?: string[] | null;
   clientId?: string | null;
-  category: "order" | "kyc" | "settlement" | "trade" | "reconciliation" | "account" | "system";
+  category: "order" | "kyc" | "settlement" | "trade" | "reconciliation" | "account" | "system" | "support";
   severity?: "info" | "success" | "warning" | "critical";
   title: string;
   body: string;

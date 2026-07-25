@@ -24,7 +24,7 @@ export function apiError(error: unknown): Response {
   if (error && typeof error === "object" && "code" in error && String((error as { code?: unknown }).code) === "P2002") {
     return Response.json({ error: "This request was already recorded. Refresh to view the existing record." }, { status: 409 });
   }
-  if (error instanceof Error && ["InvalidOrderTransitionError", "LedgerIntegrityError"].includes(error.name)) {
+  if (error instanceof Error && ["InvalidOrderTransitionError", "InvalidThreadTransitionError", "LedgerIntegrityError"].includes(error.name)) {
     return Response.json({ error: error.message }, { status: 409 });
   }
   if (isDatabaseOffline(error)) {

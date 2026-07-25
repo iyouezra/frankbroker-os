@@ -4,6 +4,9 @@ import { toNum } from "../../../../lib/money";
 import { availableActions } from "../../../../lib/oms/status";
 import { prisma } from "../../../../lib/prisma";
 import { requirePermission } from "../../../../lib/server-auth";
+import { listClientTasks } from "../../../../lib/crm/task-service";
+import { listClientCases } from "../../../../lib/crm/case-service";
+import { getAssignmentHistory, getCurrentAssignment } from "../../../../lib/crm/assignment-service";
 import {
   expectedDocumentTypes,
   serializeClientDocument,
@@ -109,6 +112,18 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       orderBy: { createdAt: "desc" },
       take: 250,
     });
+    const [crmThreads, crmTasks, crmCases, crmAssignment, crmAssignmentHistory] = await Promise.all([
+      prisma.communicationThread.findMany({
+        where: { brokerId: actor.brokerId, clientId: client.id },
+        include: { assignedTo: { select: { fullName: true } } },
+        orderBy: { lastMessageAt: "desc" },
+        take: 25,
+      }),
+      listClientTasks(actor, client.id),
+      listClientCases(actor, client.id),
+      getCurrentAssignment(actor, client.id),
+      getAssignmentHistory(actor, client.id),
+    ]);
     const lastActivityAt = latestDate([
       client.updatedAt,
       account?.updatedAt,
@@ -355,6 +370,21 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         newValue: entry.newValue,
         reason: entry.reason ?? entry.summary,
       })),
+      // Servicing context for the Client 360 timeline. Summaries only — each
+      // entry links back to the record that owns the detail.
+      conversations: crmThreads.map((thread) => ({
+        id: thread.id,
+        subject: thread.subject,
+        category: thread.category,
+        status: thread.status,
+        assignedToName: thread.assignedTo?.fullName ?? null,
+        lastMessageAt: thread.lastMessageAt.toISOString(),
+        lastMessagePreview: thread.lastMessagePreview,
+        createdAt: thread.createdAt.toISOString(),
+      })),
+      tasks: crmTasks,
+      cases: crmCases,
+      relationship: { current: crmAssignment, history: crmAssignmentHistory },
     });
   } catch (error) {
     return apiError(error);

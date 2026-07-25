@@ -4,6 +4,8 @@ export type Role =
   | "operations"
   | "compliance"
   | "settlement"
+  | "relationship_officer"
+  | "service_officer"
   | "management"
   | "super_admin";
 
@@ -34,18 +36,61 @@ export const roleLabels: Record<Role, string> = {
   operations: "Operations officer",
   compliance: "Compliance officer",
   settlement: "Settlement officer",
+  relationship_officer: "Relationship officer",
+  service_officer: "Client service officer",
   management: "Read-only management",
   super_admin: "Frank super admin",
 };
 
+/**
+ * Investor-servicing permissions. The financial vocabulary above is a flat verb
+ * set that cannot express who may reply to a client, add an internal note, or
+ * reassign a conversation, so CRM rights are namespaced `crm.*` strings held in
+ * the same map and read through the same {@link hasPermission}.
+ */
+export const CRM_PERMISSIONS = {
+  view: "crm.thread.view",
+  create: "crm.thread.create",
+  reply: "crm.thread.reply",
+  note: "crm.thread.note",
+  assign: "crm.thread.assign",
+  status: "crm.thread.status",
+  priority: "crm.thread.priority",
+  taskView: "crm.task.view",
+  taskCreate: "crm.task.create",
+  taskAssign: "crm.task.assign",
+  taskComplete: "crm.task.complete",
+  caseView: "crm.case.view",
+  caseManage: "crm.case.manage",
+  relationshipAssign: "crm.relationship.assign",
+} as const;
+
+const CRM_ALL = Object.values(CRM_PERMISSIONS);
+// Every broker role may read conversations; only some may act on them.
+const CRM_READ_AND_NOTE = [CRM_PERMISSIONS.view, CRM_PERMISSIONS.note, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView];
+// Servicing staff own follow-ups end to end.
+const CRM_TASK_FULL = [CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.taskAssign, CRM_PERMISSIONS.taskComplete];
+
 export const workflowPermissions: Record<Role, string[]> = {
-  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report"],
-  trader: ["create", "trade", "report"],
-  operations: ["create", "adjust", "report"],
-  compliance: ["approve", "reject", "report"],
-  settlement: ["settle", "adjust", "report"],
-  management: ["report"],
-  super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report"],
+  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL],
+  trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE],
+  operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL],
+  compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage],
+  settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE],
+  relationship_officer: [
+    "report",
+    CRM_PERMISSIONS.view,
+    CRM_PERMISSIONS.create,
+    CRM_PERMISSIONS.reply,
+    CRM_PERMISSIONS.note,
+    CRM_PERMISSIONS.status,
+    CRM_PERMISSIONS.priority,
+    ...CRM_TASK_FULL,
+    CRM_PERMISSIONS.caseView,
+  ],
+  service_officer: ["create", "report", ...CRM_ALL],
+  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView],
+  super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL],
 };
 
 /**

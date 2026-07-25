@@ -1,0 +1,93 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+import styles from "../../../app/investor/investor.module.css";
+import { Button, Card, ScreenHeader } from "../shared/investor-foundation";
+import { statusTone } from "./support-screen";
+
+/**
+ * One conversation, investor view. The payload it renders has already had
+ * broker-only messages stripped server-side; this screen has no concept of
+ * internal notes, owners, or priority.
+ */
+
+export type SupportMessage = {
+  id: string;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+  authorLabel: string;
+  attachments: { id: string; name: string; mimeType: string; sizeBytes: number }[];
+};
+
+export type SupportThreadDetail = {
+  id: string;
+  subject: string;
+  status: string;
+  statusLabel: string;
+  relatedType: string | null;
+  relatedId: string | null;
+  messages: SupportMessage[];
+};
+
+const when = (value: string) =>
+  new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Africa/Addis_Ababa" }).format(new Date(value));
+
+export function SupportThreadScreen({
+  thread, sending, onBack, onSend,
+}: {
+  thread: SupportThreadDetail | null;
+  sending: boolean;
+  onBack: () => void;
+  onSend: (body: string, files: File[]) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+
+  if (!thread) {
+    return <div className={styles.screen}><ScreenHeader title="Conversation" onBack={onBack} /><p className={styles.empty}>Loading…</p></div>;
+  }
+
+  const closed = thread.status === "closed";
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!draft.trim()) return;
+    const sent = await onSend(draft, files);
+    if (sent) { setDraft(""); setFiles([]); }
+  };
+
+  return <div className={styles.screen}>
+    <ScreenHeader title="Conversation" onBack={onBack} />
+    <Card className={styles.msgHeadCard}>
+      <b>{thread.subject}</b>
+      <span className={`${styles.msgStatus} ${statusTone(thread.status)}`}>{thread.statusLabel}</span>
+      {thread.relatedId && <small>About {thread.relatedId}</small>}
+    </Card>
+
+    <div className={styles.msgThread}>
+      {thread.messages.map((message) => (
+        <article key={message.id} className={`${styles.msgBubble} ${message.mine ? styles.msgMine : ""}`}>
+          <header><b>{message.authorLabel}</b><time>{when(message.createdAt)}</time></header>
+          <p>{message.body}</p>
+          {message.attachments.map((attachment) => (
+            <a key={attachment.id} className={styles.attachmentChip} href={`/api/investor/support/attachments/${encodeURIComponent(attachment.id)}`} target="_blank" rel="noreferrer">
+              {attachment.name}
+            </a>
+          ))}
+        </article>
+      ))}
+    </div>
+
+    {closed ? (
+      <Card><p className={styles.empty}>This conversation is closed. Start a new request if you still need help.</p></Card>
+    ) : (
+      <form className={styles.msgComposer} onSubmit={(event) => void submit(event)}>
+        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Write a reply…" aria-label="Your reply" />
+        <div className={styles.msgComposerFoot}>
+          <input type="file" multiple accept="application/pdf,image/png,image/jpeg" onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 5))} aria-label="Attach a document" />
+          <Button type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</Button>
+        </div>
+      </form>
+    )}
+  </div>;
+}

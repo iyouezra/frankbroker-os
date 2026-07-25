@@ -79,6 +79,8 @@ export type InvestorBootstrap = {
   activity: InvestorActivity[];
   linkedBanks: LinkedBankAccount[];
   documents: Array<{ id: string; type: string; name: string; status: string; hasFile: boolean }>;
+  // Name and job title only — never an employee's private contact details.
+  relationshipOfficer?: { name: string; role: string } | null;
 };
 
 export function calculateInvestorFees(gross: number, rule: InvestorFeeRule) {

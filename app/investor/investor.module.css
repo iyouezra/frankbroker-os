@@ -601,3 +601,39 @@
   .investorPage *, .investorPage *::before, .investorPage *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
   .microPulse { animation: none !important; }
 }
+
+/* Messages & support */
+.menuBadge { min-width: 20px; height: 20px; padding: 0 6px; display: grid; place-items: center; border-radius: 999px; background: var(--investor-loss); color: white; font-size: 11px; font-style: normal; font-weight: 700; }
+.supportIntro { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.supportIntro b { font-size: 16px; }
+.supportIntro p { margin: 0; color: var(--investor-ink-600); font-size: 13px; line-height: 1.5; }
+.supportOfficer { padding: 10px 12px; border-radius: 12px; background: var(--investor-surface-2, rgba(0,0,0,.03)); color: var(--investor-ink-600); font-size: 12.5px; line-height: 1.45; }
+.supportOfficer b { font-size: 12.5px; color: var(--investor-ink-900, inherit); }
+.msgList { display: flex; flex-direction: column; padding: 4px 0; }
+.msgRow { width: 100%; display: flex; flex-direction: column; gap: 5px; padding: 13px 4px; border: 0; border-bottom: 1px solid var(--investor-ink-100); background: transparent; text-align: left; cursor: pointer; }
+.msgRow:last-child { border-bottom: 0; }
+.msgRowTop { display: flex; align-items: center; gap: 8px; }
+.msgRowTop b { flex: 1; min-width: 0; font-size: 14px; color: var(--investor-ink-900); }
+.msgUnread { min-width: 20px; height: 20px; padding: 0 6px; display: grid; place-items: center; border-radius: 999px; background: var(--investor-loss); color: white; font-size: 11px; font-style: normal; font-weight: 700; }
+.msgPreview { color: var(--investor-ink-600); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msgRowMeta { display: flex; align-items: center; gap: 10px; }
+.msgRowMeta time { margin-left: auto; color: var(--investor-ink-400); font-size: 12px; }
+.msgStatus { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 650; }
+.msgStatusWaiting { background: var(--investor-aqua-100); color: var(--investor-teal-800); }
+.msgStatusYou { background: #fdf3e2; color: #a2680f; }
+.msgStatusDone { background: #e2f6ec; color: #0b7a46; }
+.msgHeadCard { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; margin-bottom: 12px; }
+.msgHeadCard b { font-size: 16px; }
+.msgHeadCard small { color: var(--investor-ink-500); font-size: 12px; }
+.msgThread { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
+.msgBubble { max-width: 86%; align-self: flex-start; padding: 11px 13px; border-radius: 16px 16px 16px 4px; background: white; box-shadow: 0 1px 2px rgba(8,62,71,.06); }
+.msgMine { align-self: flex-end; border-radius: 16px 16px 4px 16px; background: var(--investor-aqua-100); }
+.msgBubble header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.msgBubble header b { font-size: 12px; color: var(--investor-teal-800); }
+.msgBubble header time { margin-left: auto; color: var(--investor-ink-400); font-size: 11px; }
+.msgBubble p { margin: 0; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
+.attachmentChip { display: inline-flex; align-items: center; gap: 6px; margin-top: 7px; padding: 5px 10px; border-radius: 999px; background: white; color: var(--investor-teal-800); font-size: 11.5px; font-weight: 650; text-decoration: none; }
+.msgComposer { display: flex; flex-direction: column; gap: 9px; padding: 12px 0 4px; border-top: 1px solid var(--investor-ink-100); }
+.msgComposer textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--investor-ink-200); border-radius: 16px; background: white; color: var(--investor-ink-900); font-family: inherit; font-size: 13.5px; resize: vertical; }
+.msgComposerFoot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.msgComposerFoot input[type="file"] { flex: 1; min-width: 130px; font-size: 11.5px; color: var(--investor-ink-500); }

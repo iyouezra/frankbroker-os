@@ -14,6 +14,8 @@ const demoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
   operations: { id: "usr_operations", email: "hana@frankbroker.et" },
   compliance: { id: "usr_compliance", email: "liya@frankbroker.et" },
   settlement: { id: "usr_settlement", email: "rahel@frankbroker.et" },
+  relationship_officer: { id: "usr_relationship", email: "kalkidan@frankbroker.et" },
+  service_officer: { id: "usr_service", email: "bethel@frankbroker.et" },
   management: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et" },
   super_admin: { id: "usr_platform_admin", email: "platform.admin@frankmoney.et" },
 };

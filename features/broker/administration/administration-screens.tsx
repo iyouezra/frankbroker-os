@@ -5,8 +5,12 @@ import { roleLabels, workflowPermissions, type Role } from "../../../lib/frank";
 import { BROKER_TENANT_ID, SectionHeader, etb, roleNames } from "../shared/broker-foundation";
 
 type SettingsControls = { brokerageFeePct: number; minimumFee: number; approvalThreshold: number; clientDailyLimit: number; makerChecker: boolean; allowedOrderTypes: string[]; settlementCycle: string };
-const STAFF_ROLES: Role[] = ["broker_admin", "trader", "operations", "compliance", "settlement", "management"];
+const STAFF_ROLES: Role[] = ["broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "management"];
 const PERMISSION_COLUMNS: [string, string][] = [["create", "Create"], ["approve", "Approve"], ["reject", "Reject"], ["trade", "Trade"], ["settle", "Settle"], ["adjust", "Adjust"], ["report", "Report"]];
+// Client-service rights are shown in their own matrix so neither table becomes too wide to scan.
+const CRM_PERMISSION_COLUMNS: [string, string][] = [["crm.thread.view", "View"], ["crm.thread.create", "Start"], ["crm.thread.reply", "Reply"], ["crm.thread.note", "Note"], ["crm.thread.assign", "Assign"], ["crm.thread.status", "Status"], ["crm.thread.priority", "Priority"]];
+const ALL_PERMISSION_COLUMNS = [...PERMISSION_COLUMNS, ...CRM_PERMISSION_COLUMNS];
+const grantedCount = (staffRole: Role) => ALL_PERMISSION_COLUMNS.filter(([key]) => workflowPermissions[staffRole].includes(key)).length;
 const FEATURE_LABELS: Record<string, string> = { investorPortal: "Investor portal", selfDirected: "Self-directed investing", bonds: "Government bonds", recurringInvestments: "Recurring investments", institutionalAccounts: "Institutional accounts", manualTradeCapture: "Manual trade capture" };
 
 export function SettingsPage() {
@@ -50,14 +54,20 @@ export function UsersPage({ role }: { role: Role }) {
     <div className="settings-banner"><span>PLATFORM MANAGED</span><p>User accounts are provisioned by your Frank platform administrator. Contact them to invite a colleague, change a role, or suspend access.</p></div>
     <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">ACCESS</span><h2>Team</h2></div><span className="account-number">{STAFF_ROLES.length} users</span></div>
       <div className="table-scroll"><table><thead><tr><th>User</th><th>Role</th><th className="num">Permissions</th><th>Status</th></tr></thead><tbody>
-        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleNames[staffRole]}</b>{staffRole === role && <small>You</small>}</td><td>{roleLabels[staffRole]}</td><td className="num">{workflowPermissions[staffRole].length} of {PERMISSION_COLUMNS.length}</td><td><span className="status status-success"><i />Active</span></td></tr>)}
+        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleNames[staffRole]}</b>{staffRole === role && <small>You</small>}</td><td>{roleLabels[staffRole]}</td><td className="num">{grantedCount(staffRole)} of {ALL_PERMISSION_COLUMNS.length}</td><td><span className="status status-success"><i />Active</span></td></tr>)}
       </tbody></table></div>
     </section>
-    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL MATRIX</span><h2>Roles &amp; permissions</h2></div></div>
+    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL MATRIX</span><h2>Trading &amp; operations</h2></div></div>
       <div className="table-scroll"><table><thead><tr><th>Role</th>{PERMISSION_COLUMNS.map(([key, label]) => <th key={key} className="num">{label}</th>)}</tr></thead><tbody>
         {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleLabels[staffRole]}</b></td>{PERMISSION_COLUMNS.map(([key]) => <td key={key} className="num">{workflowPermissions[staffRole].includes(key) ? <span className="perm-yes">✓</span> : <span className="perm-no">–</span>}</td>)}</tr>)}
       </tbody></table></div>
       <div className="settings-note">Permissions are set by role. Segregation of duties is enforced server-side: the maker of an order or onboarding record cannot approve it.</div>
+    </section>
+    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL MATRIX</span><h2>Client service</h2></div></div>
+      <div className="table-scroll"><table><thead><tr><th>Role</th>{CRM_PERMISSION_COLUMNS.map(([key, label]) => <th key={key} className="num">{label}</th>)}</tr></thead><tbody>
+        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleLabels[staffRole]}</b></td>{CRM_PERMISSION_COLUMNS.map(([key]) => <td key={key} className="num">{workflowPermissions[staffRole].includes(key) ? <span className="perm-yes">✓</span> : <span className="perm-no">–</span>}</td>)}</tr>)}
+      </tbody></table></div>
+      <div className="settings-note">Replying to an investor is separate from adding an internal note. Internal notes are never shown to investors.</div>
     </section>
   </>;
 }

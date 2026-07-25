@@ -16,6 +16,7 @@ export type NotificationItem = {
 };
 
 const demoBroker: Array<NotificationItem & { roles: string[] }> = [
+  { id: "ntf_b9", roles: ["broker_admin", "service_officer", "relationship_officer", "operations"], category: "support", severity: "warning", title: "New complaint from an investor", body: "Wegagen Pension Fund: Contract note shows the wrong fee", entityType: "communication_thread", entityId: "THR-DEMO0005", createdAt: "2026-07-14T10:52:00Z", read: false },
   { id: "ntf_b1", roles: ["broker_admin", "compliance"], category: "order", severity: "warning", title: "Order awaiting review · TELE", body: "BUY 7,000 TELE for Wegagen Pension Fund · 2,198,437.50 ETB — flagged for enhanced review.", entityType: "order", entityId: "ORD-2026-1048", createdAt: "2026-07-14T10:43:00Z", read: false },
   { id: "ntf_b2", roles: ["broker_admin", "compliance"], category: "kyc", severity: "warning", title: "New client awaiting KYC review", body: "Selamawit Tesfaye (CL-10052) was submitted for onboarding and KYC approval.", entityType: "client", entityId: "cli_selam", createdAt: "2026-07-14T10:12:00Z", read: false },
   { id: "ntf_b3", roles: ["broker_admin", "trader", "operations"], category: "order", severity: "info", title: "Order approved · WGBX", body: "SELL 1,200 WGBX for Meron Bekele is approved and ready to execute.", entityType: "order", entityId: "ORD-2026-1047", createdAt: "2026-07-14T10:21:00Z", read: false },
@@ -27,6 +28,7 @@ const demoBroker: Array<NotificationItem & { roles: string[] }> = [
 ];
 
 const demoInvestor: NotificationItem[] = [
+  { id: "ntf_i6", category: "support", severity: "info", title: "Your broker replied", body: "Withdrawal still pending — could you confirm the destination account name?", entityType: "communication_thread", entityId: "THR-DEMO04", createdAt: "2026-07-14T10:40:00Z", read: false },
   { id: "ntf_i1", category: "kyc", severity: "success", title: "You're approved to invest", body: "Your account is active. You can now buy and sell shares and bonds on the ESX.", createdAt: "2026-07-14T08:02:00Z", read: false },
   { id: "ntf_i2", category: "order", severity: "success", title: "Order approved", body: "Your buy order for 120 TELE was approved by your broker.", entityType: "order", entityId: "ORD-2026-1050", createdAt: "2026-07-14T10:24:00Z", read: false },
   { id: "ntf_i3", category: "trade", severity: "success", title: "Order executed", body: "120 TELE bought at 305.00 ETB. Settlement is due 2026-07-16.", entityType: "order", entityId: "ORD-2026-1050", createdAt: "2026-07-14T11:02:00Z", read: false },
@@ -44,7 +46,11 @@ export function demoBrokerNotifications(role: string): NotificationItem[] {
   const oversight = role === "management" || role === "super_admin";
   return demoBroker
     .filter((item) => oversight || item.roles.includes(role))
-    .map(({ roles: _roles, ...item }) => item);
+    .map((item) => {
+      const { roles, ...rest } = item;
+      void roles; // role targeting is applied above; it is not part of the payload
+      return rest;
+    });
 }
 
 export const demoInvestorNotifications = () => demoInvestor.map((item) => ({ ...item }));
