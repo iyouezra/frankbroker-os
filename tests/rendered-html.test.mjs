@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readBrokerFrontend, readInvestorFrontend } from "./frontend-source.mjs";
 
 const root = new URL("../", import.meta.url);
 
 test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, investorApi, adminApi, tenantApi, ordersApi, orderDetailApi, orderActionApi, auditApi, orderInput, orderService, tradeService, ledgerService, validationService, settlementService, statusMachine, schema, migration, wiringMigration, omsMigration] = await Promise.all([
-    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
-    readFile(new URL("app/investor/investor-app.tsx", root), "utf8"),
+    readBrokerFrontend(),
+    readInvestorFrontend(),
     readFile(new URL("lib/investor-data.ts", root), "utf8"),
     readFile(new URL("app/investor/investor.module.css", root), "utf8"),
     readFile(new URL("app/admin/admin-console.tsx", root), "utf8"),
@@ -135,9 +136,9 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
 
 test("ships versioned terms, itemized fees, and controlled client requests", async () => {
   const [investorApp, adminApp, brokerApp, investorApi, clientActionApi, feeService, schema, migration] = await Promise.all([
-    readFile(new URL("app/investor/investor-app.tsx", root), "utf8"),
+    readInvestorFrontend(),
     readFile(new URL("app/admin/admin-console.tsx", root), "utf8"),
-    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readBrokerFrontend(),
     readFile(new URL("app/api/investor/route.ts", root), "utf8"),
     readFile(new URL("app/api/clients/[id]/action/route.ts", root), "utf8"),
     readFile(new URL("lib/oms/fee-service.ts", root), "utf8"),

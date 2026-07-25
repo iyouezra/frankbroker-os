@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readBrokerFrontend } from "./frontend-source.mjs";
 
 import {
   csvCell,
@@ -64,7 +65,7 @@ test("order APIs expose paginated summaries, tenant-scoped detail, and filtered 
 });
 
 test("broker UI uses operational labels and requires an execution reference", async () => {
-  const app = await readFile(new URL("../app/frankbroker-app.tsx", import.meta.url), "utf8");
+  const app = await readBrokerFrontend();
   assert.match(app, />Executions</);
   assert.match(app, /An order may be completed through one or more executions/);
   assert.match(app, />Technical details</);

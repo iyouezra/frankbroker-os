@@ -1,0 +1,15 @@
+"use client";
+
+import { formatEtb, investorHoldings, investorStocks, type InvestorStock } from "../../../lib/investor-data";
+import styles from "../../../app/investor/investor.module.css";
+import { AllocationBar, Card, Delta, Icon, PortfolioChart, ScreenHeader, type InvestorBootstrap } from "../shared/investor-foundation";
+
+export function PortfolioScreen({ openStock, account }: { openStock: (stock: InvestorStock) => void; account: InvestorBootstrap["account"] }) {
+  const holdings = account?.holdings.length ? account.holdings.filter((holding) => investorStocks.some((stock) => stock.ticker === holding.ticker)) : investorHoldings;
+  const rows = holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; const value = stock.price * holding.quantity; const cost = holding.averageCost * holding.quantity; return { holding, stock, value, cost, gain: value - cost }; });
+  const stockValue = rows.reduce((sum, row) => sum + row.value, 0);
+  const cost = rows.reduce((sum, row) => sum + row.cost, 0);
+  const cash = account?.availableCash ?? 4_210;
+  const total = stockValue + 25_000 + cash;
+  return <div className={styles.screen}><ScreenHeader title="Portfolio" /><Card className={styles.portfolioSummary}><small>Total value</small><strong>{formatEtb(total)}</strong><div className={styles.summaryGrid}><span><small>Cost basis (stocks)</small><b>{formatEtb(cost)}</b></span><span><small>Unrealized gain</small><b className={styles.gain}>+{formatEtb(stockValue - cost).replace("ETB ", "")}</b></span><span><small>Dividends this year</small><b>ETB 1,440.00</b></span><span><small>Today</small><Delta value={1.8} /></span></div></Card><Card><div className={styles.cardHeader}><h2>Performance</h2><span className={`${styles.badge} ${styles.gainBadge}`}>+18.5% all time</span></div><PortfolioChart total={total} /></Card><Card><div className={styles.cardHeader}><h2>What you own</h2></div><AllocationBar bonds={Math.round((25_000 / total) * 100)} stocks={Math.round((stockValue / total) * 100)} /><div className={styles.legend}><span><i />Stocks {Math.round((stockValue / total) * 100)}%</span><span><i />Bonds {Math.round((25_000 / total) * 100)}%</span><span><i />Cash {Math.round((cash / total) * 100)}%</span></div>{rows.map((row) => <button className={styles.holdingRow} key={row.stock.ticker} onClick={() => openStock(row.stock)}><span className={styles.tickerTile}>{row.stock.ticker.slice(0, 4)}</span><span><b>{row.stock.name}</b><small>{row.holding.quantity} sh · avg {formatEtb(row.holding.averageCost)}</small></span><span><b>{formatEtb(row.value)}</b><small className={row.gain >= 0 ? styles.gain : styles.loss}>{row.gain >= 0 ? "+" : "−"}{formatEtb(Math.abs(row.gain)).replace("ETB ", "")}</small></span></button>)}<div className={styles.holdingRow}><span className={styles.tickerTile}><Icon name="shield" size={19} /></span><span><b>GoE Treasury Bonds</b><small>14.5–16.0% per year · held to maturity</small></span><span><b>ETB 25,000.00</b></span></div></Card><p className={styles.disclaimer}>Unrealized gains are on paper until you sell. Estimates use the last traded ESX price.</p></div>;
+}

@@ -5,6 +5,7 @@ import test from "node:test";
 import { evaluateClientReadiness, isOrderEligibleClient } from "../lib/client-readiness.ts";
 import { hasPermission } from "../lib/frank.ts";
 import { requirePermission } from "../lib/server-auth.ts";
+import { readBrokerFrontend } from "./frontend-source.mjs";
 
 const readyClient = {
   kycStatus: "approved",
@@ -97,7 +98,7 @@ test("read-only users cannot create or approve clients", () => {
 test("Client 360 surfaces cash, holdings, orders, ledgers, settlements, documents, notes, and audit data", async () => {
   const root = new URL("../", import.meta.url);
   const [ui, route, action, schema] = await Promise.all([
-    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readBrokerFrontend(),
     readFile(new URL("app/api/clients/[id]/route.ts", root), "utf8"),
     readFile(new URL("app/api/clients/[id]/action/route.ts", root), "utf8"),
     readFile(new URL("prisma/schema.prisma", root), "utf8"),
@@ -126,7 +127,7 @@ test("Client 360 surfaces cash, holdings, orders, ledgers, settlements, document
 test("broker onboarding is wired through approval into the New Order client list", async () => {
   const root = new URL("../", import.meta.url);
   const [ui, clientsRoute, actionRoute, service, styles, migration] = await Promise.all([
-    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readBrokerFrontend(),
     readFile(new URL("app/api/clients/route.ts", root), "utf8"),
     readFile(new URL("app/api/clients/[id]/action/route.ts", root), "utf8"),
     readFile(new URL("lib/client-service.ts", root), "utf8"),
@@ -153,7 +154,7 @@ test("broker onboarding is wired through approval into the New Order client list
 test("client accounts use a paginated directory with distinct client categories", async () => {
   const root = new URL("../", import.meta.url);
   const [ui, directoryRoute, service, styles] = await Promise.all([
-    readFile(new URL("app/frankbroker-app.tsx", root), "utf8"),
+    readBrokerFrontend(),
     readFile(new URL("app/api/clients/directory/route.ts", root), "utf8"),
     readFile(new URL("lib/client-service.ts", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),

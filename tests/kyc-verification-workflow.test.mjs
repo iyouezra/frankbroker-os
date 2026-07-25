@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { readBrokerFrontend, readInvestorFrontend } from "./frontend-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -16,7 +17,7 @@ test("digital KYC remains pending broker review and returns generated identifier
 
 test("investor onboarding captures email and the full institutional document set", async () => {
   const [investor, route] = await Promise.all([
-    read("app/investor/investor-app.tsx"),
+    readInvestorFrontend(),
     read("app/api/investor/route.ts"),
   ]);
   assert.match(investor, /label="Email address"/);
@@ -46,7 +47,7 @@ test("order authorization is exact-payload-bound, expiring, attempt-limited, and
 
 test("investor Stop-Loss orders require and persist a trigger price", async () => {
   const [investor, route, schema, migration, orderService] = await Promise.all([
-    read("app/investor/investor-app.tsx"),
+    readInvestorFrontend(),
     read("app/api/investor/route.ts"),
     read("prisma/schema.prisma"),
     read("prisma/migrations/20260723190000_add_order_trigger_price/migration.sql"),
@@ -62,7 +63,7 @@ test("investor Stop-Loss orders require and persist a trigger price", async () =
 });
 
 test("broker and investor order entry both require a verification challenge", async () => {
-  const [broker, investor] = await Promise.all([read("app/frankbroker-app.tsx"), read("app/investor/investor-app.tsx")]);
+  const [broker, investor] = await Promise.all([readBrokerFrontend(), readInvestorFrontend()]);
   assert.match(broker, /request_order/);
   assert.match(broker, /Instruction source/);
   assert.match(broker, /Verify & submit/);

@@ -1,0 +1,144 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { DemoOrder, OrderLogResponse } from "../../../lib/demo-data";
+import type { Role } from "../../../lib/frank";
+import { ACTIVE_ORDER_STATUSES, waitingTime } from "../../../lib/order-log";
+import { BROKER_TENANT_ID, EmptyState, SectionHeader, StatusBadge, displayLabel, etb, fmt, hydrateOrders, normalizedOrderType } from "../shared/broker-foundation";
+
+export function OrdersPage({ orders, query, role, refreshKey, onOpen, onNewOrder }: { orders: DemoOrder[]; query: string; role: Role; refreshKey: number; onOpen: (order: DemoOrder) => void; onNewOrder: () => void }) {
+  const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions">("all");
+  const [sideFilter, setSideFilter] = useState<"all" | "buy" | "sell">("all");
+  const [riskFilter, setRiskFilter] = useState<"all" | "flagged">("all");
+  const [orderTypeFilter, setOrderTypeFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [periodFilter, setPeriodFilter] = useState<"all" | "today" | "7d" | "30d">("all");
+  const [sort, setSort] = useState<"newest" | "oldest" | "value" | "updated">("newest");
+  const [page, setPage] = useState(1);
+  const [rows, setRows] = useState(orders.slice(0, 25));
+  const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: orders.length, pageCount: Math.max(1, Math.ceil(orders.length / 25)) });
+  const [facets, setFacets] = useState<OrderLogResponse["facets"]>({
+    statuses: Object.fromEntries([...new Set(orders.map((order) => order.status))].map((status) => [status, orders.filter((order) => order.status === status).length])),
+    orderTypes: [...new Set(orders.map((order) => normalizedOrderType(order.orderType)))],
+    sources: [...new Set(orders.map((order) => order.source.toLowerCase().replaceAll(" ", "_")))],
+  });
+  const statusMatches = (order: DemoOrder) => statusFilter === "all"
+    || (statusFilter === "review" && order.status === "pending_broker_review")
+    || (statusFilter === "approved" && order.status === "approved")
+    || (statusFilter === "executed" && ["partially_filled", "filled", "settlement_pending", "settled"].includes(order.status))
+    || (statusFilter === "exceptions" && ["validation_failed", "rejected", "cancelled", "failed"].includes(order.status));
+  const buildParams = (requestedPage = page) => new URLSearchParams({
+    page: String(requestedPage),
+    pageSize: "25",
+    query: query.trim(),
+    status: statusFilter,
+    side: sideFilter,
+    risk: riskFilter,
+    orderType: orderTypeFilter,
+    source: sourceFilter,
+    period: periodFilter,
+    sort,
+  });
+  const fallbackFilteredOrders = () => {
+    const needle = query.trim().toLowerCase();
+    const periodDays = periodFilter === "7d" ? 7 : periodFilter === "30d" ? 30 : 0;
+    const cutoff = periodDays ? Date.now() - periodDays * 86_400_000 : 0;
+    const today = new Date().toISOString().slice(0, 10);
+    return orders
+      .filter((order) => statusMatches(order)
+        && (sideFilter === "all" || order.side === sideFilter)
+        && (riskFilter === "all" || order.riskFlag !== "none")
+        && (orderTypeFilter === "all" || normalizedOrderType(order.orderType) === normalizedOrderType(orderTypeFilter))
+        && (sourceFilter === "all" || order.source.toLowerCase().replaceAll(" ", "_") === sourceFilter)
+        && (periodFilter === "all" || (periodFilter === "today" ? order.createdAt.slice(0, 10) === today : new Date(order.createdAt).getTime() >= cutoff))
+        && (!needle || [order.id, order.client, order.clientCode, order.accountNumber, order.symbol, order.status, order.submissionReference, ...(order.trades?.map((trade) => trade.captureReference) ?? [])].some((value) => String(value ?? "").toLowerCase().includes(needle))))
+      .sort((left, right) => sort === "value" ? right.estimatedNet - left.estimatedNet : sort === "oldest" ? left.createdAt.localeCompare(right.createdAt) : sort === "updated" ? (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt) : right.createdAt.localeCompare(left.createdAt));
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      void fetch(`/api/orders?${buildParams().toString()}`, { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
+        .then((result: OrderLogResponse) => {
+          setRows(hydrateOrders(result.orders));
+          setPagination(result.pagination);
+          setFacets(result.facets);
+        })
+        .catch(() => {
+          const filtered = fallbackFilteredOrders();
+          const pageCount = Math.max(1, Math.ceil(filtered.length / 25));
+          const safePage = Math.min(page, pageCount);
+          setRows(filtered.slice((safePage - 1) * 25, safePage * 25));
+          setPagination({ page: safePage, pageSize: 25, total: filtered.length, pageCount });
+        })
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, statusFilter, sideFilter, riskFilter, orderTypeFilter, sourceFilter, periodFilter, sort, page, role, refreshKey, orders]);
+
+  const chooseStatus = (value: typeof statusFilter) => { setStatusFilter(value); setPage(1); };
+  const exportFiltered = async () => {
+    const params = buildParams(1);
+    params.set("format", "csv");
+    const response = await fetch(`/api/orders?${params.toString()}`, { headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } });
+    const blob = response.ok
+      ? await response.blob()
+      : new Blob([
+        [
+          ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated value", "Executed value", "Status", "Source", "Submission reference", "Assigned trader", "Next action", "Action owner", "Exception reason"],
+          ...fallbackFilteredOrders().map((order) => [order.id, order.createdAt, order.updatedAt ?? order.createdAt, order.client, order.clientCode, order.accountNumber ?? order.accountId, order.symbol, order.side, order.orderType, order.validity ?? "Day", order.price, order.triggerPrice ?? "", order.quantity, order.filledQuantity ?? 0, order.remainingQuantity ?? order.quantity, order.estimatedNet, order.executedNet ?? 0, order.status, order.source, order.submissionReference ?? "", order.trader, order.nextAction ?? "", order.actionOwner ?? "", order.rejectionReason ?? ""]),
+        ].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n"),
+      ], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `frankbroker-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const count = (statuses: string[]) => statuses.reduce((total, status) => total + (facets.statuses[status] ?? 0), 0);
+  return <>
+    <SectionHeader eyebrow="ORDER MANAGEMENT" title="Order log" copy="See each instruction, what has happened, and what needs attention next." action={<><button className="btn secondary" onClick={() => void exportFiltered()}>Export filtered CSV</button><button className="btn primary" onClick={onNewOrder}>＋ New order</button></>} />
+    <div className="filter-row">
+      <button className={`filter ${statusFilter === "all" ? "active" : ""}`} onClick={() => chooseStatus("all")}>All orders <b>{Object.values(facets.statuses).reduce((total, value) => total + value, 0)}</b></button>
+      <button className={`filter ${statusFilter === "review" ? "active" : ""}`} onClick={() => chooseStatus("review")}>Pending review <b>{count(["pending_broker_review"])}</b></button>
+      <button className={`filter ${statusFilter === "approved" ? "active" : ""}`} onClick={() => chooseStatus("approved")}>Approved <b>{count(["approved"])}</b></button>
+      <button className={`filter ${statusFilter === "executed" ? "active" : ""}`} onClick={() => chooseStatus("executed")}>Executed <b>{count(["partially_filled", "filled", "settlement_pending", "settled"])}</b></button>
+      <button className={`filter ${statusFilter === "exceptions" ? "active" : ""}`} onClick={() => chooseStatus("exceptions")}>Exceptions <b>{count(["validation_failed", "rejected", "cancelled", "failed"])}</b></button>
+    </div>
+    <div className="blotter-controls order-log-controls">
+      <label>Side<select value={sideFilter} onChange={(event) => { setSideFilter(event.target.value as typeof sideFilter); setPage(1); }}><option value="all">All sides</option><option value="buy">Buy</option><option value="sell">Sell</option></select></label>
+      <label>Order type<select value={orderTypeFilter} onChange={(event) => { setOrderTypeFilter(event.target.value); setPage(1); }}><option value="all">All types</option>{facets.orderTypes.map((type) => <option value={type} key={type}>{displayLabel(type)}</option>)}</select></label>
+      <label>Source<select value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setPage(1); }}><option value="all">All sources</option>{facets.sources.map((source) => <option value={source} key={source}>{displayLabel(source)}</option>)}</select></label>
+      <label>Period<select value={periodFilter} onChange={(event) => { setPeriodFilter(event.target.value as typeof periodFilter); setPage(1); }}><option value="all">All dates</option><option value="today">Today</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select></label>
+      <label>Risk<select value={riskFilter} onChange={(event) => { setRiskFilter(event.target.value as typeof riskFilter); setPage(1); }}><option value="all">All risk levels</option><option value="flagged">Flagged only</option></select></label>
+      <label>Sort<select value={sort} onChange={(event) => { setSort(event.target.value as typeof sort); setPage(1); }}><option value="newest">Newest first</option><option value="updated">Recently updated</option><option value="oldest">Oldest first</option><option value="value">Highest value</option></select></label>
+      <span>{loading ? "Updating…" : `${pagination.total} matching orders`}</span>
+    </div>
+    <section className={`panel table-panel order-log-table${loading ? " loading" : ""}`}><OrderTable orders={rows} onOpen={onOpen} /></section>
+    {pagination.pageCount > 1 && <div className="pagination"><button disabled={pagination.page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {pagination.page} of {pagination.pageCount}</span><button disabled={pagination.page >= pagination.pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></div>}
+  </>;
+}
+
+function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void }) {
+  if (!orders.length) return <EmptyState title="No orders found" copy="Try another client, symbol, order ID, reference, or filter." />;
+  return <div className="table-scroll"><table><thead><tr><th>Order / update</th><th>Client / account</th><th>Instrument / instruction</th><th>Side</th><th className="num">Execution progress</th><th className="num">Value</th><th>Status / age</th><th>Owner / next action</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => {
+    const active = ACTIVE_ORDER_STATUSES.has(order.status);
+    const value = (order.filledQuantity ?? 0) > 0 ? order.executedNet ?? 0 : order.estimatedNet;
+    return <tr key={order.id} onClick={() => onOpen(order)}>
+      <td><b>{order.id}</b><small>Submitted {new Date(order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small><small>Updated {new Date(order.updatedAt ?? order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small></td>
+      <td><b>{order.client}</b><small>{order.clientCode} · {order.accountNumber ?? order.accountId.replace("acc_", "TRD-").toUpperCase()}</small></td>
+      <td><b>{order.symbol} · {order.orderType}</b><small>{order.validity ?? "Day"} · {fmt.format(order.price)} ETB{order.triggerPrice ? ` · Trigger ${fmt.format(order.triggerPrice)}` : ""}</small></td>
+      <td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td>
+      <td className="num"><b>{fmt.format(order.filledQuantity ?? 0)} / {fmt.format(order.quantity)}</b><small>{fmt.format(order.remainingQuantity ?? order.quantity)} remaining</small></td>
+      <td className="num"><b>{etb(value)}</b><small>{(order.filledQuantity ?? 0) > 0 ? "Executed value" : "Estimated incl. fees"}</small></td>
+      <td><StatusBadge status={order.status} />{active && <small>{waitingTime(order.updatedAt ?? order.createdAt)}</small>}{order.riskFlag !== "none" && <small className="risk-note">◇ Risk review</small>}</td>
+      <td><b>{order.actionOwner ?? "Operations review"}</b><small>{order.nextAction ?? "Review order"}</small></td>
+      <td><button className="row-action" onClick={(event) => { event.stopPropagation(); onOpen(order); }}>•••</button></td>
+    </tr>;
+  })}</tbody></table></div>;
+}
