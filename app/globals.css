@@ -251,11 +251,13 @@ main { padding: 30px 32px 48px; max-width: 1700px; margin: 0 auto; }
 .panel-head h2 { font-size: 15px; margin: 4px 0 0; letter-spacing: -.25px; }
 .text-button { border: 0; background: transparent; color: var(--teal); font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .text-button span { margin-left: 5px; }
-.queue-list button { width: 100%; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 11px; padding: 14px 18px; text-align: left; background: var(--fx-card); border: 0; border-bottom: 1px solid var(--soft-line); cursor: pointer; }
+.queue-list button { width: 100%; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 11px; padding: 14px 18px; text-align: left; background: var(--fx-card); border: 0; border-bottom: 1px solid var(--soft-line); cursor: pointer; }
 .queue-list button:last-child { border-bottom: 0; border-radius: 0 0 var(--radius) var(--radius); }
 .queue-list button:hover { background: var(--fx-sunken); }
 .queue-icon { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-style: normal; font-size: 12.5px; font-weight: 850; }
-.queue-icon.warning { background: var(--fx-amber-soft); color: var(--fx-amber); }.queue-icon.danger { background: var(--fx-red-soft); color: var(--fx-red); }
+.queue-icon.warning { background: var(--fx-amber-soft); color: var(--fx-amber); }.queue-icon.danger { background: var(--fx-red-soft); color: var(--fx-red); }.queue-icon.info { background: var(--fx-accent-soft); color: var(--fx-teal); }
+.queue-count { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: var(--fx-sunken); color: var(--fx-text-2); font-size: 11px; font-weight: 700; }
+.queue-empty { padding: 30px 19px; text-align: center; color: var(--fx-text-3); font-size: 12.5px; }
 .queue-list button > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
 .queue-list button > span:nth-child(2) b { font-size: 12px; }
 .queue-list button > span:nth-child(2) small { margin-top: 4px; color: var(--fx-text-3); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

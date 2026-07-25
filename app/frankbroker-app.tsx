@@ -12,7 +12,7 @@ import { buildReports, feesEarned, downloadCsv, type Report } from "../lib/broke
 import { isOrderEligibleClient } from "../lib/client-readiness";
 import { ACTIVE_ORDER_STATUSES, movementDescription, orderResponsibility, waitingTime } from "../lib/order-log";
 
-type View = "dashboard" | "performance" | "orders" | "clients" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "settings";
+type View = "dashboard" | "performance" | "orders" | "clients" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "users" | "settings";
 type Drawer = "new" | "client" | "detail" | "trade" | "contract" | null;
 type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationId: string; verificationCode: string; demoCode: string };
 type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
@@ -183,26 +183,45 @@ type NavItem = { id: View; label: string; icon: string; roles?: Role[] };
 const navGroups: { label: string; items: NavItem[] }[] = [
   { label: "Overview", items: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-    { id: "performance", label: "Performance", icon: "performance", roles: ["broker_admin"] },
   ] },
-  { label: "Operations", items: [
-    { id: "orders", label: "Order log", icon: "orders" },
+  { label: "Clients", items: [
     { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance"] },
     { id: "cash", label: "Client money", icon: "cash", roles: ["broker_admin", "operations", "settlement"] },
+  ] },
+  { label: "Trading", items: [
+    { id: "orders", label: "Order log", icon: "orders" },
     { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
     { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations"] },
   ] },
-  { label: "Records", items: [
+  { label: "Oversight", items: [
+    { id: "performance", label: "Performance", icon: "performance", roles: ["broker_admin"] },
     { id: "reports", label: "Reports", icon: "reports" },
     { id: "audit", label: "Audit trail", icon: "audit", roles: ["broker_admin", "compliance"] },
   ] },
   { label: "Administration", items: [
+    { id: "users", label: "Users & roles", icon: "users", roles: ["broker_admin"] },
     { id: "settings", label: "Settings", icon: "settings", roles: ["broker_admin"] },
   ] },
 ];
 const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
 // Oversight roles (management, super_admin) see every tab read-only.
 const navVisible = (item: NavItem, role: Role) => role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role);
+
+// Cash instructions still awaiting a broker decision or payment execution.
+const PENDING_CASH_STATUSES = ["pending_verification", "pending_approval", "approved"];
+
+/** A single item in the dashboard's cross-domain "needs your attention" queue. */
+type QueueItem = {
+  key: string;
+  permission: string;
+  tone: "warning" | "danger" | "info";
+  icon: string;
+  title: string;
+  detail: string;
+  onOpen: () => void;
+};
+// Oversight roles observe every queue item; everyone else sees what they can action.
+const queueVisible = (item: QueueItem, role: Role) => role === "management" || role === "super_admin" || hasPermission(role, item.permission);
 
 // Demo identity per role, reusing the seeded broker staff (Dawit A. the trader, etc.).
 const roleNames: Record<Role, string> = {
@@ -221,6 +240,7 @@ const ICON_PATHS: Record<string, string> = {
   dashboard: "M4 13h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 21h6a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 9h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z M4 21h6a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z",
   orders: "M8 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1 M9 3h6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M8 11h8 M8 15h5",
   clients: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+  users: "M16 10h3 M16 14h3 M6.2 15a3 3 0 0 1 5.6 0 M9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
   cash: "M3 7h18v13H3z M16 13h5 M3 7l3-3h12l3 3 M7 11h5 M7 15h3",
   settlement: "M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01l-3-3",
   reconciliation: "M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M13 6h3a2 2 0 0 1 2 2v7 M11 18H8a2 2 0 0 1-2-2V9",
@@ -246,8 +266,8 @@ const fallbackClients: BrokerClient[] = demoClients.map((client) => ({
   name: client.name,
   type: client.type,
   kyc: client.kyc.toLowerCase().replaceAll(" ", "_"),
-  status: client.status.toLowerCase(),
-  accountStatus: client.status.toLowerCase(),
+  status: client.status.toLowerCase().replaceAll(" ", "_"),
+  accountStatus: client.status.toLowerCase().replaceAll(" ", "_"),
   tradeEligible: client.kyc === "Approved" && client.status === "Active",
   risk: client.risk.toLowerCase(),
   totalCash: client.cash,
@@ -391,8 +411,12 @@ export default function FrankBrokerApp() {
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
+  // Set when arriving at Clients from the queue so the directory opens pre-filtered.
+  const [clientsFocus, setClientsFocus] = useState<{ status: string } | null>(null);
   const pendingOrderCount = orders.filter((order) => order.status === "pending_broker_review").length;
   const eligibleClients = clients.filter(isOrderEligibleClient);
+  const pendingClientCount = clients.filter((client) => client.status === "pending_approval").length;
+  const pendingCashCount = cashOperations.movements.filter((movement) => PENDING_CASH_STATUSES.includes(movement.status)).length;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -501,6 +525,60 @@ export default function FrankBrokerApp() {
     setDrawer("detail");
     void loadOrderDetail(order.id);
   };
+
+  // Cross-domain work queue: orders, onboarding, cash instructions, and
+  // reconciliation breaks in one place, filtered to what this role can action.
+  const queueItems = useMemo<QueueItem[]>(() => {
+    const items: QueueItem[] = [];
+    for (const order of orders) {
+      if (order.status === "pending_broker_review") {
+        items.push({
+          key: `order-${order.id}`, permission: "approve", tone: order.riskFlag !== "none" ? "danger" : "warning", icon: "orders",
+          title: order.riskFlag !== "none" ? "Order awaiting approval · enhanced review" : "Order awaiting approval",
+          detail: `${order.id} · ${order.client} · ${order.side.toUpperCase()} ${fmt.format(order.quantity)} ${order.symbol}`,
+          onOpen: () => openDetail(order),
+        });
+      } else if (order.status === "validation_failed") {
+        items.push({
+          key: `order-${order.id}`, permission: "create", tone: "danger", icon: "orders",
+          title: "Order validation failed",
+          detail: `${order.id} · ${order.client} · needs correction or cancellation`,
+          onOpen: () => openDetail(order),
+        });
+      }
+    }
+    for (const client of clients) {
+      if (client.status === "pending_approval") {
+        items.push({
+          key: `client-${client.id}`, permission: "approve", tone: "warning", icon: "clients",
+          title: "Client awaiting onboarding approval",
+          detail: `${client.code} · ${client.name} · KYC ${displayLabel(client.kyc)}`,
+          onOpen: () => { setClientsFocus({ status: "pending_approval" }); setSelectedClientId(client.id); setView("clients"); },
+        });
+      }
+    }
+    for (const movement of cashOperations.movements) {
+      if (!PENDING_CASH_STATUSES.includes(movement.status)) continue;
+      const isDeposit = movement.type === "deposit";
+      items.push({
+        key: `cash-${movement.id}`, permission: "adjust", tone: "warning", icon: "cash",
+        title: movement.status === "approved" ? "Withdrawal awaiting payment" : isDeposit ? "Deposit awaiting verification" : "Withdrawal awaiting approval",
+        detail: `${movement.id} · ${movement.client?.name ?? "Client"} · ${fmt.format(movement.amount)} ${movement.currency}`,
+        onOpen: () => setView("cash"),
+      });
+    }
+    if (reconBatch.exceptionRecords > 0) {
+      items.push({
+        key: "recon-exceptions", permission: "adjust", tone: "danger", icon: "reconciliation",
+        title: `${reconBatch.exceptionRecords} reconciliation ${reconBatch.exceptionRecords === 1 ? "exception" : "exceptions"} open`,
+        detail: `${reconBatch.id} · unresolved cash or securities breaks`,
+        onOpen: () => setView("reconciliation"),
+      });
+    }
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, clients, cashOperations, reconBatch]);
+  const visibleQueue = queueItems.filter((item) => queueVisible(item, role));
 
   // Notifications are role-aware: switching the demo role reloads the feed so
   // approvers, traders, and settlement each see what they must act on.
@@ -924,7 +1002,7 @@ export default function FrankBrokerApp() {
             if (!items.length) return null;
             return <div className="nav-group" key={group.label}>
               <span className="nav-label">{group.label}</span>
-              {items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
+              {items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "clients" && pendingClientCount > 0 && <em className="warn">{pendingClientCount}</em>}{item.id === "cash" && pendingCashCount > 0 && <em className="warn">{pendingCashCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
             </div>;
           })}
         </nav>
@@ -940,15 +1018,16 @@ export default function FrankBrokerApp() {
         </header>
 
         <main>
-          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
+          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} queue={visibleQueue} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} onOpen={openDetail} onNewOrder={openNewOrder} />}
-          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
+          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} focus={clientsFocus} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
           {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} onDownloaded={(name) => notify(`${name} exported as CSV.`)} />}
           {view === "audit" && <AuditPage events={auditEntries} />}
+          {view === "users" && <UsersPage role={role} />}
           {view === "settings" && <SettingsPage />}
         </main>
 
@@ -970,7 +1049,7 @@ export default function FrankBrokerApp() {
   );
 }
 
-function Dashboard({ orders, auditEntries, settlementCycle, manualTradeCapture, onViewOrders, onOpen, onNewOrder, onSettle }: { orders: DemoOrder[]; auditEntries: AuditEntry[]; settlementCycle: string; manualTradeCapture: boolean; onViewOrders: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onSettle: () => void }) {
+function Dashboard({ orders, auditEntries, queue, settlementCycle, manualTradeCapture, onViewOrders, onOpen, onNewOrder, onSettle }: { orders: DemoOrder[]; auditEntries: AuditEntry[]; queue: QueueItem[]; settlementCycle: string; manualTradeCapture: boolean; onViewOrders: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void; onSettle: () => void }) {
   const pending = orders.filter((order) => order.status === "pending_broker_review");
   const settlement = orders.filter((order) => order.status === "settlement_pending" || order.status === "partially_filled");
   const filled = orders.filter((order) => ["partially_filled", "settlement_pending", "settled"].includes(order.status));
@@ -982,8 +1061,10 @@ function Dashboard({ orders, auditEntries, settlementCycle, manualTradeCapture, 
     <div className="manual-banner"><span>{manualTradeCapture ? "MANUAL MARKET MODE" : "TRADE CAPTURE DISABLED"}</span><p>{manualTradeCapture ? "Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations." : "Platform administration has paused manual execution capture for this tenant. Existing orders and settlements remain visible."}</p></div>
     <section className="metric-grid"><Metric label="Orders in view" value={String(orders.length)} note={`${compactEtb(orderValue)} estimated value`} /><Metric label="Pending approvals" value={String(pending.length)} note={`${pending.filter((order) => order.riskFlag !== "none").length} require risk review`} tone="warning" /><Metric label="Executed orders" value={String(filled.length)} note={`${compactEtb(filledValue)} captured`} tone="success" /><Metric label="Settlement pending" value={String(settlement.length)} note={`${compactEtb(settlementValue)} due by ${settlementCycle}`} tone="purple" /><Metric label="Validation exceptions" value={String(orders.filter((order) => order.status === "validation_failed").length)} note="Orders requiring correction" tone="danger" /></section>
     <div className="dashboard-grid">
-      <section className="panel queue-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL QUEUE</span><h2>Needs your attention</h2></div><button className="text-button" onClick={onViewOrders}>View all <span>→</span></button></div>
-        <div className="queue-list">{[...pending, ...orders.filter((order) => order.status === "validation_failed")].slice(0, 3).map((order) => <button key={order.id} onClick={() => onOpen(order)}><span className={`queue-icon ${order.status === "validation_failed" ? "danger" : "warning"}`}>{order.status === "validation_failed" ? "!" : "↗"}</span><span><b>{order.status === "validation_failed" ? "Validation failed" : "Order awaiting approval"}</b><small>{order.id} · {order.client} · {order.side.toUpperCase()} {fmt.format(order.quantity)} {order.symbol}</small></span><StatusBadge status={order.status} /><em>›</em></button>)}</div>
+      <section className="panel queue-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL QUEUE</span><h2>Needs your attention</h2></div>{queue.length > 0 && <span className="queue-count">{queue.length} open</span>}</div>
+        <div className="queue-list">{queue.length === 0
+          ? <div className="queue-empty">Nothing is waiting on you right now.</div>
+          : queue.slice(0, 6).map((item) => <button key={item.key} onClick={item.onOpen}><span className={`queue-icon ${item.tone}`}><Icon name={item.icon} size={16} /></span><span><b>{item.title}</b><small>{item.detail}</small></span><em>›</em></button>)}</div>
       </section>
       <section className="panel settlement-card"><div className="panel-head"><div><span className="eyebrow">SETTLEMENT POSITION</span><h2>Due by value date</h2></div><button className="text-button" onClick={onSettle}>Open queue <span>→</span></button></div><div className="settlement-bars"><div><span><b>Today</b><small>3 trades</small></span><i><em style={{ width: "82%" }} /></i><strong>ETB 1.84M</strong></div><div><span><b>Tomorrow</b><small>5 trades</small></span><i><em style={{ width: "58%" }} /></i><strong>ETB 1.22M</strong></div><div><span><b>16 Jul</b><small>2 trades</small></span><i><em style={{ width: "30%" }} /></i><strong>ETB 640K</strong></div></div><div className="settlement-foot"><span><i className="cash" /> Cash pending <b>3</b></span><span><i className="security" /> Securities pending <b>4</b></span></div></section>
       <section className="panel activity-panel"><div className="panel-head"><div><span className="eyebrow">LIVE ACTIVITY</span><h2>Latest control events</h2></div></div><div className="activity-list">{auditEntries.slice(0, 4).map((item) => <div key={item.id ?? item.time}><i /><time>{auditTime(item.time)}</time><span><b>{item.action.replaceAll("_", " ")}</b><small>{item.detail}</small></span><em>{item.actor}</em></div>)}</div></section>
@@ -1128,7 +1209,7 @@ function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: D
   })}</tbody></table></div>;
 }
 
-function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role, onNewClient, onRefresh, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; role: Role; onNewClient: () => void; onRefresh: () => Promise<void>; onOpenOrder: (order: DemoOrder) => void }) {
+function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role, focus, onNewClient, onRefresh, onOpenOrder }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; role: Role; focus: { status: string } | null; onNewClient: () => void; onRefresh: () => Promise<void>; onOpenOrder: (order: DemoOrder) => void }) {
   const [directoryRows, setDirectoryRows] = useState<BrokerClient[]>(clients);
   const [directorySelection, setDirectorySelection] = useState<BrokerClient | null>(null);
   const [directoryQuery, setDirectoryQuery] = useState("");
@@ -1137,6 +1218,12 @@ function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role,
   const [clientStatusFilter, setClientStatusFilter] = useState("all");
   const [clientKycFilter, setClientKycFilter] = useState("all");
   const [clientSort, setClientSort] = useState<"name" | "newest">("name");
+  // Arriving from the control queue pre-filters the directory to that status.
+  useEffect(() => {
+    if (!focus) return;
+    setClientStatusFilter(focus.status);
+    setDirectoryPage(1);
+  }, [focus]);
   const [directoryPage, setDirectoryPage] = useState(1);
   const [directoryPageSize, setDirectoryPageSize] = useState(25);
   const [directoryMeta, setDirectoryMeta] = useState<ClientDirectoryResponse["pagination"]>({ page: 1, pageSize: 25, total: clients.length, pageCount: 1 });
@@ -1551,16 +1638,23 @@ function SettingsPage() {
     <section className="panel"><div className="panel-head"><div><span className="eyebrow">CAPABILITIES</span><h2>Feature access</h2></div></div>
       <div className="feature-list">{Object.entries(FEATURE_LABELS).map(([key, label]) => <span key={key} className={features[key] ? "on" : "off"}><i />{label}</span>)}</div>
     </section>
-    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">ACCESS</span><h2>Team &amp; roles</h2></div></div>
+  </>;
+}
+
+function UsersPage({ role }: { role: Role }) {
+  return <>
+    <SectionHeader eyebrow="ADMINISTRATION" title="Users &amp; roles" copy="Who can access this workspace, and what each role is permitted to do." />
+    <div className="settings-banner"><span>PLATFORM MANAGED</span><p>User accounts are provisioned by your Frank platform administrator. Contact them to invite a colleague, change a role, or suspend access.</p></div>
+    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">ACCESS</span><h2>Team</h2></div><span className="account-number">{STAFF_ROLES.length} users</span></div>
       <div className="table-scroll"><table><thead><tr><th>User</th><th>Role</th><th className="num">Permissions</th><th>Status</th></tr></thead><tbody>
-        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleNames[staffRole]}</b></td><td>{roleLabels[staffRole]}</td><td className="num">{workflowPermissions[staffRole].length} of {PERMISSION_COLUMNS.length}</td><td><span className="status status-success"><i />Active</span></td></tr>)}
+        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleNames[staffRole]}</b>{staffRole === role && <small>You</small>}</td><td>{roleLabels[staffRole]}</td><td className="num">{workflowPermissions[staffRole].length} of {PERMISSION_COLUMNS.length}</td><td><span className="status status-success"><i />Active</span></td></tr>)}
       </tbody></table></div>
-      <div className="settings-note">New users are currently provisioned by your Frank platform administrator.</div>
     </section>
     <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL MATRIX</span><h2>Roles &amp; permissions</h2></div></div>
       <div className="table-scroll"><table><thead><tr><th>Role</th>{PERMISSION_COLUMNS.map(([key, label]) => <th key={key} className="num">{label}</th>)}</tr></thead><tbody>
         {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleLabels[staffRole]}</b></td>{PERMISSION_COLUMNS.map(([key]) => <td key={key} className="num">{workflowPermissions[staffRole].includes(key) ? <span className="perm-yes">✓</span> : <span className="perm-no">–</span>}</td>)}</tr>)}
       </tbody></table></div>
+      <div className="settings-note">Permissions are set by role. Segregation of duties is enforced server-side: the maker of an order or onboarding record cannot approve it.</div>
     </section>
   </>;
 }

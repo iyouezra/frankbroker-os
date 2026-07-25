@@ -175,6 +175,8 @@ export const demoClients = [
   { id: "cli_wegagen", accountId: "acc_wegagen", code: "CL-10008", name: "Wegagen Pension Fund", type: "Institution", kyc: "Approved", status: "Active", cash: 12_400_000, available: 8_988_929.5, blocked: 3_411_070.5, risk: "Enhanced", holdings: "7 positions" },
   { id: "cli_selam", accountId: "acc_selam", code: "CL-10052", name: "Selamawit Tesfaye", type: "Individual", kyc: "Review due", status: "Restricted", cash: 428_900, available: 428_900, blocked: 0, risk: "Review", holdings: "2 positions" },
   { id: "cli_blue", accountId: "acc_blue", code: "CL-10017", name: "Blue Nile Trading PLC", type: "Corporate", kyc: "Approved", status: "Active", cash: 4_705_300, available: 4_120_300, blocked: 585_000, risk: "Standard", holdings: "5 positions" },
+  // Awaiting broker onboarding approval — demonstrates the control queue offline.
+  { id: "cli_tsion", accountId: "acc_tsion", code: "CL-10063", name: "Tsion Haile", type: "Individual", kyc: "Pending review", status: "Pending approval", cash: 0, available: 0, blocked: 0, risk: "Standard", holdings: "0 positions" },
 ];
 
 export const demoInstruments = [
