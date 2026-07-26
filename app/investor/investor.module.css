@@ -464,6 +464,30 @@
 .confirmDialog p { margin: 10px 0 18px; color: var(--investor-ink-600); font-size: 13px; line-height: 1.55; }
 .confirmDialog p b { color: var(--investor-ink-900); font-family: var(--font-mono); }
 .confirmDialog > div { display: flex; justify-content: flex-end; gap: 9px; }
+.otpDialog, .outcomeDialog { max-width: 370px; text-align: left; }
+.dialogIcon { width: 48px; height: 48px; display: grid !important; place-items: center; margin-bottom: 15px; border-radius: 50%; background: #e8f6f4; color: var(--investor-accent); }
+.dialogIcon[data-tone="success"] { background: #e2f6ec; color: var(--investor-gain); }
+.dialogIcon[data-tone="warning"] { background: #fff4d8; color: #9a6a00; }
+.dialogIcon[data-tone="error"] { background: #fbe9e9; color: var(--investor-loss); }
+.dialogEyebrow { display: block; margin-bottom: 6px; color: var(--investor-accent); font-size: 9px; font-weight: 800; letter-spacing: .9px; }
+.otpDialog h2, .outcomeDialog h2 { margin: 0; }
+.otpDialog > p, .outcomeDialog > p { margin: 9px 0 15px; }
+.otpField { display: block; margin: 6px 0 9px; }
+.otpField > span { display: block; margin-bottom: 6px; color: var(--investor-ink-600); font-size: 10px; font-weight: 750; }
+.otpField input { width: 100%; height: 54px; border: 1px solid var(--investor-ink-200); border-radius: 14px; background: var(--investor-ink-50); color: var(--investor-ink-900); font-family: var(--font-mono); font-size: 24px; font-weight: 750; letter-spacing: 9px; text-align: center; }
+.otpField input[aria-invalid="true"] { border-color: var(--investor-loss); background: #fffafa; }
+.otpField small { display: block; margin-top: 6px; color: var(--investor-ink-500); font-size: 9px; line-height: 1.4; }
+.otpError { display: flex !important; flex-direction: column; margin-top: 9px; padding: 10px 11px; border: 1px solid #efc1c1; border-radius: 11px; background: #fbe9e9; color: #a73330; font-size: 10px; }
+.otpError span { margin-top: 2px; }
+.resendButton { margin: 4px 0 12px; padding: 4px 0; border: 0; background: transparent; color: var(--investor-accent); cursor: pointer; font-size: 10px; font-weight: 750; }
+.dialogActions { display: flex !important; justify-content: flex-end; gap: 9px; }
+.otpSafety { margin: 14px 0 0 !important; padding-top: 11px; border-top: 1px solid var(--investor-ink-100); color: var(--investor-ink-500) !important; font-size: 9px !important; }
+.orderReference { display: flex !important; flex-direction: column; margin: 13px 0; padding: 11px 12px; border: 1px solid var(--investor-ink-200); border-radius: 12px; background: var(--investor-ink-50); }
+.orderReference small { color: var(--investor-ink-500); font-size: 8px; letter-spacing: .7px; }
+.orderReference b { margin-top: 4px; color: var(--investor-ink-900); font-family: var(--font-mono); font-size: 13px; }
+.outcomeDetail { display: block !important; margin: -5px 0 14px; padding: 10px 11px; border-left: 3px solid var(--investor-ink-300); border-radius: 5px; background: var(--investor-ink-50); color: var(--investor-ink-600); font-size: 10px; line-height: 1.45; }
+.nextStep { display: flex !important; flex-direction: column; margin-bottom: 18px; padding: 11px 12px; border-radius: 12px; background: #eef8f7; color: var(--investor-ink-700); font-size: 10px; line-height: 1.45; }
+.nextStep span { margin-top: 3px; }
 .termsCard { margin-bottom: 12px; padding: 12px 14px; background: var(--investor-ink-50); box-shadow: none; }
 .termsCard small { color: var(--investor-teal-700); font-size: 8.5px; font-weight: 800; letter-spacing: .07em; }
 .termsCard b { display: block; margin-top: 5px; font-size: 11.5px; }

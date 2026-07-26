@@ -75,7 +75,7 @@ export function BondDetail({ bond, account, onBack, placeOrder, feeRule, allowed
       <p className={styles.disclaimer}>Yield assumes the bond is held to maturity and all scheduled payments are made.</p>
     </div>
     <div className={`${styles.tradeBar} ${styles.bondTradeBar}`}><Button disabled={halted} onClick={() => setBuying(true)}>{halted ? "Trading paused" : "Buy bond"}</Button></div>
-    {buying && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status !== "validation_failed") setBuying(false); return result; }} />}
+    {buying && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["validation_failed", "error", "verification_cancelled"].includes(result.status)) setBuying(false); return result; }} />}
   </div>;
 }
 
@@ -124,8 +124,7 @@ export function StockDetail({ stock, account, onBack, placeOrder, feeRule, allow
       <p className={styles.disclaimer}>Prices move. Invest money you won&apos;t need soon.</p>
     </div>
     <div className={styles.tradeBar}><Button onClick={() => setSide("Buy")}>Buy</Button><Button variant="secondary" disabled={!holding} onClick={() => setSide("Sell")}>Sell</Button></div>
-    {side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status !== "validation_failed") setSide(null); return result; }} />}
+    {side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["validation_failed", "error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
   </div>;
 }
-
 

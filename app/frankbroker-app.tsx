@@ -68,6 +68,13 @@ import { MyTasksPage } from "../features/broker/crm/my-tasks-screen";
 import { ComplaintsPage } from "../features/broker/crm/complaints-screen";
 import { NewThreadForm } from "../features/broker/crm/thread-composer";
 import { MarketWatchPage, type OrderFocus } from "../features/broker/market/market-watch-screen";
+import { BrokerOrderOutcomeDialog } from "../features/broker/orders/order-submission-feedback";
+import {
+  failedOutcome,
+  heldOutcome,
+  submittedOutcome,
+  type OrderSubmissionOutcome,
+} from "../lib/order-submission-ux";
 
 export default function FrankBrokerApp() {
   const [view, setView] = useState<View>("dashboard");
@@ -99,6 +106,7 @@ export default function FrankBrokerApp() {
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
   const [orderFocus, setOrderFocus] = useState<OrderFocus | null>(null);
+  const [orderOutcome, setOrderOutcome] = useState<OrderSubmissionOutcome | null>(null);
   // Set when arriving at Clients from the queue so the directory opens pre-filtered.
   const [clientsFocus, setClientsFocus] = useState<{ status: string } | null>(null);
   const [crmFocus, setCrmFocus] = useState<CrmFocus>(null);
@@ -517,6 +525,7 @@ export default function FrankBrokerApp() {
     if (!checks?.every((item) => item.passed)) return notify("Run validation and resolve failed checks before submission.", "error");
     const quantity = Number(newOrder.quantity);
     const price = Number(newOrder.price);
+    let stage: "authorization" | "submission" = "authorization";
     setBusyAction("create");
     try {
       const verificationId = newOrder.verificationId;
@@ -528,6 +537,7 @@ export default function FrankBrokerApp() {
       }
       if (newOrder.verificationCode.length !== 6) throw new Error("Enter the 6-digit client authorization code.");
       await apiRequest("/api/verifications", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ action: "confirm", accountId: newOrder.accountId, verificationId, code: newOrder.verificationCode }) });
+      stage = "submission";
       const result = await apiRequest<{ order: DemoOrder; checks?: { code: string; label: string; passed: boolean; message: string }[] }>("/api/orders", { method: "POST", headers: { "content-type": "application/json", "x-frank-demo-role": role }, body: JSON.stringify({ ...newOrder, verificationId, quantity, price }) });
       // Reflect the server's authoritative pre-trade checks (incl. daily limit).
       if (result.checks) setChecks(result.checks);
@@ -535,18 +545,19 @@ export default function FrankBrokerApp() {
       const created = { ...result.order, orderType: displayLabel(result.order.orderType), time: new Date(result.order.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), trader: "Unassigned" };
       setOrders((current) => [created, ...current]);
       await refreshOmsData();
-      if (result.order.status === "validation_failed") {
-        setView("orders");
-        notify(failed[0] ? `${created.id} held - ${failed[0].message}` : `${created.id} held: pre-trade checks failed.`, "error");
-        return;
-      }
       setDrawer(null);
       setChecks(null);
       setNewOrder((current) => ({ ...current, verificationId: "", verificationCode: "", demoCode: "", submissionReference: crypto.randomUUID() }));
+      if (result.order.status === "validation_failed") {
+        setView("orders");
+        setOrderOutcome(heldOutcome({ audience: "broker", orderId: created.id, channel: newOrder.source, detail: failed[0]?.message }));
+        return;
+      }
       setView("orders");
-      notify(`${created.id} submitted for broker review.`);
+      setOrderOutcome(submittedOutcome({ audience: "broker", orderId: created.id, channel: newOrder.source }));
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Order submission failed.", "error");
+      const message = error instanceof Error ? error.message : "Order submission failed.";
+      setOrderOutcome(failedOutcome({ audience: "broker", stage, channel: newOrder.source, detail: message }));
     } finally {
       setBusyAction(null);
     }
@@ -783,7 +794,7 @@ export default function FrankBrokerApp() {
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
         <aside className={`drawer ${drawer === "contract" ? "drawer-wide" : ""}`} role="dialog" aria-modal="true" aria-label={drawer === "new" ? "New order" : drawer === "client" ? "New client" : drawer === "crm_thread" ? "New conversation" : drawer === "trade" ? "Capture trade" : drawer === "contract" ? "Contract note" : "Order details"}>
           <button className="drawer-close" onClick={() => setDrawer(null)} aria-label="Close">×</button>
-          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={eligibleClients} instruments={instruments} controls={controls} checks={checks} busy={busyAction === "create"} onValidate={runValidation} onSubmit={submitOrder} />}
+          {drawer === "new" && <NewOrderForm value={newOrder} setValue={setNewOrder} clients={eligibleClients} instruments={instruments} controls={controls} checks={checks} busy={busyAction === "create"} onInstructionChange={() => setChecks(null)} onValidate={runValidation} onSubmit={submitOrder} />}
           {drawer === "client" && <NewClientForm value={newClient} setValue={setNewClient} busy={busyAction === "create_client"} onCancel={() => setDrawer(null)} onSubmit={submitClient} />}
           {drawer === "crm_thread" && <NewThreadForm value={newThread} setValue={setNewThread} clients={clients} busy={busyAction === "crm_thread"} onCancel={() => setDrawer(null)} onSubmit={submitThread} />}
           {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} manualTradeCapture={features.manualTradeCapture} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onFail={() => actionOrder("fail")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
@@ -792,6 +803,17 @@ export default function FrankBrokerApp() {
         </aside>
       </div>}
       {toast && <div className={`toast${toast.tone === "error" ? " toast-error" : ""}`}><span>{toast.tone === "error" ? "!" : "✓"}</span>{toast.message}</div>}
+      {orderOutcome && <BrokerOrderOutcomeDialog
+        outcome={orderOutcome}
+        onClose={() => { setOrderOutcome(null); setDrawer(null); }}
+        onReturnToEntry={() => { setOrderOutcome(null); setDrawer("new"); }}
+        onViewOrder={() => {
+          const order = orderOutcome.orderId ? orders.find((item) => item.id === orderOutcome.orderId) : undefined;
+          setOrderOutcome(null);
+          setView("orders");
+          if (order) openDetail(order);
+        }}
+      />}
     </div>
   );
 }
