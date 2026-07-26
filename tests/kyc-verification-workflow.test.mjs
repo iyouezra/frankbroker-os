@@ -29,8 +29,12 @@ test("investor onboarding captures email and the full institutional document set
   assert.match(investor, /emailValid/);
   assert.match(investor, /onVerifyIdentity\(profile\.phone\)/);
   assert.match(investor, /verificationId: profile\.verificationId/);
+  assert.match(investor, /responseText = await response\.text\(\)/);
+  assert.match(investor, /setPhase\("app"\)/);
+  assert.match(investor, /refreshInvestor\(result\.profile\.id\)\.catch/);
   assert.match(route, /const email = String\(payload\.email/);
   assert.match(route, /emailValid/);
+  assert.match(route, /resumableApplication/);
   assert.match(route, /\n\s+email,\n/);
 
   const identityValidation = investor.slice(investor.indexOf("const identityStepValid"), investor.indexOf("const bankStepValid"));

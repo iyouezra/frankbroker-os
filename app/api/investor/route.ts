@@ -389,10 +389,15 @@ export async function POST(request: Request) {
             identityReference: identityRef,
             ...(newApplication ? {} : { id: { not: client.id } }),
           },
-          select: { id: true },
         });
-        if (clash) throw new Response("These identity details are already registered with this broker.", { status: 409 });
+        const resumableApplication = newApplication
+          && clash?.status === "pending_approval"
+          && clash.kycStatus === "pending_review"
+          && clash.email?.trim().toLocaleLowerCase() === email.toLocaleLowerCase()
+          && clash.phone?.replace(/\D/g, "") === String(payload.phone ?? "").replace(/\D/g, "");
+        if (clash && !resumableApplication) throw new Response("These identity details are already registered with this broker.", { status: 409 });
         await tx.verificationChallenge.update({ where: { id: phoneVerification.id }, data: { status: "consumed", consumedAt: new Date() } });
+        if (resumableApplication) return clash;
         const next = newApplication
           ? await tx.client.create({
             data: {

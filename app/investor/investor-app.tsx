@@ -247,15 +247,40 @@ export default function InvestorApp() {
       Object.entries(documents).forEach(([type, file]) => {
         if (file) formData.set(type, file);
       });
-      const response = await fetch("/api/investor", { method: "POST", headers: investorHeaders, body: formData });
-      const result = await response.json() as { error?: string; profile?: SubmittedApplication };
+      const response = await fetch(new URL("/api/investor", window.location.href).toString(), { method: "POST", headers: investorHeaders, body: formData });
+      const responseText = await response.text();
+      let result: { error?: string; profile?: SubmittedApplication };
+      try {
+        result = JSON.parse(responseText) as typeof result;
+      } catch {
+        result = { error: responseText.trim() || "Unable to submit onboarding." };
+      }
       if (!response.ok) throw new Error(result.error ?? "Unable to submit onboarding.");
       if (!result.profile) throw new Error("The application was submitted without a client reference.");
       setSubmittedApplication(result.profile);
       setProfileName(result.profile.fullName);
-      await refreshInvestor(result.profile.id);
+      setActiveClientId(result.profile.id);
+      setBootstrap((current) => current ? {
+        ...current,
+        profile: {
+          fullName: result.profile!.fullName,
+          clientType: profile.accountType === "institution" ? "institution" : "individual",
+          status: "pending_approval",
+          kycStatus: "pending_review",
+          proofOfAddressStatus: documents.proof_of_address ? "received" : "pending",
+          termsAcceptedVersion: current.tenant.legalDocument?.version ?? null,
+          kycReviewDueAt: null,
+        },
+        account: null,
+        serviceRequests: [],
+        cashMovements: [],
+        activity: [],
+        linkedBanks: linkedBanks.map((bank) => ({ ...bank, status: "pending_review" })),
+        documents: Object.entries(documents).flatMap(([type, file]) => file ? [{ id: `pending-${type}`, type, name: file.name, status: "pending_review", hasFile: true }] : []),
+      } : current);
       setPhase("app");
       notify(`${result.profile.clientCode} submitted for broker review.`);
+      void refreshInvestor(result.profile.id).catch(() => undefined);
     } catch (error) {
       notify(error instanceof Error ? error.message : "Unable to submit onboarding.");
     }
