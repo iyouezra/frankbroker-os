@@ -6,7 +6,7 @@ import { FEE_RATE } from "./frank";
  * the ledger invariant (`totalCash = availableCash + blockedCash + unsettledCash`)
  * run on `Prisma.Decimal`, never on JavaScript floats. Values are converted back
  * to `number` only at the API boundary via {@link toNum} so the client contract
- * is unchanged. Do not import this file into browser code — use `lib/frank.ts`
+ * is unchanged. Do not import this file into browser code - use `lib/frank.ts`
  * for the display-only estimate instead.
  */
 export type Decimal = Prisma.Decimal;

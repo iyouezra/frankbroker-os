@@ -41,7 +41,7 @@ test("broker list route paginates and scopes with the shared helpers", () => {
 test("investor routes authorize by ownership and never use the broker permission gate", () => {
   for (const [name, source] of [["support read", investorSupport], ["support attachment", investorAttachment]]) {
     assert.match(source, /resolveInvestorContext\(/, `${name} must resolve the investor context`);
-    // Match a call specifically — the file's own comments mention the gate by name.
+    // Match a call specifically - the file's own comments mention the gate by name.
     assert.doesNotMatch(source, /requirePermission\(/, `${name} must never call the broker permission gate`);
   }
   assert.match(investorAttachment, /getAttachmentForInvestor/);

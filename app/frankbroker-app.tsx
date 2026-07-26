@@ -535,7 +535,7 @@ export default function FrankBrokerApp() {
       await refreshOmsData();
       if (result.order.status === "validation_failed") {
         setView("orders");
-        notify(failed[0] ? `${created.id} held — ${failed[0].message}` : `${created.id} held: pre-trade checks failed.`, "error");
+        notify(failed[0] ? `${created.id} held - ${failed[0].message}` : `${created.id} held: pre-trade checks failed.`, "error");
         return;
       }
       setDrawer(null);

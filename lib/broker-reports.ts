@@ -38,7 +38,7 @@ export function buildReports(orders: DemoOrder[], clients: BrokerClient[], audit
       name: "Daily trade report",
       description: "Executed fills with settlement dates.",
       columns: ["Order ID", "Trade ID", "Client", "Instrument", "Side", "Quantity", "Price", "Net (ETB)", "Settlement date", "Status"],
-      rows: executed.map((order) => [order.id, order.tradeId ?? "—", order.client, order.symbol, order.side.toUpperCase(), order.quantity, money(order.price), money(order.estimatedNet), order.settlementDate ?? "—", humanize(order.status)]),
+      rows: executed.map((order) => [order.id, order.tradeId ?? "-", order.client, order.symbol, order.side.toUpperCase(), order.quantity, money(order.price), money(order.estimatedNet), order.settlementDate ?? "-", humanize(order.status)]),
     },
     {
       id: "pending-approvals",
@@ -52,7 +52,7 @@ export function buildReports(orders: DemoOrder[], clients: BrokerClient[], audit
       name: "Settlement obligations",
       description: "Captured trades awaiting settlement confirmation.",
       columns: ["Trade ID", "Order ID", "Client", "Instrument", "Net (ETB)", "Settlement date"],
-      rows: orders.filter((order) => ["settlement_pending", "partially_filled"].includes(order.status) && order.tradeId).map((order) => [order.tradeId ?? "—", order.id, order.client, order.symbol, money(order.estimatedNet), order.settlementDate ?? "—"]),
+      rows: orders.filter((order) => ["settlement_pending", "partially_filled"].includes(order.status) && order.tradeId).map((order) => [order.tradeId ?? "-", order.id, order.client, order.symbol, money(order.estimatedNet), order.settlementDate ?? "-"]),
     },
     {
       id: "rejected-orders",

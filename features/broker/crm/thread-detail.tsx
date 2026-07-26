@@ -150,7 +150,7 @@ export function ThreadDetail({
         />
         <div className="crm-composer-foot">
           <input type="file" multiple accept="application/pdf,image/png,image/jpeg" onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 5))} aria-label="Attach files" />
-          <span>{composerMode === "note" ? "Internal — never shown to the investor." : "The investor will be notified."}</span>
+          <span>{composerMode === "note" ? "Internal - never shown to the investor." : "The investor will be notified."}</span>
           <button className="btn primary" disabled={busy || !draft.trim()}>{busy ? "Sending…" : composerMode === "reply" ? "Send reply" : "Save note"}</button>
         </div>
       </form>

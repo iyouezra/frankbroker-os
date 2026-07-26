@@ -75,7 +75,7 @@ export function categoryForServiceRequest(requestType: string): ThreadCategory {
   return "other";
 }
 
-/** Tone names that map onto the existing global `.status-*` classes — no new CSS. */
+/** Tone names that map onto the existing global `.status-*` classes - no new CSS. */
 export function priorityTone(priority: string): "danger" | "warning" | "brand" | "neutral" {
   if (priority === "urgent") return "danger";
   if (priority === "high") return "warning";

@@ -1,6 +1,6 @@
 /**
  * Shared API error handling. Read endpoints degrade to demo data client-side, but
- * write/workflow actions hit the database directly — when none is connected (local
+ * write/workflow actions hit the database directly - when none is connected (local
  * demo with no `DATABASE_URL`), this turns the raw Prisma connection error into a
  * clean "read-only demo mode" response instead of leaking a stack trace into a toast.
  */

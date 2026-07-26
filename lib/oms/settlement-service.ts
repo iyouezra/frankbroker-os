@@ -169,7 +169,7 @@ export async function settleNextTrade(actor: Actor, orderId: string, requestedTr
       category: "settlement",
       severity: "success",
       title: "Settlement confirmed",
-      body: `${order.side === "buy" ? "Purchase" : "Sale"} of ${order.instrument.symbol} has settled — cash and securities confirmed.`,
+      body: `${order.side === "buy" ? "Purchase" : "Sale"} of ${order.instrument.symbol} has settled - cash and securities confirmed.`,
       entityType: "order",
       entityId: orderId,
     });

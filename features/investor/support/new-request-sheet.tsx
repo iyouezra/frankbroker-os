@@ -5,7 +5,7 @@ import styles from "../../../app/investor/investor.module.css";
 import { Button } from "../shared/investor-foundation";
 
 /**
- * A short request form — category, subject, message, optional attachment.
+ * A short request form - category, subject, message, optional attachment.
  * Deliberately not a ticket form: no priority, no routing, no SLA language.
  */
 

@@ -21,7 +21,7 @@ const [broker, investor, foundation, shell, clientDirectory, myTasks, complaints
   read("../app/globals.css"),
 ]);
 
-/** JSX and code only — a comment mentioning a word is not the word shipping. */
+/** JSX and code only - a comment mentioning a word is not the word shipping. */
 const stripComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 test("the three servicing surfaces sit in their own nav group", () => {
@@ -60,7 +60,7 @@ test("task and case controls are permission-gated in the UI as well as the API",
   assert.match(complaints, /hasPermission\(role, CRM_PERMISSIONS\.caseManage\)/);
   assert.match(officerCard, /hasPermission\(role, CRM_PERMISSIONS\.relationshipAssign\)/);
   assert.match(threadDetail, /hasPermission\(role, CRM_PERMISSIONS\.caseManage\)/);
-  // Hidden buttons are a courtesy, not the control — say so where a role is blocked.
+  // Hidden buttons are a courtesy, not the control - say so where a role is blocked.
   assert.match(complaints, /Your role can view complaints but not manage them\./);
 });
 

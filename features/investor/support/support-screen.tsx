@@ -5,7 +5,7 @@ import { Button, Card, ScreenHeader } from "../shared/investor-foundation";
 
 /**
  * Investor-facing conversation list. Deliberately plain: no priority, no
- * assignment, no internal vocabulary — just what the investor asked and whether
+ * assignment, no internal vocabulary - just what the investor asked and whether
  * anyone is waiting on them.
  */
 

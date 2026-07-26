@@ -1,14 +1,14 @@
-/* Frank Money type stack — shared with the investor app (Sora / Figtree / IBM Plex Mono) */
+/* Frank Money type stack - shared with the investor app (Sora / Figtree / IBM Plex Mono) */
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Ethiopic:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 :root {
-  /* Type — aligned with the Frank Money design system */
+  /* Type - aligned with the Frank Money design system */
   --font-display: 'Sora', 'Noto Sans Ethiopic', sans-serif;
   --font-body: 'Figtree', 'Noto Sans Ethiopic', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  /* Palette — Frank aqua→teal ramp with teal-tinted ink neutrals (never pure gray) */
+  /* Palette - Frank aqua→teal ramp with teal-tinted ink neutrals (never pure gray) */
   --ink: #0b272c;        /* ink-900  · body text */
   --muted: #5b7a7f;      /* ink-500  · secondary text */
   --line: #d3e0e1;       /* ink-200  · hairline border */
@@ -23,13 +23,13 @@
   --green: #0e9f5b;      /* gain */
   --amber: #de8f14;      /* warn */
   --red: #de4949;        /* loss */
-  --purple: #2277c8;     /* info — the Frank palette carries no violet */
+  --purple: #2277c8;     /* info - the Frank palette carries no violet */
   --focus-ring: rgba(20, 211, 200, .45);
   --shadow: 0 1px 2px rgba(8, 62, 71, .05), 0 6px 20px rgba(8, 62, 71, .07);
   --radius: 20px;         /* cards / panels (radius-lg) */
   --radius-control: 14px; /* buttons + inputs (radius-md) */
 
-  /* Theme tokens — light values equal what they replace, so light mode is unchanged.
+  /* Theme tokens - light values equal what they replace, so light mode is unchanged.
      Dark mode (below) flips only this layer; sidebar/hero/toast keep their own dark literals. */
   --fx-page: #f4f8f8;
   --fx-card: #ffffff;
@@ -129,7 +129,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sidebar nav button > i { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,.06); color: #93c4c5; display: grid; place-items: center; flex: 0 0 auto; }
 .sidebar nav button > span { flex: 1; min-width: 0; }
 .sidebar nav button.active > i { background: rgba(53,231,217,.16); color: var(--aqua); }
-/* Collapsed rail — a slim icon strip that expands on hover as an overlay */
+/* Collapsed rail - a slim icon strip that expands on hover as an overlay */
 .sidebar.collapsed { width: 78px; padding-left: 13px; padding-right: 13px; }
 .sidebar.collapsed:hover { width: 248px; padding-left: 16px; padding-right: 16px; box-shadow: 8px 0 30px rgba(4,35,38,.32); }
 .sidebar.collapsed:not(:hover) .brand-lockup { flex-direction: column; gap: 12px; padding: 0 0 16px; }
@@ -210,7 +210,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .perm-yes { color: var(--green); font-weight: 800; }
 .perm-no { color: var(--fx-text-3); }
 
-/* Client conversations (CRM) — split inbox, message thread, composer */
+/* Client conversations (CRM) - split inbox, message thread, composer */
 .crm-metrics { grid-template-columns: repeat(4, minmax(0,1fr)); }
 .crm-split { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 15px; align-items: start; }
 .crm-pane-list, .crm-pane-detail { overflow: hidden; }
@@ -485,7 +485,7 @@ td b { display: block; color: var(--fx-text); font-size: 11.5px; } td small { di
 .manual-callout { display: flex; gap: 9px; align-items: center; padding: 10px 12px; margin-bottom: 12px; border-radius: 9px; background: var(--fx-amber-soft); border: 1px solid var(--fx-line); }.manual-callout span { padding: 4px 6px; color: var(--fx-amber); background: var(--fx-amber-soft); border-radius: 4px; font-size: 10px; font-weight: 850; }.manual-callout p { margin: 0; color: var(--fx-amber); font-size: 10.5px; }.order-reference { display: flex; gap: 10px; align-items: center; padding: 13px; border: 1px solid var(--line); background: var(--fx-card); border-radius: 10px; margin-bottom: 12px; }.order-reference > span { padding: 6px 8px; color: var(--green); background: var(--fx-green-soft); border-radius: 5px; font-size: 10px; font-weight: 900; }.order-reference div { display: flex; flex-direction: column; }.order-reference b { font-size: 12px; }.order-reference small { margin-top: 4px; color: var(--fx-text-3); font-size: 10.5px; }
 
 .contract-toolbar { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }.contract-toolbar h2 { margin: 5px 0 0; font-size: 18px; }.contract-note { background: var(--fx-card); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 30px; }.contract-note > header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 22px; border-bottom: 2px solid var(--deep); }.contract-brand { display: flex; align-items: center; gap: 10px; }.contract-brand img { width: 35px; height: 35px; object-fit: contain; }.contract-brand span, .contract-note header > div:last-child { display: flex; flex-direction: column; }.contract-brand b { font-size: 12.5px; }.contract-brand small, .contract-note header > div:last-child small { color: var(--fx-text-3); font-size: 10px; margin-top: 4px; }.contract-note header > div:last-child { text-align: right; }.contract-note header > div:last-child b { color: var(--fx-teal); font-size: 13.5px; letter-spacing: 1px; }.contract-note > section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px 0; }.contract-note > section > div { display: flex; flex-direction: column; }.contract-note > section > div:last-child { text-align: right; }.contract-note section small { color: var(--fx-text-3); font-size: 10px; letter-spacing: .9px; }.contract-note section b { margin-top: 5px; font-size: 12px; }.contract-note section span { margin-top: 4px; color: var(--fx-text-3); font-size: 10.5px; }.contract-note table { min-width: 0; border: 1px solid var(--line); }.contract-note th { background: var(--fx-sunken); }.contract-note td { height: 52px; }.contract-totals { margin-left: auto; width: 48%; padding: 15px 0; }.contract-totals span { display: flex; justify-content: space-between; padding: 6px 0; }.contract-totals small { color: var(--fx-text-3); font-size: 10.5px; }.contract-totals b { font-size: 11.5px; }.contract-totals span:last-child { border-top: 1px solid var(--ink); margin-top: 5px; padding-top: 10px; }.contract-totals strong { font-size: 13px; }.contract-meta { display: grid; grid-template-columns: repeat(4,1fr); background: var(--fx-sunken); border: 1px solid var(--line); }.contract-meta span { display: flex; flex-direction: column; padding: 11px; border-right: 1px solid var(--line); }.contract-meta span:last-child { border-right: 0; }.contract-meta small { color: var(--fx-text-3); font-size: 10px; }.contract-meta b { margin-top: 4px; font-size: 10.5px; }.contract-note footer { display: flex; justify-content: space-between; gap: 25px; align-items: flex-end; padding-top: 25px; }.contract-note footer p { color: var(--fx-text-3); font-size: 10px; line-height: 1.6; max-width: 58%; }.contract-note footer div { min-width: 145px; border-top: 1px solid var(--ink); padding-top: 7px; display: flex; flex-direction: column; }.contract-note footer div span, .contract-note footer div small { color: var(--fx-text-3); font-size: 10px; }.contract-note footer div b { margin: 4px 0; font-size: 10.5px; }
-/* OMS workflow extensions — composed from the Frank Money design tokens above. */
+/* OMS workflow extensions - composed from the Frank Money design tokens above. */
 .blotter-controls { display: flex; align-items: flex-end; gap: 9px; margin: -4px 0 13px; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius-control); background: rgba(255,255,255,.72); }
 .blotter-controls label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .6px; }
 .blotter-controls select { min-width: 125px; border: 1px solid var(--line); border-radius: 9px; background: var(--fx-card); color: var(--ink); padding: 8px 28px 8px 9px; font-size: 11.5px; text-transform: none; letter-spacing: 0; }

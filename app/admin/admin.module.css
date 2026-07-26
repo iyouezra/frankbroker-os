@@ -20,7 +20,7 @@
   --admin-amber: #de8f14;
   --admin-red: #de4949;
   --admin-blue: #2277c8;
-  /* Theme tokens — light values match what they replace (light mode unchanged) */
+  /* Theme tokens - light values match what they replace (light mode unchanged) */
   --fx-page: #f4f8f8;
   --fx-card: #ffffff;
   --fx-sunken: #f5f8f8;
@@ -79,7 +79,7 @@
 .sidebarFoot > span i { width: 8px; height: 8px; border-radius: 50%; background: #ffbd5c; box-shadow: 0 0 0 4px rgba(255,189,92,.1); }
 .sidebarFoot > small { display: block; margin: 5px 0 0 16px; color: #789fa1; font-size: 10.5px; }
 
-/* Collapsed rail — a slim icon strip that expands on hover as an overlay */
+/* Collapsed rail - a slim icon strip that expands on hover as an overlay */
 .collapsed { width: 80px; padding-left: 13px; padding-right: 13px; }
 .collapsed:hover { width: 252px; padding-left: 16px; padding-right: 16px; box-shadow: 8px 0 30px rgba(4,35,38,.32); }
 .collapsed:not(:hover) .brand { flex-direction: column; gap: 12px; padding: 0 0 16px; }
@@ -89,7 +89,7 @@
 .collapsed:not(:hover) .sidebarFoot { display: flex; justify-content: center; }
 .collapsed + .workspace { margin-left: 80px; }
 
-/* Dark theme — flips the token layer; the teal sidebar stays dark in both modes */
+/* Dark theme - flips the token layer; the teal sidebar stays dark in both modes */
 :global(html[data-theme="dark"]) .adminShell {
   color-scheme: dark;
   --admin-ink-900: #e8f1f1;

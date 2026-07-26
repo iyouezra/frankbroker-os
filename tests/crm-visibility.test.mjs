@@ -20,7 +20,7 @@ const sharedMessage = {
 const internalMessage = {
   id: "MSG-2", visibility: INTERNAL, authorType: "system", authorUserId: "usr_trader",
   author: { id: "usr_trader", fullName: "Dawit Alemu" },
-  body: "SECRET desk guidance — do not amend unilaterally.",
+  body: "SECRET desk guidance - do not amend unilaterally.",
   createdAt: new Date("2026-07-24T08:55:00Z"),
   attachments: [{ id: "ATT-2", originalName: "desk-note.pdf", mimeType: "application/pdf", sizeBytes: 2048, visibility: INTERNAL }],
 };

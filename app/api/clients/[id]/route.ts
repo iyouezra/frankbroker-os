@@ -370,7 +370,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         newValue: entry.newValue,
         reason: entry.reason ?? entry.summary,
       })),
-      // Servicing context for the Client 360 timeline. Summaries only — each
+      // Servicing context for the Client 360 timeline. Summaries only - each
       // entry links back to the record that owns the detail.
       conversations: crmThreads.map((thread) => ({
         id: thread.id,

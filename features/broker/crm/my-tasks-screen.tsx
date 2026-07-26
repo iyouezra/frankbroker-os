@@ -47,7 +47,7 @@ export function TaskCard({ task, role, busy, onStatus, onEscalate, onOpenClient 
         <span className="crm-task-due">{task.dueDate ? `${BUCKET_LABELS[task.bucket]} · ${task.dueDate}` : "No due date"}</span>
         <span className="crm-owner">{task.assignedToName ?? "Unassigned"}</span>
       </span>
-      {task.completionNote && <p className="crm-task-note">{task.completionNote} — {task.completedByName} · {auditTime(task.completedAt ?? task.createdAt)}</p>}
+      {task.completionNote && <p className="crm-task-note">{task.completionNote} - {task.completedByName} · {auditTime(task.completedAt ?? task.createdAt)}</p>}
     </div>
     {!closed && (
       <div className="crm-task-actions">

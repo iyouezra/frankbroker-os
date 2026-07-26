@@ -2,8 +2,8 @@
  * The Client 360 activity timeline.
  *
  * This deliberately owns no storage. Every entry is derived from a record that
- * already exists — conversations, tasks, cases, orders, cash movements,
- * documents, notes, audit rows — and links back to it rather than restating its
+ * already exists - conversations, tasks, cases, orders, cash movements,
+ * documents, notes, audit rows - and links back to it rather than restating its
  * detail. Pure and browser-safe so the merge and filter rules are unit-testable.
  */
 

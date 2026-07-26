@@ -3,7 +3,7 @@ import { toNum } from "../money";
 import { createNotificationOnce, SETTLEMENT, COMPLIANCE } from "./notification-service";
 
 /**
- * Daily-cadence (time-driven) notifications — run once a day by the cron route.
+ * Daily-cadence (time-driven) notifications - run once a day by the cron route.
  * Unlike lifecycle notifications, these fire from date conditions: settlements
  * that have reached their value date without confirmation, and periodic KYC
  * reviews coming due. Every reminder carries a dedupe key so re-running the job

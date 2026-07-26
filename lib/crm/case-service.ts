@@ -94,7 +94,7 @@ export async function getCase(actor: Actor, caseId: string) {
 
 /**
  * Converts a conversation into a formal case. The thread is left intact and
- * linked — its messages remain the case's communication history.
+ * linked - its messages remain the case's communication history.
  */
 export async function convertThreadToCase(actor: Actor, threadId: string, input: { severity?: unknown; category?: unknown; subject?: unknown }) {
   const severity = parseSeverity(input.severity);

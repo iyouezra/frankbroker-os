@@ -203,12 +203,12 @@ export const fallbackCrmThreads: CrmThreadDetail[] = [
     id: "THR-DEMO01", subject: "Why was my TELE order held?", category: "order", status: "pending_broker", statusLabel: "Awaiting broker",
     priority: "high", relatedType: "order", relatedId: "ORD-INV-0003", assignedToUserId: null, assignedToName: null,
     client: { id: "cli_investor_demo", code: "CL-INV-001", name: "Selam Mekonnen" }, account: { id: "acc_investor_demo", number: "INV-00001-01" },
-    messageCount: 3, lastMessageAt: "2026-07-24T09:12:00Z", lastMessagePreview: "I expected it to fill yesterday — can you check?", unread: 1,
+    messageCount: 3, lastMessageAt: "2026-07-24T09:12:00Z", lastMessagePreview: "I expected it to fill yesterday - can you check?", unread: 1,
     createdAt: "2026-07-24T08:40:00Z", resolvedAt: null, closedAt: null,
     messages: [
       { id: "MSG-D01", body: "I placed a buy order for TELE yesterday and it still has not filled. Can you check what happened?", createdAt: "2026-07-24T08:40:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
       { id: "MSG-D02", body: "Limit price is below the current market. Confirm with the client before amending.", createdAt: "2026-07-24T08:55:00Z", visibility: "internal", authorType: "system", authorUserId: "usr_trader", authorName: "Dawit Alemu", attachments: [] },
-      { id: "MSG-D03", body: "I expected it to fill yesterday — can you check?", createdAt: "2026-07-24T09:12:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
+      { id: "MSG-D03", body: "I expected it to fill yesterday - can you check?", createdAt: "2026-07-24T09:12:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
     ],
   },
   {
@@ -226,11 +226,11 @@ export const fallbackCrmThreads: CrmThreadDetail[] = [
     id: "THR-DEMO03", subject: "Please share my mid-year statement", category: "portfolio", status: "resolved", statusLabel: "Resolved",
     priority: "low", relatedType: null, relatedId: null, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu",
     client: { id: "cli_wegagen", code: "CL-10008", name: "Wegagen Pension Fund" }, account: { id: "acc_wegagen", number: "TRD-10008-01" },
-    messageCount: 2, lastMessageAt: "2026-07-22T10:30:00Z", lastMessagePreview: "Statement attached — let us know if anything looks off.", unread: 0,
+    messageCount: 2, lastMessageAt: "2026-07-22T10:30:00Z", lastMessagePreview: "Statement attached - let us know if anything looks off.", unread: 0,
     createdAt: "2026-07-22T09:05:00Z", resolvedAt: "2026-07-22T10:31:00Z", closedAt: null,
     messages: [
       { id: "MSG-D06", body: "Could you send the mid-year portfolio statement for our records?", createdAt: "2026-07-22T09:05:00Z", visibility: "shared", authorType: "investor", authorUserId: null, authorName: "Investor", attachments: [] },
-      { id: "MSG-D07", body: "Statement attached — let us know if anything looks off.", createdAt: "2026-07-22T10:30:00Z", visibility: "shared", authorType: "broker", authorUserId: "usr_relationship", authorName: "Kalkidan Alemu", attachments: [] },
+      { id: "MSG-D07", body: "Statement attached - let us know if anything looks off.", createdAt: "2026-07-22T10:30:00Z", visibility: "shared", authorType: "broker", authorUserId: "usr_relationship", authorName: "Kalkidan Alemu", attachments: [] },
     ],
   },
 ];

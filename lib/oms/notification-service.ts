@@ -17,7 +17,7 @@ export const TRADERS = ["broker_admin", "trader", "operations"];
 export const SETTLEMENT = ["broker_admin", "settlement", "operations"];
 export const COMPLIANCE = ["broker_admin", "compliance"];
 export const OPS = ["broker_admin", "operations"];
-// Investor-servicing staff — the people who answer client conversations.
+// Investor-servicing staff - the people who answer client conversations.
 export const SERVICE = ["broker_admin", "service_officer", "relationship_officer", "operations"];
 
 export type NotifyInput = {

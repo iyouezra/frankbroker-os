@@ -1,5 +1,5 @@
 /**
- * Tenant and investor isolation for conversations. Pure — no Prisma import — so
+ * Tenant and investor isolation for conversations. Pure - no Prisma import - so
  * every rule is unit-testable, and every route funnels through these helpers
  * rather than hand-rolling `where` clauses.
  *
@@ -36,7 +36,7 @@ export function assertBrokerTenant(
   if (!thread || thread.brokerId !== actor.brokerId) notFound();
 }
 
-/** Investor-side ownership check — both tenant AND client must match. */
+/** Investor-side ownership check - both tenant AND client must match. */
 export function assertInvestorOwns(
   context: InvestorContextLike,
   thread: ThreadTenantRef | null | undefined,
@@ -54,7 +54,7 @@ export function assertInvestorCanPost(thread: { status: string }): void {
   }
 }
 
-/** Plain objects the routes spread into a Prisma `where` — never a raw client id. */
+/** Plain objects the routes spread into a Prisma `where` - never a raw client id. */
 export function investorThreadWhere(context: InvestorContextLike) {
   return { brokerId: context.brokerId, clientId: context.clientId };
 }

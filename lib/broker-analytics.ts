@@ -149,7 +149,7 @@ export function computeBrokerAnalytics(orders: DemoOrder[], clients: BrokerClien
     .slice(0, 5)
     .map((order) => ({ id: order.id, client: order.client, symbol: order.symbol, side: order.side, net: order.estimatedNet, status: order.status }));
 
-  // Risk lens — the composition and exposure of the client book.
+  // Risk lens - the composition and exposure of the client book.
   const totalAum = sum(clients, (client) => client.totalCash);
   const bandOrder = ["standard", "enhanced", "review"];
   const bands: RiskBand[] = bandOrder.map((key) => {
@@ -163,7 +163,7 @@ export function computeBrokerAnalytics(orders: DemoOrder[], clients: BrokerClien
 
   const flagged = orders.filter((order) => order.riskFlag && order.riskFlag !== "none");
   const topClientCash = Math.max(0, ...clients.map((client) => client.totalCash));
-  const topClientName = clients.find((client) => client.totalCash === topClientCash)?.name ?? "—";
+  const topClientName = clients.find((client) => client.totalCash === topClientCash)?.name ?? "-";
 
   return {
     period,

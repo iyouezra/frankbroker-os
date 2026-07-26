@@ -61,7 +61,7 @@ export async function getAssignmentHistory(actor: Actor, clientId: string) {
   return rows.map(serializeAssignment);
 }
 
-/** Officer workload — open conversations and tasks each officer is carrying. */
+/** Officer workload - open conversations and tasks each officer is carrying. */
 export async function officerWorkload(actor: Actor) {
   const [officers, assignments, threads, tasks] = await Promise.all([
     prisma.user.findMany({ where: { brokerId: actor.brokerId, status: "active" }, select: { id: true, fullName: true, role: true } }),

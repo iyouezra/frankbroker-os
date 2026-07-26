@@ -75,7 +75,7 @@ export function OrderDetail({ order, role, busy, controls, manualTradeCapture, o
     <div className="fill-progress"><span><b>{fmt.format(filled)}</b> filled</span><span><b>{fmt.format(remaining)}</b> remaining</span><i><em style={{ width: `${Math.min(100, (filled / order.quantity) * 100)}%` }} /></i></div>
     <dl className="detail-grid">
       <div><dt>Original quantity</dt><dd>{fmt.format(order.quantity)}</dd></div><div><dt>Filled quantity</dt><dd>{fmt.format(filled)}</dd></div><div><dt>Remaining quantity</dt><dd>{fmt.format(remaining)}</dd></div>
-      <div><dt>Average fill price</dt><dd>{order.averageFillPrice ? `${fmt.format(order.averageFillPrice)} ETB` : "—"}</dd></div><div><dt>Estimated value</dt><dd>{etb(order.estimatedNet)}</dd></div><div className="total"><dt>Final executed value</dt><dd>{filled ? etb(order.executedNet ?? order.tradeNet ?? 0) : "—"}</dd></div>
+      <div><dt>Average fill price</dt><dd>{order.averageFillPrice ? `${fmt.format(order.averageFillPrice)} ETB` : "-"}</dd></div><div><dt>Estimated value</dt><dd>{etb(order.estimatedNet)}</dd></div><div className="total"><dt>Final executed value</dt><dd>{filled ? etb(order.executedNet ?? order.tradeNet ?? 0) : "-"}</dd></div>
       <div><dt>Blocked cash</dt><dd>{etb(order.blockedCash ?? 0)}</dd></div><div><dt>Blocked securities</dt><dd>{fmt.format(order.blockedQuantity ?? 0)} {order.symbol}</dd></div><div><dt>Assigned trader</dt><dd>{order.trader}</dd></div>
     </dl>
     <dl className="order-facts-grid">

@@ -90,7 +90,7 @@ type AppendInput = {
 /**
  * Appends a message and rolls the thread's counters, preview and status forward.
  * Status is derived by {@link statusAfterMessage}, which leaves it untouched for
- * `system` authorship — the mechanism that stops an internal note producing a
+ * `system` authorship - the mechanism that stops an internal note producing a
  * state change the investor could observe.
  */
 async function appendMessage(
@@ -389,7 +389,7 @@ export async function postBrokerMessage(actor: Actor, threadId: string, rawBody:
 /**
  * Broker-only note. Deliberately contains no `writeNotification` call and is
  * written with `authorType: "system"` so it cannot change the conversation
- * status either — an internal note is invisible to the investor in every sense.
+ * status either - an internal note is invisible to the investor in every sense.
  */
 export async function addInternalNote(actor: Actor, threadId: string, rawBody: unknown, attachments?: PreparedAttachment[]) {
   const body = parseBody(rawBody);

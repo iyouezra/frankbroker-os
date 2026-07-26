@@ -13,7 +13,7 @@ const teammates = (Object.entries(staffNames) as [Role, string][])
 
 /**
  * Conversations for one investor, inside Client 360. Composes the very same
- * ThreadList/ThreadDetail the inbox uses — this is a scoped view of the same
+ * ThreadList/ThreadDetail the inbox uses - this is a scoped view of the same
  * records, never a second implementation.
  */
 export function ClientConversationsTab({ clientId, role, onMessage }: { clientId: string; role: Role; onMessage: (text: string) => void }) {

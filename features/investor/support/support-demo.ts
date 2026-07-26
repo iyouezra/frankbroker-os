@@ -4,13 +4,13 @@ import type { SupportThreadDetail } from "./support-thread-screen";
 /**
  * Offline demonstration conversations for the investor support centre, so the
  * portal still renders without a database. These contain only investor-visible
- * content — there is no internal-note concept on this side at all.
+ * content - there is no internal-note concept on this side at all.
  */
 export const fallbackSupportThreads: SupportThreadSummary[] = [
   {
     id: "THR-DEMO01", subject: "Why was my TELE order held?", category: "order", status: "pending_broker",
     statusLabel: "Waiting for broker", relatedType: "order", relatedId: "ORD-INV-0003", messageCount: 2,
-    lastMessageAt: "2026-07-24T09:12:00Z", lastMessagePreview: "I expected it to fill yesterday — can you check?",
+    lastMessageAt: "2026-07-24T09:12:00Z", lastMessagePreview: "I expected it to fill yesterday - can you check?",
     unread: 0, createdAt: "2026-07-24T08:40:00Z",
   },
   {
@@ -33,7 +33,7 @@ const details: Record<string, SupportThreadDetail> = {
     relatedType: "order", relatedId: "ORD-INV-0003",
     messages: [
       { id: "M1", body: "I placed a buy order for TELE yesterday and it still has not filled. Can you check what happened?", createdAt: "2026-07-24T08:40:00Z", mine: true, authorLabel: "You", attachments: [] },
-      { id: "M2", body: "I expected it to fill yesterday — can you check?", createdAt: "2026-07-24T09:12:00Z", mine: true, authorLabel: "You", attachments: [] },
+      { id: "M2", body: "I expected it to fill yesterday - can you check?", createdAt: "2026-07-24T09:12:00Z", mine: true, authorLabel: "You", attachments: [] },
     ],
   },
   "THR-DEMO04": {

@@ -41,10 +41,10 @@ export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings
     </div>
     <div className="panel-body">
       <dl className="detail-grid">
-        <div><dt>Investor</dt><dd>{serviceCase.client?.name ?? "—"}</dd></div>
+        <div><dt>Investor</dt><dd>{serviceCase.client?.name ?? "-"}</dd></div>
         <div><dt>Owner</dt><dd>{serviceCase.assignedToName ?? "Unassigned"}</dd></div>
         <div><dt>Opened</dt><dd>{auditTime(serviceCase.openedAt)}</dd></div>
-        <div><dt>Target resolution</dt><dd>{serviceCase.targetResolutionAt ? serviceCase.targetResolutionAt.slice(0, 10) : "—"}</dd></div>
+        <div><dt>Target resolution</dt><dd>{serviceCase.targetResolutionAt ? serviceCase.targetResolutionAt.slice(0, 10) : "-"}</dd></div>
       </dl>
 
       {serviceCase.threadId && (
@@ -61,7 +61,7 @@ export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings
       {canManage ? (
         <div className="crm-case-controls">
           <label>Internal findings
-            <textarea rows={3} value={findings} onChange={(event) => setFindings(event.target.value)} maxLength={4000} placeholder="Working notes for the team — never shown to the investor." />
+            <textarea rows={3} value={findings} onChange={(event) => setFindings(event.target.value)} maxLength={4000} placeholder="Working notes for the team - never shown to the investor." />
           </label>
           <div className="crm-case-actions">
             <button className="btn secondary small" disabled={busy} onClick={() => onFindings(serviceCase, findings)}>Save findings</button>

@@ -6,7 +6,7 @@
  * that THROWS if it is ever handed an internal record for an investor audience,
  * so forgetting the filter fails loudly instead of leaking.
  *
- * Pure — no Prisma import — so every rule is unit-testable without a database.
+ * Pure - no Prisma import - so every rule is unit-testable without a database.
  */
 
 import { INVESTOR_STATUS_LABELS, THREAD_STATUS_LABELS, type ThreadStatus } from "./status";
@@ -91,7 +91,7 @@ export function serializeAttachment(audience: Audience, attachment: AttachmentLi
 
 /**
  * Investor serialization deliberately omits `authorUserId`, staff names and
- * `visibility`, and replaces the author with a neutral label — operational
+ * `visibility`, and replaces the author with a neutral label - operational
  * metadata is not the investor's business.
  */
 export function serializeMessage(audience: Audience, message: MessageLike) {
@@ -165,7 +165,7 @@ export function serializeThreadDetail(audience: Audience, thread: ThreadLike, me
  * rules are directly unit-testable.
  *
  * An internal note advances `messageCount` and `lastMessageAt` but leaves
- * `investorUnreadCount` and `lastMessagePreview` untouched — the preview is
+ * `investorUnreadCount` and `lastMessagePreview` untouched - the preview is
  * rendered in the investor's own list, so writing a staff note there would leak
  * its content.
  */

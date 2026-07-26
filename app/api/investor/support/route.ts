@@ -9,7 +9,7 @@ export const runtime = "nodejs";
  * conversations paginate in two dimensions (thread list, and messages within a
  * thread) and the bootstrap has no shape for that.
  *
- * Authorization is ownership-only — this route must never call
+ * Authorization is ownership-only - this route must never call
  * `requirePermission`, which is the broker gate. Every query is scoped by both
  * tenant and client through `resolveInvestorContext`.
  */

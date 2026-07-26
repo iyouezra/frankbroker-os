@@ -32,14 +32,14 @@ export function SettingsPage() {
     <div className="settings-banner"><span>PLATFORM MANAGED</span><p>Fees, limits, features, and instrument access are configured by your Frank platform administrator. Contact them to request a change.</p></div>
     <section className="panel"><div className="panel-head"><div><span className="eyebrow">TENANT POLICY</span><h2>Trading controls</h2></div></div>
       <dl className="detail-grid settings-grid">
-        <div><dt>Trading name</dt><dd>{tenant?.name ?? "—"}</dd></div>
-        <div><dt>License</dt><dd>{tenant?.license || "—"}</dd></div>
-        <div><dt>Brokerage fee</dt><dd>{controls ? `${controls.brokerageFeePct}%` : "—"}</dd></div>
-        <div><dt>Minimum fee</dt><dd>{controls ? etb(controls.minimumFee) : "—"}</dd></div>
-        <div><dt>Approval threshold</dt><dd>{controls ? etb(controls.approvalThreshold) : "—"}</dd></div>
-        <div><dt>Client daily limit</dt><dd>{controls ? etb(controls.clientDailyLimit) : "—"}</dd></div>
-        <div><dt>Maker-checker</dt><dd>{controls ? (controls.makerChecker ? "Required" : "Off") : "—"}</dd></div>
-        <div><dt>Settlement cycle</dt><dd>{controls?.settlementCycle ?? "—"}</dd></div>
+        <div><dt>Trading name</dt><dd>{tenant?.name ?? "-"}</dd></div>
+        <div><dt>License</dt><dd>{tenant?.license || "-"}</dd></div>
+        <div><dt>Brokerage fee</dt><dd>{controls ? `${controls.brokerageFeePct}%` : "-"}</dd></div>
+        <div><dt>Minimum fee</dt><dd>{controls ? etb(controls.minimumFee) : "-"}</dd></div>
+        <div><dt>Approval threshold</dt><dd>{controls ? etb(controls.approvalThreshold) : "-"}</dd></div>
+        <div><dt>Client daily limit</dt><dd>{controls ? etb(controls.clientDailyLimit) : "-"}</dd></div>
+        <div><dt>Maker-checker</dt><dd>{controls ? (controls.makerChecker ? "Required" : "Off") : "-"}</dd></div>
+        <div><dt>Settlement cycle</dt><dd>{controls?.settlementCycle ?? "-"}</dd></div>
       </dl>
     </section>
     <section className="panel"><div className="panel-head"><div><span className="eyebrow">CAPABILITIES</span><h2>Feature access</h2></div></div>

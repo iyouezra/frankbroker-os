@@ -32,7 +32,7 @@ export function RelationshipOfficerCard({
     </div>
     <div className="panel-body">
       <div className="crm-officer-current">
-        <span className="crm-officer-avatar">{current?.primaryOfficerName ? initials(current.primaryOfficerName) : "—"}</span>
+        <span className="crm-officer-avatar">{current?.primaryOfficerName ? initials(current.primaryOfficerName) : "-"}</span>
         <div>
           <b>{current?.primaryOfficerName ?? "No officer assigned"}</b>
           <small>{current?.primaryOfficerName ? `Primary contact${current.backupOfficerName ? ` · backup ${current.backupOfficerName}` : ""}` : "This investor has no named owner."}</small>
@@ -56,7 +56,7 @@ export function RelationshipOfficerCard({
           {past.map((item) => (
             <li key={item.id}>
               <b>{item.primaryOfficerName ?? "Unassigned"}</b>
-              <span>{auditTime(item.assignedAt)} → {item.endedAt ? auditTime(item.endedAt) : "—"}</span>
+              <span>{auditTime(item.assignedAt)} → {item.endedAt ? auditTime(item.endedAt) : "-"}</span>
               {item.assignedByName && <em>set by {item.assignedByName}</em>}
             </li>
           ))}

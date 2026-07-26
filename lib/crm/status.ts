@@ -1,6 +1,6 @@
 /**
  * Conversation state machine. Mirrors `lib/oms/status.ts` in shape so the CRM
- * reads the same way as the order workflow. Pure — no Prisma import — so the
+ * reads the same way as the order workflow. Pure - no Prisma import - so the
  * transition rules are unit-testable without a database.
  */
 
@@ -15,7 +15,7 @@ export const THREAD_STATUS_LABELS: Record<ThreadStatus, string> = {
   closed: "Closed",
 };
 
-/** Investor-facing wording — deliberately plainer than the broker vocabulary. */
+/** Investor-facing wording - deliberately plainer than the broker vocabulary. */
 export const INVESTOR_STATUS_LABELS: Record<ThreadStatus, string> = {
   open: "Open",
   pending_broker: "Waiting for broker",
