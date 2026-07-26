@@ -230,13 +230,7 @@ export default function InvestorApp() {
       return;
     }
     try {
-      const challenge = await postInvestor({ action: "request_kyc_otp", phone: profile.phone });
-      const code = window.prompt(`Verify ${profile.phone} before submitting KYC.${challenge.demoCode ? `\n\nDemo code: ${challenge.demoCode}` : ""}`);
-      if (!code || !challenge.id) {
-        notify("Verification cancelled. Your application has not been submitted.");
-        return;
-      }
-      await postInvestor({ action: "confirm_otp", verificationId: challenge.id, code });
+      if (!profile.verificationId) throw new Error("Verify the mobile number before submitting the application.");
       const formData = new FormData();
       formData.set("payload", JSON.stringify({
         action: "kyc",
@@ -247,7 +241,7 @@ export default function InvestorApp() {
           accountNumber: bank.accountNumber,
           accountHolderName: bank.accountHolderName,
         })),
-        verificationId: challenge.id,
+        verificationId: profile.verificationId,
         termsVersion: bootstrap?.tenant.legalDocument?.version,
       }));
       Object.entries(documents).forEach(([type, file]) => {
@@ -264,6 +258,22 @@ export default function InvestorApp() {
       notify(`${result.profile.clientCode} submitted for broker review.`);
     } catch (error) {
       notify(error instanceof Error ? error.message : "Unable to submit onboarding.");
+    }
+  };
+  const verifyOnboardingPhone = async (phone: string) => {
+    try {
+      const challenge = await postInvestor({ action: "request_kyc_otp", phone });
+      const code = window.prompt(`Enter the one-time code sent to ${phone}.${challenge.demoCode ? `\n\nDemo code: ${challenge.demoCode}` : "\n\nDemo code: 246810"}`);
+      if (!code || !challenge.id) {
+        notify("Verification cancelled.");
+        return null;
+      }
+      await postInvestor({ action: "confirm_otp", verificationId: challenge.id, code });
+      notify("Mobile number verified.");
+      return challenge.id;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Unable to verify the mobile number.");
+      return null;
     }
   };
   const addLinkedBank = async (bankName: string, accountNumber: string) => {
@@ -525,7 +535,7 @@ export default function InvestorApp() {
       <span className={styles.licenseBadge}>Platform demo</span>
       <h1>Own a piece of Ethiopia&apos;s growth</h1>
       <p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, and learn which mix may fit your goals."}</p>
-      <Button onClick={() => setPhase("select")}>Choose a demo journey</Button>
+      <Button onClick={() => setPhase("select")}>Demo journey</Button>
       <div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div>
       <small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small>
     </section>
@@ -572,7 +582,7 @@ export default function InvestorApp() {
               </button>)}
             </div>
           </div>
-          : phase === "onboarding" ? <Onboarding initialAccountType={onboardingType} onBack={() => setPhase("select")} onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} />
+          : phase === "onboarding" ? <Onboarding initialAccountType={onboardingType} onBack={() => setPhase("select")} onVerifyIdentity={verifyOnboardingPhone} onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} />
           : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} restricted={restrictedAccess} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} />
             : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} restricted={restrictedAccess} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} />
               : <>

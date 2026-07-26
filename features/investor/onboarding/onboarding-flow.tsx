@@ -19,7 +19,7 @@ import {
   type OnboardingSubmission,
 } from "../shared/investor-foundation";
 
-function KycOnboarding({ initialAccountType, onBack, onComplete, legalDocument }: { initialAccountType: InvestorKyc["accountType"]; onBack: () => void; onComplete: (submission: OnboardingSubmission) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
+function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplete, legalDocument }: { initialAccountType: InvestorKyc["accountType"]; onBack: () => void; onVerifyIdentity: (phone: string) => Promise<string | null>; onComplete: (submission: OnboardingSubmission) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<InvestorKyc>(() => emptyInvestorKyc(initialAccountType));
   const [consent, setConsent] = useState(false);
@@ -28,6 +28,7 @@ function KycOnboarding({ initialAccountType, onBack, onComplete, legalDocument }
   const [tinCertificateFile, setTinCertificateFile] = useState<File | null>(null);
   const [certificateOfIncorporationFile, setCertificateOfIncorporationFile] = useState<File | null>(null);
   const [articleOfAssociationFile, setArticleOfAssociationFile] = useState<File | null>(null);
+  const [verifyingIdentity, setVerifyingIdentity] = useState(false);
   const proofUploadId = useId();
   const businessLicenseUploadId = useId();
   const tinCertificateUploadId = useId();
@@ -36,7 +37,11 @@ function KycOnboarding({ initialAccountType, onBack, onComplete, legalDocument }
   const [linkedBanks, setLinkedBanks] = useState<LinkedBankAccount[]>([
     { id: "onboarding_bank_1", bankName: bankOptions[0], accountNumber: "", accountHolderName: "", status: "pending" },
   ]);
-  const update = (field: keyof InvestorKyc, value: string | boolean) => setProfile((current) => ({ ...current, [field]: value }));
+  const update = (field: keyof InvestorKyc, value: string | boolean) => setProfile((current) => ({
+    ...current,
+    [field]: value,
+    ...(field === "phone" ? { verificationId: undefined } : {}),
+  }));
   const chooseType = (accountType: InvestorKyc["accountType"]) => {
     const nextProfile = emptyInvestorKyc(accountType);
     setProfile(nextProfile);
@@ -227,15 +232,22 @@ function KycOnboarding({ initialAccountType, onBack, onComplete, legalDocument }
         </div>
       </>}
     </div>
-    <Button className={styles.full} disabled={!identityStepValid} onClick={() => setStep(2)}>Continue</Button>
+    <Button className={styles.full} disabled={!identityStepValid || verifyingIdentity} onClick={() => {
+      setVerifyingIdentity(true);
+      void onVerifyIdentity(profile.phone).then((verificationId) => {
+        if (!verificationId) return;
+        setProfile((current) => ({ ...current, verificationId }));
+        setStep(2);
+      }).finally(() => setVerifyingIdentity(false));
+    }}>{verifyingIdentity ? "Checking code…" : "Verify and continue"}</Button>
   </div>;
 
   return <div className={styles.onboarding}><KycProgress step={0} /><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={onBack} aria-label="Return to demo journeys"><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>Open your investment account</h1><p>Start with blank details and submit a separate application for broker review.</p></div><div className={styles.accountTypeGrid}><button className={profile.accountType === "retail" ? styles.accountTypeSelected : ""} onClick={() => chooseType("retail")}><i>{profile.accountType === "retail" && <Icon name="check" size={13} />}</i><b>Retail investor</b><small>An account for you</small></button><button className={profile.accountType === "institution" ? styles.accountTypeSelected : ""} onClick={() => chooseType("institution")}><i>{profile.accountType === "institution" && <Icon name="check" size={13} />}</i><b>Institution</b><small>A company or organization</small></button></div><div className={styles.kycForm}><KycField label={profile.accountType === "retail" ? "Full legal name" : "Legal organization name"} value={profile.fullName} onChange={(value) => update("fullName", value)} placeholder="As shown on official records" /><KycField label="Mobile number" value={profile.phone} onChange={(value) => update("phone", value.replace(/[^0-9+]/g, ""))} inputMode="tel" placeholder="09… or +251…" hint="We’ll use this for account updates and security." /><KycField label="Email address" value={profile.email} onChange={(value) => update("email", value.trimStart())} type="email" inputMode="email" autoComplete="email" placeholder="name@example.com" hint={profile.email && !emailValid ? "Enter a valid email address." : "We’ll use this for confirmations and account notices."} /></div><div className={styles.demoNotice}><b>Demo only</b><span>This creates a new applicant record. It does not change Selam or Blue Nile.</span></div><Button className={styles.full} disabled={!firstStepValid} onClick={() => setStep(1)}>Continue</Button></div>;
 }
 
-export function Onboarding({ initialAccountType, onBack, onDone, legalDocument }: { initialAccountType: InvestorKyc["accountType"]; onBack: () => void; onDone: (submission: OnboardingSubmission) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
+export function Onboarding({ initialAccountType, onBack, onVerifyIdentity, onDone, legalDocument }: { initialAccountType: InvestorKyc["accountType"]; onBack: () => void; onVerifyIdentity: (phone: string) => Promise<string | null>; onDone: (submission: OnboardingSubmission) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
   const [submission, setSubmission] = useState<OnboardingSubmission | null>(null);
-  return submission ? <InvestmentOnboarding onDone={() => onDone(submission)} /> : <KycOnboarding initialAccountType={initialAccountType} onBack={onBack} onComplete={setSubmission} legalDocument={legalDocument} />;
+  return submission ? <InvestmentOnboarding onDone={() => onDone(submission)} /> : <KycOnboarding initialAccountType={initialAccountType} onBack={onBack} onVerifyIdentity={onVerifyIdentity} onComplete={setSubmission} legalDocument={legalDocument} />;
 }
 
 export function InvestmentOnboarding({ onDone }: { onDone: () => void }) {

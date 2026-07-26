@@ -51,7 +51,7 @@ function resolveDemoOtpCode() {
   if (configured && !/^\d{6}$/.test(configured)) {
     throw new Error("FRANK_DEMO_OTP_CODE must contain exactly six digits.");
   }
-  return configured || (process.env.NODE_ENV === "production" ? null : "246810");
+  return configured || "246810";
 }
 
 export async function createOtpChallenge(input: {

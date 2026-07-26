@@ -59,11 +59,12 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.doesNotMatch(investorApp, /Your plan/);
   assert.match(investorApp, /Review order/);
   assert.match(investorApp, /Open your investment account/);
-  assert.match(investorApp, /Choose a demo journey/);
+  assert.match(investorApp, /Demo journey/);
   assert.match(investorApp, /Use an existing account/);
   assert.match(investorApp, /Open a new account/);
   assert.match(investorApp, /Restricted access/);
   assert.match(investorApp, /Approval required/);
+  assert.match(investorApp, /Verify and continue/);
   assert.match(investorApp, /newApplication: true/);
   assert.match(investorApp, /cli_blue/);
   assert.match(investorApp, /Fayda ID number \(FAN\)/);

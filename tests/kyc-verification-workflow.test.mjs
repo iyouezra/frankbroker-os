@@ -27,6 +27,8 @@ test("investor onboarding captures email and the full institutional document set
   assert.match(investor, /Certificate of Incorporation/);
   assert.match(investor, /Article of Association/);
   assert.match(investor, /emailValid/);
+  assert.match(investor, /onVerifyIdentity\(profile\.phone\)/);
+  assert.match(investor, /verificationId: profile\.verificationId/);
   assert.match(route, /const email = String\(payload\.email/);
   assert.match(route, /emailValid/);
   assert.match(route, /\n\s+email,\n/);
@@ -46,6 +48,7 @@ test("order authorization is exact-payload-bound, expiring, attempt-limited, and
   assert.match(verification, /timingSafeEqual/);
   assert.match(verification, /FRANK_DEMO_OTP_CODE/);
   assert.match(verification, /must contain exactly six digits/);
+  assert.match(verification, /configured \|\| "246810"/);
   assert.match(verification, /demoCode \?\? String\(randomInt/);
   assert.match(orderService, /consumeOrderVerification/);
   assert.match(orderService, /instructionVerificationId/);
