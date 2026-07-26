@@ -391,7 +391,7 @@ export default function InvestorApp() {
                           ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} />
                           : tab === "learn"
                             ? <LearnScreen />
-                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
                 </div>
                 <BottomNav active={tab} onChange={navigate} />
               </>}

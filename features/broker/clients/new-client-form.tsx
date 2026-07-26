@@ -9,7 +9,7 @@ import type {
 
 export function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { value: NewClientValue; setValue: (value: NewClientValue) => void; busy: boolean; onCancel: () => void; onSubmit: (event: FormEvent) => void }) {
   const organization = value.clientType === "institution" || value.clientType === "corporate";
-  const faydaValid = /^\d{12}$/.test(value.faydaId);
+  const faydaValid = /^\d{16}$/.test(value.faydaId);
   const tinValid = /^\d{10,12}$/.test(value.tin.replace(/\D/g, ""));
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email);
   const banksValid = value.linkedBanks.length >= 1 && value.linkedBanks.length <= 3 && value.linkedBanks.every((bank) =>
@@ -96,7 +96,7 @@ export function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { v
     </section>
     <section className="form-section">
       <h3>Identity and tax</h3>
-      <div className="field-row"><label>{organization ? "Representative Fayda FIN" : "Fayda FIN"}<input inputMode="numeric" maxLength={12} value={value.faydaId} onChange={(event) => set("faydaId", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="12 digits" /><small>{value.faydaId && !faydaValid ? "FIN must contain 12 digits." : "Only a masked reference is retained."}</small></label><label>TIN<input inputMode="numeric" value={value.tin} onChange={(event) => set("tin", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="10–12 digits" /><small>{value.tin && !tinValid ? "Enter a valid TIN." : "Used for tax and account records."}</small></label></div>
+      <div className="field-row"><label>{organization ? "Representative Fayda FAN" : "Fayda FAN"}<input inputMode="numeric" maxLength={16} value={value.faydaId} onChange={(event) => set("faydaId", event.target.value.replace(/\D/g, "").slice(0, 16))} placeholder="16 digits" /><small>{value.faydaId && !faydaValid ? "FAN must contain 16 digits." : "Only a masked reference is retained."}</small></label><label>TIN<input inputMode="numeric" value={value.tin} onChange={(event) => set("tin", event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="10–12 digits" /><small>{value.tin && !tinValid ? "Enter a valid TIN." : "Used for tax and account records."}</small></label></div>
       {!organization && <label>Proof of address type<select value={value.proofOfAddressType} onChange={(event) => set("proofOfAddressType", event.target.value)}><option>Drivers License</option><option>Kebele ID</option></select></label>}
       <div className="broker-document-uploads">{documentFields.map(([type, label]) => <label className="broker-document-upload" key={type}>{label}<input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => setDocument(type, event.target.files?.[0] ?? null)} /><span>{value.documentFiles[type] ? value.documentFiles[type]!.name : `Upload ${label.toLocaleLowerCase()}`}</span><small>PDF, PNG or JPG, up to 10 MB</small></label>)}</div>
       <label>CSD account/reference <span className="optional-label">optional</span><input value={value.csdReference} onChange={(event) => set("csdReference", event.target.value)} placeholder="Record when available" /></label>

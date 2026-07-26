@@ -14,6 +14,7 @@ import {
   postInvestorMessage,
 } from "../../../lib/crm/thread-service";
 import { categoryForServiceRequest } from "../../../lib/crm/categories";
+import { clientIdentityReference } from "../../../lib/client-identity";
 import { investorRelationshipOfficer } from "../../../lib/crm/assignment-service";
 import { prepareAttachments } from "../../../lib/crm/attachments";
 import {
@@ -174,7 +175,7 @@ export async function GET(request: Request) {
       },
       profile: client ? {
         id: client.id, fullName: client.fullName, clientType: client.clientType, phone: client.phone,
-        kycStatus: client.kycStatus, faydaMasked: client.faydaLast4 ? `•••• •••• ${client.faydaLast4}` : null,
+        kycStatus: client.kycStatus, faydaMasked: client.faydaLast7 ? `••••• ${client.faydaLast7}` : null,
         taxIdMasked: client.taxIdLast4 ? `••••••${client.taxIdLast4}` : null,
         address: client.address,
         proofOfAddressStatus: client.proofOfAddressStatus,
@@ -303,8 +304,8 @@ export async function POST(request: Request) {
       const faydaId = String(payload.faydaId ?? "").replace(/\D/g, "");
       const tin = String(payload.tin ?? "").replace(/\D/g, "");
       const emailValid = email.length <= 160 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-      if (!fullName || fullName.length > 160 || !emailValid || faydaId.length < 4 || faydaId.length > 32 || tin.length < 4 || tin.length > 32) {
-        return Response.json({ error: "Name, email, Fayda ID, and TIN are required." }, { status: 400 });
+      if (!fullName || fullName.length > 160 || !emailValid || faydaId.length !== 16 || tin.length < 4 || tin.length > 32) {
+        return Response.json({ error: "Name, email, a 16-digit Fayda FAN, and TIN are required." }, { status: 400 });
       }
       const [client, settings, legalDocument] = await Promise.all([
         prisma.client.findFirst({ where: { id: clientId, brokerId } }),
@@ -327,17 +328,27 @@ export async function POST(request: Request) {
       } });
       if (!phoneVerification) return Response.json({ error: "Verify the mobile number before submitting KYC." }, { status: 409 });
 
+      // A stable hash of the legal identity so the same person cannot open a
+      // second account with this broker (the raw Fayda is still never stored).
+      const identityRef = clientIdentityReference({
+        clientType: payload.accountType === "institution" ? "institution" : "individual",
+        faydaId,
+        businessRegistrationNumber: String(payload.registrationNumber ?? ""),
+      });
+
       // The raw identifiers are deliberately never stored. Production should send
       // them directly to an Ethiopia-resident identity provider and retain only its reference.
       const updated = await prisma.$transaction(async (tx) => {
+        const clash = await tx.client.findFirst({ where: { brokerId, identityReference: identityRef, id: { not: client.id } }, select: { id: true } });
+        if (clash) throw new Response("These identity details are already registered with this broker.", { status: 409 });
         await tx.verificationChallenge.update({ where: { id: phoneVerification.id }, data: { status: "consumed", consumedAt: new Date() } });
         const next = await tx.client.update({ where: { id: client.id }, data: {
           fullName,
           clientType: payload.accountType === "institution" ? "institution" : "individual",
           phone: String(payload.phone ?? "") || null,
           email,
-          identityReference: `demo_fayda_${crypto.randomUUID()}`,
-          faydaLast4: faydaId.slice(-4), taxIdLast4: tin.slice(-4), taxId: null,
+          identityReference: identityRef,
+          faydaLast7: faydaId.slice(-7), taxIdLast4: tin.slice(-4), taxId: null,
           address: String(payload.address ?? "").trim() || null,
           proofOfAddressType: String(payload.proofOfAddressType ?? "").trim() || null,
           proofOfAddressReference: String(payload.proofOfAddressReference ?? "").trim() || null,

@@ -419,3 +419,7 @@
 @media (prefers-reduced-motion: reduce) {
   .adminShell *, .adminShell *::before, .adminShell *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Branded dropdown caret for the admin console, matching the broker portal:
+   suppress the native arrow and paint the shared Frank chevron. */
+.tenantSelect, .field select, .integrationCard select, .contextSelect select, .userRow select { appearance: none; -webkit-appearance: none; background-image: var(--fx-chevron); background-repeat: no-repeat; background-position: right 11px center; background-size: 11px 8px; padding-right: 30px; }

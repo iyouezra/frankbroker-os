@@ -205,7 +205,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         rejectionReason: client.rejectionReason,
         onboardingChannel: client.onboardingChannel,
         address: client.address,
-        identityMasked: client.faydaLast4 ? `•••• •••• ${client.faydaLast4}` : null,
+        identityMasked: client.faydaLast7 ? `••••• ${client.faydaLast7}` : null,
         taxIdMasked: client.taxIdLast4 ? `•••••• ${client.taxIdLast4}` : null,
         businessRegistrationNumber: client.businessRegistrationNumber,
         authorizedRepresentativeName: client.authorizedRepresentativeName,

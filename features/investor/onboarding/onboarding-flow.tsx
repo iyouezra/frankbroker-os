@@ -62,7 +62,7 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (submission:
   };
   const phoneValid = profile.phone.replace(/\D/g, "").length >= 9;
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email) && profile.email.length <= 160;
-  const faydaValid = /^\d{12}$/.test(profile.faydaId);
+  const faydaValid = /^\d{16}$/.test(profile.faydaId);
   const tinValid = /^\d{10}(?:-\d{2})?$/.test(profile.tin);
   const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid && emailValid;
   const identityStepValid = faydaValid
@@ -83,7 +83,7 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (submission:
       <h1>Your details are ready</h1>
       <p>We checked the ID formats and captured your consent. Live Fayda and tax verification, plus bank verification, will be connected before real accounts are opened.</p>
       <Card className={styles.kycStatusCard}>
-        <div><i><Icon name="check" size={14} /></i><span><b>Fayda ID format</b><small>12-digit FIN captured</small></span></div>
+        <div><i><Icon name="check" size={14} /></i><span><b>Fayda ID format</b><small>16-digit FAN captured</small></span></div>
         <div><i><Icon name="check" size={14} /></i><span><b>Tax information</b><small>TIN captured for review</small></span></div>
         <div><i><Icon name="check" size={14} /></i><span><b>Linked banks</b><small>{linkedBanks.length} {linkedBanks.length === 1 ? "account" : "accounts"} submitted for review</small></span></div>
         <div><i><Icon name="check" size={14} /></i><span><b>Account type</b><small>{profile.accountType === "retail" ? "Retail investor" : "Institution"}</small></span></div>
@@ -155,7 +155,7 @@ function KycOnboarding({ onComplete, legalDocument }: { onComplete: (submission:
     <div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(0)} aria-label="Go back"><Icon name="back" size={20} /></button></div>
     <div className={styles.onboardingCopy}><h1>{profile.accountType === "retail" ? "Confirm your identity" : "Tell us about the institution"}</h1><p>{profile.accountType === "retail" ? "Use the details linked to your Fayda ID." : "We also need the representative, authority, and ownership records."}</p></div>
     <div className={styles.kycForm}>
-      <KycField label={profile.accountType === "retail" ? "Fayda ID number (FIN)" : "Representative’s Fayda ID (FIN)"} value={profile.faydaId} onChange={(value) => update("faydaId", value.replace(/\D/g, "").slice(0, 12))} inputMode="numeric" maxLength={12} placeholder="12 digits" hint={profile.faydaId && !faydaValid ? "Fayda FIN must contain 12 digits." : "We’ll use this for identity verification."} />
+      <KycField label={profile.accountType === "retail" ? "Fayda ID number (FAN)" : "Representative’s Fayda ID (FAN)"} value={profile.faydaId} onChange={(value) => update("faydaId", value.replace(/\D/g, "").slice(0, 16))} inputMode="numeric" maxLength={16} placeholder="16 digits" hint={profile.faydaId && !faydaValid ? "Fayda FAN must contain 16 digits." : "We’ll use this for identity verification."} />
       <KycField label="Taxpayer Identification Number (TIN)" value={profile.tin} onChange={(value) => update("tin", value.replace(/[^0-9-]/g, "").slice(0, 13))} inputMode="numeric" placeholder="0012814908" hint={profile.tin && !tinValid ? "Enter a 10-digit TIN or a TIN with its two-digit subTIN." : "Used for tax reporting and account records."} />
       {profile.accountType === "institution" && <>
         <KycField label="Business registration number" value={profile.registrationNumber} onChange={(value) => update("registrationNumber", value)} placeholder="Registration or license number" />

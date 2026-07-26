@@ -59,7 +59,7 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.doesNotMatch(investorApp, /Your plan/);
   assert.match(investorApp, /Review order/);
   assert.match(investorApp, /Open your investment account/);
-  assert.match(investorApp, /Fayda ID number \(FIN\)/);
+  assert.match(investorApp, /Fayda ID number \(FAN\)/);
   assert.match(investorApp, /Retail investor/);
   assert.match(investorApp, /Business registration number/);
   assert.match(investorApp, /Live Fayda and tax verification/);
@@ -82,7 +82,7 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(clientsApi, /cashLedgerEntries/);
   assert.match(reconciliationApi, /RECONCILIATION_IMPORTED/);
   assert.match(investorApi, /createSubmittedOrder/);
-  assert.match(investorApi, /faydaLast4/);
+  assert.match(investorApi, /faydaLast7/);
   assert.doesNotMatch(investorApi, /taxId:\s*tin/);
   assert.match(adminApi, /TENANT_CONFIGURATION_UPDATED/);
   assert.match(adminApi, /brokerInstrument\.upsert/);

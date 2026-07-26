@@ -1,5 +1,6 @@
 import { Prisma } from "../app/generated/prisma/client";
 import { prisma } from "./prisma";
+import { clientIdentityReference } from "./client-identity";
 import type { Actor } from "./server-auth";
 import { writeNotification, COMPLIANCE } from "./oms/notification-service";
 import {
@@ -58,7 +59,7 @@ function validateCreateInput(input: CreateClientInput) {
   if (input.fullName.trim().length < 3 || input.fullName.trim().length > 160) return "A valid legal name is required.";
   if (input.phone.trim().length < 7 || input.phone.trim().length > 40) return "A valid phone number is required.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email) || input.email.length > 160) return "Enter a valid email address.";
-  if (fayda.length !== 12) return "Fayda FIN must contain 12 digits.";
+  if (fayda.length !== 16) return "Fayda FAN must contain 16 digits.";
   if (tin.length < 10 || tin.length > 12) return "TIN must contain 10 to 12 digits.";
   if (!input.sourceOfFunds?.trim()) return "Source of funds is required.";
   if (!input.investmentObjective?.trim()) return "Investment objective is required.";
@@ -86,6 +87,7 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
   if (validationError) throw new Response(validationError, { status: 400 });
   const fayda = normalizedDigits(input.faydaId);
   const tin = normalizedDigits(input.tin);
+  const identityRef = clientIdentityReference({ clientType: input.clientType, faydaId: fayda, businessRegistrationNumber: input.businessRegistrationNumber });
   const now = new Date();
   const suffix = crypto.randomUUID().slice(0, 6).toUpperCase();
   const clientId = `cli_${crypto.randomUUID().slice(0, 12)}`;
@@ -104,6 +106,13 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
     if ((settings?.requireTermsAcceptance ?? true) && legalDocument && !input.termsAccepted) {
       throw new Response("Record acceptance of the current brokerage terms before submitting the client.", { status: 400 });
     }
+    // Reject a client whose legal identity is already on file for this broker.
+    // The unique index is the backstop for a race; this gives a clear message.
+    const duplicate = await tx.client.findFirst({ where: { brokerId: actor.brokerId, identityReference: identityRef }, select: { clientCode: true } });
+    if (duplicate) {
+      const subject = input.clientType === "individual" ? "individual" : "organization";
+      throw new Response(`This ${subject} is already registered with your firm as ${duplicate.clientCode}.`, { status: 409 });
+    }
     const client = await tx.client.create({
       data: {
         id: clientId,
@@ -113,8 +122,8 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         clientType: input.clientType,
         phone: input.phone.trim(),
         email: input.email.trim(),
-        identityReference: `broker_fayda_${crypto.randomUUID()}`,
-        faydaLast4: fayda.slice(-4),
+        identityReference: identityRef,
+        faydaLast7: fayda.slice(-7),
         taxIdLast4: tin.slice(-4),
         taxId: null,
         kycConsentAt: now,
@@ -249,7 +258,7 @@ export async function approveClient(actor: Actor, clientId: string) {
       throw new Response("Four-eyes control: the client creator cannot approve this onboarding record.", { status: 409 });
     }
     const institutional = client.clientType === "institution" || client.clientType === "corporate";
-    const identityReady = Boolean(client.identityReference && client.faydaLast4 && client.taxIdLast4)
+    const identityReady = Boolean(client.identityReference && client.faydaLast7 && client.taxIdLast4)
       && (!institutional || Boolean(client.address && client.businessRegistrationNumber && client.authorizedRepresentativeName && client.signatoryAuthorityConfirmed && client.beneficialOwners));
     if (!identityReady) throw new Response("Required identity, ownership, or authority details are incomplete.", { status: 409 });
     const acceptedCurrentTerms = !legalDocument || client.consents.some((consent) => consent.legalDocumentId === legalDocument.id && consent.accepted && !consent.withdrawnAt);

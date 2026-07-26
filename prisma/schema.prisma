@@ -95,7 +95,7 @@ model Client {
   email                        String?
   taxId                        String?                 @map("tax_id")
   identityReference            String?                 @map("identity_reference")
-  faydaLast4                   String?                 @map("fayda_last4")
+  faydaLast7                   String?                 @map("fayda_last7")
   taxIdLast4                   String?                 @map("tax_id_last4")
   kycConsentAt                 DateTime?               @map("kyc_consent_at")
   address                      String?
@@ -150,6 +150,7 @@ model Client {
   serviceCases                 ServiceCase[]
   investorAssignments          InvestorAssignment[]
 
+  @@unique([brokerId, identityReference])
   @@index([brokerId])
   @@index([status, kycStatus])
   @@map("clients")
