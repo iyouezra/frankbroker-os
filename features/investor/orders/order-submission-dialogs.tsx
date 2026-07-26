@@ -15,27 +15,30 @@ export type InvestorOtpChallenge = {
   error: string;
 };
 
-export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onDeliveryChange, onCancel }: {
+export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onDeliveryChange, onCancel, context = "order" }: {
   challenge: InvestorOtpChallenge;
   onVerify: (code: string) => void;
   onResend: () => void;
-  onDeliveryChange: (channel: "sms" | "email") => void;
+  onDeliveryChange?: (channel: "sms" | "email") => void;
   onCancel: () => void;
+  context?: "order" | "onboarding";
 }) {
   const [code, setCode] = useState("");
+  const onboarding = context === "onboarding";
   const expiry = challenge.expiresAt
     ? new Date(challenge.expiresAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null;
-  return <div className={styles.dialogBackdrop}>
-    <section className={`${styles.confirmDialog} ${styles.otpDialog}`} role="dialog" aria-modal="true" aria-labelledby="order-otp-title">
+  return <div className={`${styles.sheetBackdrop} ${styles.otpBackdrop}`}>
+    <section className={`${styles.orderSheet} ${styles.otpSheet}`} role="dialog" aria-modal="true" aria-labelledby="investor-otp-title">
+      <i className={styles.sheetHandle} />
       <div className={styles.dialogIcon} data-tone="secure"><Icon name="shield" size={22} /></div>
-      <span className={styles.dialogEyebrow}>SECURE ORDER AUTHORIZATION</span>
-      <h2 id="order-otp-title">Enter your verification code</h2>
-      <p>We sent a six-digit code by {challenge.deliveryChannel === "email" ? "email" : "text message"} to <b>{challenge.destinationHint}</b>. It authorizes only the order you just reviewed.</p>
-      <div className={styles.deliveryChoice} aria-label="Verification delivery method">
+      <span className={styles.dialogEyebrow}>{onboarding ? "SECURE APPLICANT CHECK" : "SECURE ORDER AUTHORIZATION"}</span>
+      <h2 id="investor-otp-title">{onboarding ? "Verify your mobile number" : "Enter your verification code"}</h2>
+      <p className={styles.otpIntro}>We sent a six-digit code by {challenge.deliveryChannel === "email" ? "email" : "text message"} to <b>{challenge.destinationHint}</b>. {onboarding ? "This confirms the contact number on your application." : "It authorizes only the order you just reviewed."}</p>
+      {onDeliveryChange && <div className={styles.deliveryChoice} aria-label="Verification delivery method">
         <button type="button" aria-pressed={challenge.deliveryChannel === "sms"} disabled={challenge.busy} onClick={() => onDeliveryChange("sms")}>Text message</button>
         <button type="button" aria-pressed={challenge.deliveryChannel === "email"} disabled={challenge.busy} onClick={() => onDeliveryChange("email")}>Email</button>
-      </div>
+      </div>}
       <label className={styles.otpField}>
         <span>Verification code</span>
         <input autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} aria-invalid={Boolean(challenge.error)} />
@@ -43,8 +46,8 @@ export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onDelive
       </label>
       {challenge.error && <div className={styles.otpError} role="alert"><b>Code not accepted</b><span>{challenge.error}</span></div>}
       <button className={styles.resendButton} disabled={challenge.busy} onClick={onResend}>Send a new code by {challenge.deliveryChannel === "email" ? "email" : "text"}</button>
-      <div className={styles.dialogActions}><Button variant="secondary" disabled={challenge.busy} onClick={onCancel}>Cancel</Button><Button disabled={challenge.busy || code.length !== 6} onClick={() => onVerify(code)}>{challenge.busy ? "Verifying…" : "Verify & submit"}</Button></div>
-      <p className={styles.otpSafety}>Frank will never ask you to share this code outside this secure order confirmation.</p>
+      <div className={styles.dialogActions}><Button variant="secondary" disabled={challenge.busy} onClick={onCancel}>Cancel</Button><Button disabled={challenge.busy || code.length !== 6} onClick={() => onVerify(code)}>{challenge.busy ? "Verifying…" : onboarding ? "Verify and continue" : "Verify and submit"}</Button></div>
+      <p className={styles.otpSafety}>Frank will never ask you to share this code outside this secure verification screen.</p>
     </section>
   </div>;
 }

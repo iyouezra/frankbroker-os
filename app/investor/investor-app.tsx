@@ -96,8 +96,10 @@ export default function InvestorApp() {
   const [bond, setBond] = useState<InvestorBond | null>(null);
   const [toast, setToast] = useState("");
   const [orderOtp, setOrderOtp] = useState<InvestorOtpChallenge | null>(null);
+  const [onboardingOtp, setOnboardingOtp] = useState<(InvestorOtpChallenge & { phone: string }) | null>(null);
   const [orderOutcome, setOrderOutcome] = useState<OrderSubmissionOutcome | null>(null);
   const orderOtpResolver = useRef<((verificationId: string | null) => void) | null>(null);
+  const onboardingOtpResolver = useRef<((verificationId: string | null) => void) | null>(null);
   const pendingOtpOrder = useRef<{ order: InvestorOrderInput; submissionReference: string } | null>(null);
   const [profileName, setProfileName] = useState("Selam Mekonnen");
   const [bootstrap, setBootstrap] = useState<InvestorBootstrap | null>(null);
@@ -297,18 +299,62 @@ export default function InvestorApp() {
   const verifyOnboardingPhone = async (phone: string) => {
     try {
       const challenge = await postInvestor({ action: "request_kyc_otp", phone });
-      const code = window.prompt(`Enter the one-time code sent to ${phone}.${challenge.demoCode ? `\n\nDemo code: ${challenge.demoCode}` : "\n\nDemo code: 246810"}`);
-      if (!code || !challenge.id) {
-        notify("Verification cancelled.");
-        return null;
-      }
-      await postInvestor({ action: "confirm_otp", verificationId: challenge.id, code });
-      notify("Mobile number verified.");
-      return challenge.id;
+      if (!challenge.id) throw new Error("A verification code could not be created.");
+      setOnboardingOtp({
+        id: challenge.id,
+        phone,
+        deliveryChannel: challenge.deliveryChannel ?? "sms",
+        destinationHint: challenge.destinationHint ?? `mobile ending ${phone.replace(/\D/g, "").slice(-4)}`,
+        expiresAt: challenge.expiresAt,
+        demoCode: challenge.demoCode ?? "246810",
+        busy: false,
+        error: "",
+      });
+      return await new Promise<string | null>((resolve) => {
+        onboardingOtpResolver.current = resolve;
+      });
     } catch (error) {
       notify(error instanceof Error ? error.message : "Unable to verify the mobile number.");
       return null;
     }
+  };
+  const verifyApplicantOtp = async (code: string) => {
+    if (!onboardingOtp) return;
+    setOnboardingOtp((current) => current ? { ...current, busy: true, error: "" } : current);
+    try {
+      await postInvestor({ action: "confirm_otp", verificationId: onboardingOtp.id, code });
+      const verificationId = onboardingOtp.id;
+      setOnboardingOtp(null);
+      onboardingOtpResolver.current?.(verificationId);
+      onboardingOtpResolver.current = null;
+      notify("Mobile number verified.");
+    } catch (error) {
+      setOnboardingOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : "The verification code was not accepted." } : current);
+    }
+  };
+  const resendApplicantOtp = async () => {
+    if (!onboardingOtp) return;
+    setOnboardingOtp((current) => current ? { ...current, busy: true, error: "" } : current);
+    try {
+      const challenge = await postInvestor({ action: "request_kyc_otp", phone: onboardingOtp.phone });
+      if (!challenge.id) throw new Error("A new verification code could not be created.");
+      setOnboardingOtp((current) => current ? {
+        ...current,
+        id: challenge.id!,
+        expiresAt: challenge.expiresAt,
+        demoCode: challenge.demoCode ?? "246810",
+        destinationHint: challenge.destinationHint ?? current.destinationHint,
+        busy: false,
+        error: "",
+      } : current);
+    } catch (error) {
+      setOnboardingOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : "A new code could not be sent." } : current);
+    }
+  };
+  const cancelApplicantOtp = () => {
+    setOnboardingOtp(null);
+    onboardingOtpResolver.current?.(null);
+    onboardingOtpResolver.current = null;
   };
   const addLinkedBank = async (bankName: string, accountNumber: string) => {
     try {
@@ -648,6 +694,7 @@ export default function InvestorApp() {
         {cashOpen && !restrictedAccess && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} linkedBanks={linkedBanks} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
         {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
         {newRequestOpen && <NewRequestSheet busy={supportBusy} onClose={() => setNewRequestOpen(false)} onSubmit={createSupportRequest} />}
+        {onboardingOtp && <InvestorOrderOtpDialog key={onboardingOtp.id} context="onboarding" challenge={onboardingOtp} onVerify={(code) => void verifyApplicantOtp(code)} onResend={() => void resendApplicantOtp()} onCancel={cancelApplicantOtp} />}
         {orderOtp && <InvestorOrderOtpDialog key={orderOtp.id} challenge={orderOtp} onVerify={(code) => void verifyInvestorOrderOtp(code)} onResend={() => void resendInvestorOrderOtp()} onDeliveryChange={(channel) => { if (channel !== orderOtp.deliveryChannel) void resendInvestorOrderOtp(channel); }} onCancel={cancelInvestorOrderOtp} />}
         {orderOutcome && <InvestorOrderOutcomeDialog outcome={orderOutcome} onClose={() => setOrderOutcome(null)} onViewOrders={() => { setOrderOutcome(null); setStock(null); setBond(null); setTab("profile"); }} />}
         {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}

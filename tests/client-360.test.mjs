@@ -137,7 +137,10 @@ test("broker onboarding is wired through approval into the New Order client list
   assert.match(ui, /CONTROLLED CLIENT ONBOARDING/);
   assert.match(ui, /Submit for approval/);
   assert.match(ui, /eligibleClients/);
-  assert.match(ui, /Approve client/);
+  assert.match(ui, /Review application/);
+  assert.match(ui, /CONTROLLED ONBOARDING REVIEW/);
+  assert.match(ui, /Approve and activate/);
+  assert.doesNotMatch(ui, /window\.confirm|window\.prompt/);
   assert.match(clientsRoute, /createClientForApproval/);
   assert.match(actionRoute, /approveClient/);
   assert.match(actionRoute, /rejectClient/);
