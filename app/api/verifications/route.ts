@@ -1,7 +1,7 @@
 import { apiError } from "../../../lib/api";
 import { prisma } from "../../../lib/prisma";
 import { requirePermission } from "../../../lib/server-auth";
-import { confirmOtpChallenge, createOtpChallenge, ORDER_SOURCES, orderPayloadHash } from "../../../lib/verification-service";
+import { confirmOtpChallenge, createOtpChallenge, ORDER_SOURCES, OTP_DELIVERY_CHANNELS, otpDestinationHint, orderPayloadHash, type OtpDeliveryChannel } from "../../../lib/verification-service";
 
 export const runtime = "nodejs";
 
@@ -21,10 +21,14 @@ export async function POST(request: Request) {
     if (!ORDER_SOURCES.includes(source as (typeof ORDER_SOURCES)[number]) || source === "investor_portal") {
       return Response.json({ error: "Choose digital, in-person, Neway, or phone as the instruction source." }, { status: 400 });
     }
+    const deliveryChannel = String(payload.verificationChannel ?? "sms") as OtpDeliveryChannel;
+    if (!OTP_DELIVERY_CHANNELS.includes(deliveryChannel)) return Response.json({ error: "Choose SMS or email for the client authorization code." }, { status: 400 });
+    const destination = deliveryChannel === "email" ? account.client.email : account.client.phone;
+    if (!destination) return Response.json({ error: `This client has no registered ${deliveryChannel === "email" ? "email address" : "mobile number"}.` }, { status: 409 });
     const challenge = await createOtpChallenge({
       brokerId: actor.brokerId, clientId: account.clientId, accountId: account.id,
-      purpose: "order_instruction", source, createdBy: actor.id,
-      destinationHint: account.client.phone ? `mobile ending ${account.client.phone.replace(/\D/g, "").slice(-4)}` : "registered contact",
+      purpose: "order_instruction", source, deliveryChannel, createdBy: actor.id,
+      destinationHint: otpDestinationHint(deliveryChannel, destination),
       payloadHash: orderPayloadHash({
         accountId, instrumentId: String(payload.instrumentId ?? ""), side: String(payload.side ?? ""),
         quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""),

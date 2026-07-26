@@ -62,7 +62,23 @@ test("investor order flow uses an in-app OTP dialog and explicit outcome screens
   assert.match(placeOrder, /submission_uncertain|failedOutcome/);
   assert.match(dialogs, /autoComplete="one-time-code"/);
   assert.match(dialogs, /Send a new code/);
+  assert.match(dialogs, /Text message/);
+  assert.match(dialogs, /Email/);
+  assert.match(placeOrder, /deliveryChannel: "sms"/);
   assert.match(dialogs, /View orders/);
+});
+
+test("order authorization supports masked SMS and email delivery", async () => {
+  const [verification, investorRoute, brokerRoute] = await Promise.all([
+    readFile(new URL("../lib/verification-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/investor/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/verifications/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(verification, /OTP_DELIVERY_CHANNELS = \["sms", "email"\]/);
+  assert.match(verification, /method: `\$\{deliveryChannel\}_otp`/);
+  assert.match(verification, /otpDestinationHint/);
+  assert.match(investorRoute, /payload\.deliveryChannel/);
+  assert.match(brokerRoute, /payload\.verificationChannel/);
 });
 
 test("broker entry invalidates authorization and validation when protected order fields change", async () => {

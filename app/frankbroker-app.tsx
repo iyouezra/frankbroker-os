@@ -92,7 +92,7 @@ export default function FrankBrokerApp() {
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
   const [cashOperations, setCashOperations] = useState<CashOperationsData>(fallbackCashOperations);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID(), source: "phone", verificationId: "", verificationCode: "", demoCode: "" });
+  const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID(), source: "phone", verificationChannel: "sms", verificationId: "", verificationCode: "", demoCode: "" });
   const [newClient, setNewClient] = useState<NewClientValue>(newClientDefaults);
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [controls, setControls] = useState<TenantControls>(fallbackControls);

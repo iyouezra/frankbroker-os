@@ -4,6 +4,8 @@ import { prisma } from "./prisma";
 
 export const ORDER_SOURCES = ["digital", "in_person", "neway", "phone", "investor_portal"] as const;
 export type OrderSource = typeof ORDER_SOURCES[number];
+export const OTP_DELIVERY_CHANNELS = ["sms", "email"] as const;
+export type OtpDeliveryChannel = typeof OTP_DELIVERY_CHANNELS[number];
 
 export type OrderAuthorizationPayload = {
   accountId: string; instrumentId: string; side: string; quantity: number | string;
@@ -30,30 +32,41 @@ export function orderPayloadHash(value: OrderAuthorizationPayload) {
   return createHash("sha256").update(JSON.stringify(normalizedOrderPayload(value))).digest("hex");
 }
 
+export function otpDestinationHint(channel: OtpDeliveryChannel, destination: string) {
+  if (channel === "sms") {
+    const digits = destination.replace(/\D/g, "");
+    return digits ? `mobile ending ${digits.slice(-4)}` : "registered mobile";
+  }
+  const [local = "", domain = ""] = destination.trim().split("@");
+  if (!local || !domain) return "registered email";
+  return `${local.slice(0, 1)}${"*".repeat(Math.min(Math.max(local.length - 1, 3), 6))}@${domain}`;
+}
+
 function codeHash(code: string, salt: string) {
   return createHash("sha256").update(`${salt}:${code}`).digest("hex");
 }
 
 export async function createOtpChallenge(input: {
   brokerId: string; clientId: string; accountId?: string; purpose: "kyc_phone" | "order_instruction";
-  source: string; payloadHash: string; destinationHint?: string; createdBy?: string | null;
+  source: string; payloadHash: string; destinationHint?: string; deliveryChannel?: OtpDeliveryChannel; createdBy?: string | null;
 }) {
+  const deliveryChannel = input.deliveryChannel ?? "sms";
   const code = process.env.NODE_ENV === "production" ? String(randomInt(100000, 1000000)) : "246810";
   const salt = randomBytes(16).toString("hex");
   const challenge = await prisma.verificationChallenge.create({ data: {
     id: `VER-${crypto.randomUUID().slice(0, 10).toUpperCase()}`,
     brokerId: input.brokerId, clientId: input.clientId, accountId: input.accountId,
-    purpose: input.purpose, source: input.source, method: "otp", destinationHint: input.destinationHint,
+    purpose: input.purpose, source: input.source, method: `${deliveryChannel}_otp`, destinationHint: input.destinationHint,
     payloadHash: input.payloadHash, codeHash: codeHash(code, salt), salt,
     expiresAt: new Date(Date.now() + 5 * 60_000), createdBy: input.createdBy ?? null,
   } });
   await prisma.auditLog.create({ data: {
     id: crypto.randomUUID(), brokerId: input.brokerId, actorId: input.createdBy ?? null,
     action: "VERIFICATION_CHALLENGE_CREATED", entityType: "verification_challenge", entityId: challenge.id,
-    summary: `${input.purpose} verification requested via ${input.source}`,
-    newValue: JSON.stringify({ purpose: input.purpose, source: input.source, expiresAt: challenge.expiresAt }),
+    summary: `${input.purpose} verification requested by ${deliveryChannel} via ${input.source}`,
+    newValue: JSON.stringify({ purpose: input.purpose, source: input.source, deliveryChannel, expiresAt: challenge.expiresAt }),
   } });
-  return { id: challenge.id, expiresAt: challenge.expiresAt, destinationHint: challenge.destinationHint, demoCode: process.env.NODE_ENV === "production" ? undefined : code };
+  return { id: challenge.id, expiresAt: challenge.expiresAt, destinationHint: challenge.destinationHint, deliveryChannel, demoCode: process.env.NODE_ENV === "production" ? undefined : code };
 }
 
 export async function confirmOtpChallenge(input: { id: string; brokerId: string; clientId: string; code: string }) {

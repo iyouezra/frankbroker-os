@@ -472,6 +472,9 @@
 .dialogEyebrow { display: block; margin-bottom: 6px; color: var(--investor-accent); font-size: 9px; font-weight: 800; letter-spacing: .9px; }
 .otpDialog h2, .outcomeDialog h2 { margin: 0; }
 .otpDialog > p, .outcomeDialog > p { margin: 9px 0 15px; }
+.deliveryChoice { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 4px; margin-bottom: 13px; border-radius: 10px; background: var(--investor-ink-50); }
+.deliveryChoice button { padding: 8px 9px; border: 0; border-radius: 7px; background: transparent; color: var(--investor-ink-500); cursor: pointer; font-size: 10px; font-weight: 750; }
+.deliveryChoice button[aria-pressed="true"] { background: white; color: var(--investor-accent); box-shadow: 0 2px 8px rgba(15, 59, 64, .08); }
 .otpField { display: block; margin: 6px 0 9px; }
 .otpField > span { display: block; margin-bottom: 6px; color: var(--investor-ink-600); font-size: 10px; font-weight: 750; }
 .otpField input { width: 100%; height: 54px; border: 1px solid var(--investor-ink-200); border-radius: 14px; background: var(--investor-ink-50); color: var(--investor-ink-900); font-family: var(--font-mono); font-size: 24px; font-weight: 750; letter-spacing: 9px; text-align: center; }

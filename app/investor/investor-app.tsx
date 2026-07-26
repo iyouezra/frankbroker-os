@@ -149,7 +149,7 @@ export default function InvestorApp() {
       })()
       : { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) };
     const response = await fetch("/api/investor", init);
-    const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; expiresAt?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; kycStatus: string } };
+    const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; deliveryChannel?: "sms" | "email"; expiresAt?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; kycStatus: string } };
     if (!response.ok) throw new Error(data.error ?? "Unable to update the investor account.");
     return data;
   };
@@ -230,11 +230,12 @@ export default function InvestorApp() {
     let stage: "authorization" | "submission" = "authorization";
     try {
       const submissionReference = crypto.randomUUID();
-      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference });
+      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel: "sms" });
       if (!challenge.id) throw new Error("An authorization code could not be requested.");
       pendingOtpOrder.current = { order, submissionReference };
       setOrderOtp({
         id: challenge.id,
+        deliveryChannel: challenge.deliveryChannel === "email" ? "email" : "sms",
         destinationHint: challenge.destinationHint ?? "your registered mobile",
         expiresAt: challenge.expiresAt,
         demoCode: challenge.demoCode,
@@ -274,16 +275,17 @@ export default function InvestorApp() {
     }
   };
 
-  const resendInvestorOrderOtp = async () => {
+  const resendInvestorOrderOtp = async (deliveryChannel = orderOtp?.deliveryChannel ?? "sms") => {
     if (!orderOtp || !pendingOtpOrder.current) return;
     setOrderOtp((current) => current ? { ...current, busy: true, error: "" } : current);
     try {
       const { order, submissionReference } = pendingOtpOrder.current;
-      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference });
+      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel });
       if (!challenge.id) throw new Error("A new code could not be requested.");
       setOrderOtp({
         id: challenge.id,
-        destinationHint: challenge.destinationHint ?? "your registered mobile",
+        deliveryChannel: challenge.deliveryChannel === "email" ? "email" : "sms",
+        destinationHint: challenge.destinationHint ?? (deliveryChannel === "email" ? "your registered email" : "your registered mobile"),
         expiresAt: challenge.expiresAt,
         demoCode: challenge.demoCode,
         busy: false,
@@ -465,7 +467,7 @@ export default function InvestorApp() {
         {cashOpen && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} linkedBanks={bootstrap?.linkedBanks ?? fallbackLinkedBanks} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
         {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
         {newRequestOpen && <NewRequestSheet busy={supportBusy} onClose={() => setNewRequestOpen(false)} onSubmit={createSupportRequest} />}
-        {orderOtp && <InvestorOrderOtpDialog key={orderOtp.id} challenge={orderOtp} onVerify={(code) => void verifyInvestorOrderOtp(code)} onResend={() => void resendInvestorOrderOtp()} onCancel={cancelInvestorOrderOtp} />}
+        {orderOtp && <InvestorOrderOtpDialog key={orderOtp.id} challenge={orderOtp} onVerify={(code) => void verifyInvestorOrderOtp(code)} onResend={() => void resendInvestorOrderOtp()} onDeliveryChange={(channel) => { if (channel !== orderOtp.deliveryChannel) void resendInvestorOrderOtp(channel); }} onCancel={cancelInvestorOrderOtp} />}
         {orderOutcome && <InvestorOrderOutcomeDialog outcome={orderOutcome} onClose={() => setOrderOutcome(null)} onViewOrders={() => { setOrderOutcome(null); setStock(null); setBond(null); setTab("profile"); }} />}
         {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}
       </div>

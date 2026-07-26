@@ -7,6 +7,7 @@ import { Button, Icon } from "../shared/investor-foundation";
 
 export type InvestorOtpChallenge = {
   id: string;
+  deliveryChannel: "sms" | "email";
   destinationHint: string;
   expiresAt?: string;
   demoCode?: string;
@@ -14,10 +15,11 @@ export type InvestorOtpChallenge = {
   error: string;
 };
 
-export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onCancel }: {
+export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onDeliveryChange, onCancel }: {
   challenge: InvestorOtpChallenge;
   onVerify: (code: string) => void;
   onResend: () => void;
+  onDeliveryChange: (channel: "sms" | "email") => void;
   onCancel: () => void;
 }) {
   const [code, setCode] = useState("");
@@ -29,14 +31,18 @@ export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onCancel
       <div className={styles.dialogIcon} data-tone="secure"><Icon name="shield" size={22} /></div>
       <span className={styles.dialogEyebrow}>SECURE ORDER AUTHORIZATION</span>
       <h2 id="order-otp-title">Enter your verification code</h2>
-      <p>We sent a six-digit code to <b>{challenge.destinationHint}</b>. It authorizes only the order you just reviewed.</p>
+      <p>We sent a six-digit code by {challenge.deliveryChannel === "email" ? "email" : "text message"} to <b>{challenge.destinationHint}</b>. It authorizes only the order you just reviewed.</p>
+      <div className={styles.deliveryChoice} aria-label="Verification delivery method">
+        <button type="button" aria-pressed={challenge.deliveryChannel === "sms"} disabled={challenge.busy} onClick={() => onDeliveryChange("sms")}>Text message</button>
+        <button type="button" aria-pressed={challenge.deliveryChannel === "email"} disabled={challenge.busy} onClick={() => onDeliveryChange("email")}>Email</button>
+      </div>
       <label className={styles.otpField}>
         <span>Verification code</span>
         <input autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} aria-invalid={Boolean(challenge.error)} />
         <small>{expiry ? `Code expires at ${expiry}.` : "The code expires shortly."}{challenge.demoCode ? ` Demo code: ${challenge.demoCode}` : ""}</small>
       </label>
       {challenge.error && <div className={styles.otpError} role="alert"><b>Code not accepted</b><span>{challenge.error}</span></div>}
-      <button className={styles.resendButton} disabled={challenge.busy} onClick={onResend}>Send a new code</button>
+      <button className={styles.resendButton} disabled={challenge.busy} onClick={onResend}>Send a new code by {challenge.deliveryChannel === "email" ? "email" : "text"}</button>
       <div className={styles.dialogActions}><Button variant="secondary" disabled={challenge.busy} onClick={onCancel}>Cancel</Button><Button disabled={challenge.busy || code.length !== 6} onClick={() => onVerify(code)}>{challenge.busy ? "Verifying…" : "Verify & submit"}</Button></div>
       <p className={styles.otpSafety}>Frank will never ask you to share this code outside this secure order confirmation.</p>
     </section>

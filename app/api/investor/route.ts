@@ -5,7 +5,7 @@ import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
-import { confirmOtpChallenge, createOtpChallenge, orderPayloadHash } from "../../../lib/verification-service";
+import { confirmOtpChallenge, createOtpChallenge, OTP_DELIVERY_CHANNELS, otpDestinationHint, orderPayloadHash, type OtpDeliveryChannel } from "../../../lib/verification-service";
 import { sortInvestorActivity, type InvestorActivity } from "../../../lib/investor-activity";
 import {
   createInvestorThread,
@@ -264,7 +264,11 @@ export async function POST(request: Request) {
       ]);
       const account = client?.accounts[0];
       if (!client || !account || !instrument) return Response.json({ error: "Investor account or instrument not found." }, { status: 404 });
-      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", destinationHint: `mobile ending ${client.phone?.replace(/\D/g, "").slice(-4) ?? "unknown"}`, payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
+      const deliveryChannel = String(payload.deliveryChannel ?? "sms") as OtpDeliveryChannel;
+      if (!OTP_DELIVERY_CHANNELS.includes(deliveryChannel)) return Response.json({ error: "Choose SMS or email for the verification code." }, { status: 400 });
+      const destination = deliveryChannel === "email" ? client.email : client.phone;
+      if (!destination) return Response.json({ error: `No registered ${deliveryChannel === "email" ? "email address" : "mobile number"} is available for this account.` }, { status: 409 });
+      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", deliveryChannel, destinationHint: otpDestinationHint(deliveryChannel, destination), payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
       return Response.json(challenge, { status: 201 });
     }
 
