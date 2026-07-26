@@ -57,6 +57,7 @@ test("development provider supports only declared chart ranges and labels data a
   const provider = new DevelopmentMockMarketDataProvider();
   const summary = await provider.getMarketSummary();
   assert.equal(summary.feedStatus, "development_mock");
+  assert.equal(summary.source, "FrankBroker simulated ESX demo feed");
   assert.equal(provider.mode, "development_mock");
   for (const range of MARKET_RANGES) assert.ok((await provider.getInstrumentHistory("ins_tele", range)).length > 1);
 });
@@ -87,6 +88,7 @@ test("market endpoints enforce tenant entitlement, roles, supported ranges, and 
   assert.match(route, /!permitted\.includes\(instrumentId\)/);
   assert.match(route, /MARKET_RANGES\.includes/);
   assert.match(provider, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(provider, /process\.env\.MARKET_DATA_PROVIDER === "demo"/);
   assert.match(provider, /UnavailableMarketDataProvider/);
   assert.match(orderRoute, /eligibleForMarket/);
   assert.match(orderRoute, /remainingQuantity: \{ gt: 0 \}/);

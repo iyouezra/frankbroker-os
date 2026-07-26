@@ -1,0 +1,7 @@
+.git
+.next
+node_modules
+app/generated
+tests
+coverage
+*.tsbuildinfo

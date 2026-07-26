@@ -40,12 +40,14 @@ export function MarketWatchPage({ role, orders, onOpenOrder, onViewOrders }: {
   const effectiveSelectedId = data?.instruments.some((item) => item.id === selectedId) ? selectedId : data?.instruments[0]?.id ?? "";
   const selected = data?.instruments.find((item) => item.id === effectiveSelectedId) ?? null;
   const types = [...new Set((data?.instruments ?? []).map((item) => item.instrumentType))];
+  const isDemoFeed = data?.providerMode === "development_mock";
 
   if (loading && !data) return <><SectionHeader eyebrow="ESX MARKET DATA" title="Market Watch" copy="Loading permitted instruments and current market state." /><div className="market-loading"><span /><span /><span /></div></>;
   if (error && !data) return <><SectionHeader eyebrow="ESX MARKET DATA" title="Market Watch" copy="Live market visibility for broker operations." /><div className="panel market-unavailable"><b>Market data unavailable</b><p>{error}</p><button className="btn secondary" onClick={retry}>Retry</button></div></>;
 
   return <>
-    <SectionHeader eyebrow="ESX MARKET DATA" title="Market Watch" copy="Live quote context connected to existing client orders. No orders are created from this page." action={refreshing ? <span className="market-refreshing">Refreshing…</span> : undefined} />
+    <SectionHeader eyebrow={isDemoFeed ? "SIMULATED ESX MARKET DATA" : "ESX MARKET DATA"} title="Market Watch" copy={isDemoFeed ? "Explore a realistic market session and connect quotes to existing client orders." : "Live quote context connected to existing client orders. No orders are created from this page."} action={refreshing ? <span className="market-refreshing">Refreshing…</span> : undefined} />
+    {isDemoFeed && <div className="market-demo-notice"><b>DEMO MARKET FEED</b><span>Prices, activity and order-book depth are simulated for the platform demonstration. They are not live ESX data and must not be used for trading decisions.</span></div>}
     {data && <MarketStatus summary={data.summary} providerMode={data.providerMode} staleAfterMs={data.staleAfterMs} />}
     {error && <div className="market-warning"><b>Refresh failed.</b> Last successful market data remains visible. {error}</div>}
     {data?.instruments.length === 0 ? <div className="panel"><EmptyState title="No permitted instruments" copy="This tenant has no enabled ESX instruments or the provider returned none." /></div> :
@@ -78,7 +80,7 @@ function MarketStatus({ summary, providerMode, staleAfterMs }: { summary: NonNul
     <div><small>Turnover</small><b>{value(summary.totalTurnover, true)}</b></div>
     <div><small>Volume / trades</small><b>{value(summary.totalVolume)} / {value(summary.trades)}</b></div>
     <div><small>Advance / decline / unchanged</small><b>{value(summary.advancing)} / {value(summary.declining)} / {value(summary.unchanged)}</b></div>
-    <div className="market-feed"><small>FEED STATUS</small><b>{stale ? "Stale" : marketLabel(summary.feedStatus)}</b><span>{providerMode === "development_mock" ? "Development data · not live" : summary.updatedAt ? `Updated ${new Date(summary.updatedAt).toLocaleString("en-GB")}` : "No successful update"}</span></div>
+    <div className="market-feed"><small>FEED STATUS</small><b>{providerMode === "development_mock" ? "Demo simulation" : stale ? "Stale" : marketLabel(summary.feedStatus)}</b><span>{providerMode === "development_mock" ? "Simulated data · not live" : summary.updatedAt ? `Updated ${new Date(summary.updatedAt).toLocaleString("en-GB")}` : "No successful update"}</span></div>
   </section>;
 }
 
@@ -112,7 +114,7 @@ function InstrumentDetail({ instrument, role, staleAfterMs }: { instrument: Mark
   const price = (value: number | null) => value === null ? "Unavailable" : `${fmt.format(value)} ${instrument.currency}`;
   return <section className="panel instrument-detail">
     <div className="instrument-quote-head"><div><span className="eyebrow">{instrument.instrumentType} · {instrument.symbol}</span><h2>{instrument.name}</h2><p>{instrument.issuer}</p></div><div><strong>{price(instrument.lastPrice)}</strong><span className={(instrument.change ?? 0) > 0 ? "market-up" : (instrument.change ?? 0) < 0 ? "market-down" : ""}>{instrument.change === null ? "Change unavailable" : `${instrument.change > 0 ? "▲ +" : instrument.change < 0 ? "▼ " : "— "}${fmt.format(instrument.change)} (${instrument.changePercent?.toFixed(2) ?? "—"}%)`}</span></div></div>
-    <div className="quote-state-line"><span className={`market-badge ${instrument.status}`}>{marketLabel(instrument.status)}</span><span className={stale ? "stale" : ""}>{stale ? "Stale quote" : marketLabel(instrument.feedStatus)}</span><span>{instrument.updatedAt ? `As of ${new Date(instrument.updatedAt).toLocaleString("en-GB")}` : "Update unavailable"}</span></div>
+    <div className="quote-state-line"><span className={`market-badge ${instrument.status}`}>{marketLabel(instrument.status)}</span><span className={stale ? "stale" : ""}>{instrument.feedStatus === "development_mock" ? "Demo simulation" : stale ? "Stale quote" : marketLabel(instrument.feedStatus)}</span><span>{instrument.updatedAt ? `As of ${new Date(instrument.updatedAt).toLocaleString("en-GB")}` : "Update unavailable"}</span></div>
     <dl className="market-detail-grid">
       {[["Previous close", price(instrument.previousClose)], ["Open", price(instrument.open)], ["Session high", price(instrument.high)], ["Session low", price(instrument.low)], ["Best bid", `${price(instrument.bestBid)}${instrument.bestBidQuantity !== null ? ` × ${fmt.format(instrument.bestBidQuantity)}` : ""}`], ["Best offer", `${price(instrument.bestOffer)}${instrument.bestOfferQuantity !== null ? ` × ${fmt.format(instrument.bestOfferQuantity)}` : ""}`], ["Volume", instrument.volume === null ? "Unavailable" : fmt.format(instrument.volume)], ["Turnover", price(instrument.turnover)], ["Trades", instrument.trades === null ? "Unavailable" : fmt.format(instrument.trades)], ["Last trade", instrument.lastTradeAt ? new Date(instrument.lastTradeAt).toLocaleTimeString("en-GB") : "Unavailable"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
     </dl>

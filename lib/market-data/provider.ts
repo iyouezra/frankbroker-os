@@ -28,6 +28,7 @@ class EsxApiProvider implements MarketDataProvider {
 }
 
 export function getMarketDataProvider(): MarketDataProvider {
+  if (process.env.MARKET_DATA_PROVIDER === "demo") return new DevelopmentMockMarketDataProvider();
   if (process.env.ESX_MARKET_DATA_URL) return new EsxApiProvider(process.env.ESX_MARKET_DATA_URL, process.env.ESX_MARKET_DATA_TOKEN);
   if (process.env.NODE_ENV !== "production" && process.env.MARKET_DATA_PROVIDER !== "unavailable") return new DevelopmentMockMarketDataProvider();
   return new UnavailableMarketDataProvider();

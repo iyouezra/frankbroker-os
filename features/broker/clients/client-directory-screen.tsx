@@ -211,6 +211,9 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     if (order) onOpenOrder(order);
   };
   const canAdjust = hasPermission(role, "adjust");
+  const canApproveClient = hasPermission(role, "approve");
+  const canRejectClient = hasPermission(role, "reject");
+  const pendingOnboardingDecision = model.client.clientStatus === "pending_approval";
   const act = async (action: "approve_client" | "reject_client" | "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note", requestId?: string) => {
     if (action === "approve_client") {
       const outstandingDocuments = (model.documents.expected ?? []).filter((type) => !model.documents.kyc.some((document) => document.type === type));
@@ -337,7 +340,14 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
       <div className="client-360-identity"><span>{model.client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><small>{displayLabel(model.client.type)} · {model.client.code}</small><h2>{model.client.name}</h2><p>{model.client.phone ?? "Phone not recorded"} · {model.client.email ?? "Email not recorded"}</p></div></div>
       <div className="client-360-statuses"><span className={`status ${model.readiness.canTrade ? "status-success" : "status-danger"}`}><i />{model.readiness.canTrade ? "Trade ready" : "Not trade ready"}</span><span className={`status ${model.client.kycStatus === "approved" ? "status-success" : "status-warning"}`}><i />KYC {displayLabel(model.client.kycStatus)}</span><span className={`status ${model.client.accountStatus === "active" ? "status-success" : "status-warning"}`}><i />{displayLabel(model.client.accountStatus)}</span></div>
       <div className="client-360-meta"><span><small>Account</small><b>{selected.accountNumber}</b></span><span><small>CSD reference</small><b>{model.client.csdReference ?? "Not recorded"}</b></span><span><small>Broker / branch</small><b>{model.client.broker}{model.client.branch ? ` · ${model.client.branch}` : ""}</b></span><span><small>Opened</small><b>{new Date(model.client.openedAt).toLocaleDateString("en-GB")}</b></span><span><small>Last activity</small><b>{model.client.lastActivityAt ? new Date(model.client.lastActivityAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "No activity"}</b></span></div>
-      <div className="client-360-hero-actions">{model.client.clientStatus === "pending_approval" ? <>{hasPermission(role, "reject") && <button className="btn danger small" disabled={Boolean(busy)} onClick={() => void act("reject_client")}>Reject onboarding</button>}{hasPermission(role, "approve") && <button className="btn primary small" disabled={Boolean(busy)} onClick={() => void act("approve_client")}>{busy === "approve_client" ? "Approving…" : "Approve client"}</button>}</> : canAdjust && (model.restrictions.restricted ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore")}>Restore account</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => void act("restrict")}>Restrict account</button>)}</div>
+      {pendingOnboardingDecision ? <div className="client-360-review-bar">
+        <div><small>ONBOARDING DECISION · FOUR-EYES CONTROL</small><b>Final compliance review required</b><span>Review KYC, documents and linked-bank evidence before activating this client and trading account.</span></div>
+        <div className="client-360-review-buttons">
+          {canRejectClient && <button className="btn danger" disabled={Boolean(busy)} onClick={() => void act("reject_client")}>{busy === "reject_client" ? "Rejecting…" : "Reject onboarding"}</button>}
+          {canApproveClient && <button className="btn primary" disabled={Boolean(busy)} onClick={() => void act("approve_client")}>{busy === "approve_client" ? "Approving…" : "Approve client"}</button>}
+          {!canApproveClient && !canRejectClient && <span>Your role can review this record but cannot make the onboarding decision.</span>}
+        </div>
+      </div> : canAdjust && <div className="client-360-secondary-action">{model.restrictions.restricted ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore")}>Restore account</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => void act("restrict")}>Restrict account</button>}</div>}
     </section>
     <nav className="client-360-tabs" aria-label="Client 360 sections">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}{item.count !== undefined && <span>{item.count}</span>}</button>)}</nav>
     {message && <p className="control-message client-360-message">{message}</p>}

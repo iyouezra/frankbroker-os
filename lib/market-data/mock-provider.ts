@@ -38,7 +38,7 @@ export class DevelopmentMockMarketDataProvider implements MarketDataProvider {
       advancing: rows.filter((row) => (row.change ?? 0) > 0).length,
       declining: rows.filter((row) => (row.change ?? 0) < 0).length,
       unchanged: rows.filter((row) => row.change === 0).length,
-      updatedAt: timestamp, lastSuccessfulUpdate: timestamp, feedStatus: "development_mock", source: "FrankBroker development mock",
+      updatedAt: timestamp, lastSuccessfulUpdate: timestamp, feedStatus: "development_mock", source: "FrankBroker simulated ESX demo feed",
     };
   }
   async getInstruments() { return instruments(); }
