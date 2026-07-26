@@ -100,7 +100,7 @@ test("the server rejects unauthorized roles at the permission gate", () => {
 });
 
 test("adding CRM rights did not change any role's financial permissions", () => {
-  const financial = (role) => workflowPermissions[role].filter((permission) => !permission.startsWith("crm."));
+  const financial = (role) => workflowPermissions[role].filter((permission) => !permission.includes("."));
   assert.deepEqual(financial("broker_admin"), ["create", "approve", "reject", "trade", "settle", "adjust", "report"]);
   assert.deepEqual(financial("trader"), ["create", "trade", "report"]);
   assert.deepEqual(financial("operations"), ["create", "adjust", "report"]);

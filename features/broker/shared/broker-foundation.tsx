@@ -5,7 +5,7 @@ import { demoClients, demoInstruments, initialOrders, type BrokerClient, type De
 import { hasPermission, type OrderStatus, type Role } from "../../../lib/frank";
 import { orderResponsibility } from "../../../lib/order-log";
 
-export type View = "dashboard" | "performance" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "users" | "settings";
+export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "users" | "settings";
 export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
 export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
@@ -355,6 +355,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "crm_cases", label: "Complaints", icon: "complaints" },
   ] },
   { label: "Trading", items: [
+    { id: "market", label: "Market Watch", icon: "performance" },
     { id: "orders", label: "Order log", icon: "orders" },
     { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
     { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations"] },

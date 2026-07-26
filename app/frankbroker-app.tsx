@@ -67,6 +67,7 @@ import { CrmInboxPage } from "../features/broker/crm/crm-inbox-screen";
 import { MyTasksPage } from "../features/broker/crm/my-tasks-screen";
 import { ComplaintsPage } from "../features/broker/crm/complaints-screen";
 import { NewThreadForm } from "../features/broker/crm/thread-composer";
+import { MarketWatchPage, type OrderFocus } from "../features/broker/market/market-watch-screen";
 
 export default function FrankBrokerApp() {
   const [view, setView] = useState<View>("dashboard");
@@ -97,6 +98,7 @@ export default function FrankBrokerApp() {
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
+  const [orderFocus, setOrderFocus] = useState<OrderFocus | null>(null);
   // Set when arriving at Clients from the queue so the directory opens pre-filtered.
   const [clientsFocus, setClientsFocus] = useState<{ status: string } | null>(null);
   const [crmFocus, setCrmFocus] = useState<CrmFocus>(null);
@@ -760,7 +762,8 @@ export default function FrankBrokerApp() {
         <main>
           {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} queue={visibleQueue} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
-          {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} onOpen={openDetail} onNewOrder={openNewOrder} />}
+          {view === "market" && <MarketWatchPage role={role} orders={orders} onOpenOrder={openDetail} onViewOrders={(focus) => { setOrderFocus(focus); setQuery(""); setView("orders"); setDrawer(null); }} />}
+          {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} focus={orderFocus} onClearFocus={() => setOrderFocus(null)} onOpen={openDetail} onNewOrder={openNewOrder} />}
           {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} focus={clientsFocus} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
           {view === "crm" && <CrmInboxPage key={crmFocus?.threadId ?? crmFocus?.clientId ?? "inbox"} role={role} focus={crmFocus} clients={clients} onNotify={notify} onNewThread={openNewThread} onOpenRelated={openRelatedRecord} />}
           {view === "crm_tasks" && <MyTasksPage role={role} onNotify={notify} onOpenClient={(clientId) => { setSelectedClientId(clientId); setView("clients"); }} />}
@@ -774,7 +777,7 @@ export default function FrankBrokerApp() {
           {view === "settings" && <SettingsPage />}
         </main>
 
-        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.filter((item) => navVisible(item, role)).slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
+        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.filter((item) => navVisible(item, role)).filter((item, index) => index < 5 || item.id === "market").map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
       </div>
 
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
@@ -784,7 +787,7 @@ export default function FrankBrokerApp() {
           {drawer === "client" && <NewClientForm value={newClient} setValue={setNewClient} busy={busyAction === "create_client"} onCancel={() => setDrawer(null)} onSubmit={submitClient} />}
           {drawer === "crm_thread" && <NewThreadForm value={newThread} setValue={setNewThread} clients={clients} busy={busyAction === "crm_thread"} onCancel={() => setDrawer(null)} onSubmit={submitThread} />}
           {drawer === "detail" && <OrderDetail order={selected} role={role} busy={busyAction} controls={controls} manualTradeCapture={features.manualTradeCapture} onApprove={() => actionOrder("approve")} onReject={() => actionOrder("reject")} onCancel={() => actionOrder("cancel")} onFail={() => actionOrder("fail")} onTrade={() => openTrade(selected)} onSettle={() => actionOrder("settle")} onContract={() => setDrawer("contract")} />}
-          {drawer === "trade" && <TradeForm order={selected} value={tradeForm} setValue={setTradeForm} controls={controls} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
+          {drawer === "trade" && <TradeForm order={selected} role={role} value={tradeForm} setValue={setTradeForm} controls={controls} busy={busyAction === "execute"} onCancel={() => setDrawer(null)} onSubmit={captureTrade} />}
           {drawer === "contract" && <ContractNote order={selected} instruments={instruments} tenantInfo={tenantInfo} settlementCycle={controls.settlementCycle} busy={busyAction === "contract_note"} onPrint={printContractNote} />}
         </aside>
       </div>}

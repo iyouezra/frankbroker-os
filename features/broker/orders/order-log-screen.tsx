@@ -5,10 +5,11 @@ import type { DemoOrder, OrderLogResponse } from "../../../lib/demo-data";
 import type { Role } from "../../../lib/frank";
 import { ACTIVE_ORDER_STATUSES, waitingTime } from "../../../lib/order-log";
 import { BROKER_TENANT_ID, EmptyState, SectionHeader, StatusBadge, displayLabel, etb, fmt, hydrateOrders, normalizedOrderType } from "../shared/broker-foundation";
+import type { OrderFocus } from "../market/market-watch-screen";
 
-export function OrdersPage({ orders, query, role, refreshKey, onOpen, onNewOrder }: { orders: DemoOrder[]; query: string; role: Role; refreshKey: number; onOpen: (order: DemoOrder) => void; onNewOrder: () => void }) {
-  const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions">("all");
-  const [sideFilter, setSideFilter] = useState<"all" | "buy" | "sell">("all");
+export function OrdersPage({ orders, query, role, refreshKey, focus, onClearFocus, onOpen, onNewOrder }: { orders: DemoOrder[]; query: string; role: Role; refreshKey: number; focus?: OrderFocus | null; onClearFocus?: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void }) {
+  const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions" | "open" | "history">(focus?.status ?? "all");
+  const [sideFilter, setSideFilter] = useState<"all" | "buy" | "sell">(focus?.side ?? "all");
   const [riskFilter, setRiskFilter] = useState<"all" | "flagged">("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -24,6 +25,8 @@ export function OrdersPage({ orders, query, role, refreshKey, onOpen, onNewOrder
     sources: [...new Set(orders.map((order) => order.source.toLowerCase().replaceAll(" ", "_")))],
   });
   const statusMatches = (order: DemoOrder) => statusFilter === "all"
+    || (statusFilter === "open" && ["draft", "submitted", "validation_failed", "pending_broker_review", "approved", "partially_filled"].includes(order.status))
+    || (statusFilter === "history" && ["filled", "cancelled", "settlement_pending", "settled", "rejected", "failed"].includes(order.status))
     || (statusFilter === "review" && order.status === "pending_broker_review")
     || (statusFilter === "approved" && order.status === "approved")
     || (statusFilter === "executed" && ["partially_filled", "filled", "settlement_pending", "settled"].includes(order.status))
@@ -39,6 +42,7 @@ export function OrdersPage({ orders, query, role, refreshKey, onOpen, onNewOrder
     source: sourceFilter,
     period: periodFilter,
     sort,
+    ...(focus?.instrumentId ? { instrumentId: focus.instrumentId } : {}),
   });
   const fallbackFilteredOrders = () => {
     const needle = query.trim().toLowerCase();
@@ -51,6 +55,7 @@ export function OrdersPage({ orders, query, role, refreshKey, onOpen, onNewOrder
         && (riskFilter === "all" || order.riskFlag !== "none")
         && (orderTypeFilter === "all" || normalizedOrderType(order.orderType) === normalizedOrderType(orderTypeFilter))
         && (sourceFilter === "all" || order.source.toLowerCase().replaceAll(" ", "_") === sourceFilter)
+        && (!focus?.instrumentId || order.instrumentId === focus.instrumentId)
         && (periodFilter === "all" || (periodFilter === "today" ? order.createdAt.slice(0, 10) === today : new Date(order.createdAt).getTime() >= cutoff))
         && (!needle || [order.id, order.client, order.clientCode, order.accountNumber, order.symbol, order.status, order.submissionReference, ...(order.trades?.map((trade) => trade.captureReference) ?? [])].some((value) => String(value ?? "").toLowerCase().includes(needle))))
       .sort((left, right) => sort === "value" ? right.estimatedNet - left.estimatedNet : sort === "oldest" ? left.createdAt.localeCompare(right.createdAt) : sort === "updated" ? (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt) : right.createdAt.localeCompare(left.createdAt));
@@ -78,7 +83,7 @@ export function OrdersPage({ orders, query, role, refreshKey, onOpen, onNewOrder
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, statusFilter, sideFilter, riskFilter, orderTypeFilter, sourceFilter, periodFilter, sort, page, role, refreshKey, orders]);
+  }, [query, statusFilter, sideFilter, riskFilter, orderTypeFilter, sourceFilter, periodFilter, sort, page, role, refreshKey, orders, focus]);
 
   const chooseStatus = (value: typeof statusFilter) => { setStatusFilter(value); setPage(1); };
   const exportFiltered = async () => {
@@ -103,6 +108,7 @@ export function OrdersPage({ orders, query, role, refreshKey, onOpen, onNewOrder
   const count = (statuses: string[]) => statuses.reduce((total, status) => total + (facets.statuses[status] ?? 0), 0);
   return <>
     <SectionHeader eyebrow="ORDER MANAGEMENT" title="Order log" copy="See each instruction, what has happened, and what needs attention next." action={<><button className="btn secondary" onClick={() => void exportFiltered()}>Export filtered CSV</button><button className="btn primary" onClick={onNewOrder}>＋ New order</button></>} />
+    {focus && <div className="order-focus-banner"><span>Filtered from Market Watch: <b>{focus.symbol}</b> · {focus.side ? `${focus.side.toUpperCase()} · ` : ""}{focus.status === "open" ? "Open orders" : "Order history"}</span><button onClick={() => { setStatusFilter("all"); setSideFilter("all"); onClearFocus?.(); }}>Clear market filter</button></div>}
     <div className="filter-row">
       <button className={`filter ${statusFilter === "all" ? "active" : ""}`} onClick={() => chooseStatus("all")}>All orders <b>{Object.values(facets.statuses).reduce((total, value) => total + value, 0)}</b></button>
       <button className={`filter ${statusFilter === "review" ? "active" : ""}`} onClick={() => chooseStatus("review")}>Pending review <b>{count(["pending_broker_review"])}</b></button>

@@ -5,7 +5,7 @@ import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { Prisma } from "../../generated/prisma/client";
-import { csvCell, ORDER_STATUS_GROUPS, orderResponsibility } from "../../../lib/order-log";
+import { csvCell, MARKET_LINK_ELIGIBLE_STATUSES, ORDER_STATUS_GROUPS, orderResponsibility } from "../../../lib/order-log";
 
 export const runtime = "nodejs";
 
@@ -18,6 +18,8 @@ export async function GET(request: Request) {
     const query = url.searchParams.get("query")?.trim().slice(0, 120) ?? "";
     const status = url.searchParams.get("status") ?? "all";
     const side = url.searchParams.get("side") ?? "all";
+    const instrumentId = url.searchParams.get("instrumentId")?.trim().slice(0, 120) ?? "";
+    const eligibleForMarket = url.searchParams.get("eligibleForMarket") === "true";
     const risk = url.searchParams.get("risk") ?? "all";
     const orderType = url.searchParams.get("orderType")?.trim().slice(0, 40) ?? "all";
     const source = url.searchParams.get("source")?.trim().slice(0, 40) ?? "all";
@@ -29,6 +31,8 @@ export async function GET(request: Request) {
       brokerId: actor.brokerId,
       ...(requestedStatuses.length ? { status: { in: [...requestedStatuses] } } : {}),
       ...(["buy", "sell"].includes(side) ? { side } : {}),
+      ...(instrumentId ? { instrumentId } : {}),
+      ...(eligibleForMarket ? { status: { in: [...MARKET_LINK_ELIGIBLE_STATUSES] }, remainingQuantity: { gt: 0 } } : {}),
       ...(risk === "flagged" ? { riskFlag: { not: "none" } } : {}),
       ...(orderType !== "all" ? { orderType } : {}),
       ...(source !== "all" ? { source } : {}),
