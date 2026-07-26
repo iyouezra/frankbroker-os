@@ -46,7 +46,7 @@ export type MarketInstrument = {
   feedStatus: FeedState;
 };
 
-export type HistoryPoint = { timestamp: string; price: number | null };
+export type HistoryPoint = { timestamp: string; price: number | null; volume?: number | null };
 export type OrderBookLevel = { price: number; quantity: number };
 export type RecentTrade = { id: string; timestamp: string; price: number; quantity: number };
 

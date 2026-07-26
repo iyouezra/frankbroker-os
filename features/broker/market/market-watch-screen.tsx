@@ -52,18 +52,20 @@ export function MarketWatchPage({ role, orders, onOpenOrder, onViewOrders }: {
     {error && <div className="market-warning"><b>Refresh failed.</b> Last successful market data remains visible. {error}</div>}
     {data?.instruments.length === 0 ? <div className="panel"><EmptyState title="No permitted instruments" copy="This tenant has no enabled ESX instruments or the provider returned none." /></div> :
       <div className="market-layout">
-        <section className="panel market-watchlist">
-          <div className="market-controls">
-            <label className="market-search">Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Symbol or instrument" /></label>
-            <label>Type<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">All types</option>{types.map((type) => <option key={type}>{type}</option>)}</select></label>
-            <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{["open", "pre_open", "closed", "halted", "unavailable"].map((status) => <option key={status} value={status}>{marketLabel(status)}</option>)}</select></label>
-            <label>Sort<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="symbol">Symbol</option><option value="price">Last price</option><option value="change">Price change</option><option value="volume">Volume</option></select></label>
-          </div>
-          <InstrumentTable rows={filtered} selectedId={effectiveSelectedId} onSelect={(id) => { setSelectedId(id); setActionSide(null); }} />
-        </section>
+        <div className="market-primary-column">
+          <section className="panel market-watchlist">
+            <div className="market-controls">
+              <label className="market-search">Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Symbol or instrument" /></label>
+              <label>Type<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">All types</option>{types.map((type) => <option key={type}>{type}</option>)}</select></label>
+              <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{["open", "pre_open", "closed", "halted", "unavailable"].map((status) => <option key={status} value={status}>{marketLabel(status)}</option>)}</select></label>
+              <label>Sort<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="symbol">Symbol</option><option value="price">Last price</option><option value="change">Price change</option><option value="volume">Volume</option></select></label>
+            </div>
+            <InstrumentTable rows={filtered} selectedId={effectiveSelectedId} onSelect={(id) => { setSelectedId(id); setActionSide(null); }} />
+          </section>
+          {selected && <MarketPriceChart instrument={selected} role={role} />}
+        </div>
         {selected && <div className="market-detail-column">
           <InstrumentDetail instrument={selected} role={role} staleAfterMs={data?.staleAfterMs ?? 90_000} />
-          <MarketPriceChart instrument={selected} role={role} />
           <OrderActions instrument={selected} role={role} orders={orders} side={actionSide} setSide={setActionSide} onOpenOrder={onOpenOrder} onViewOrders={onViewOrders} />
         </div>}
       </div>}

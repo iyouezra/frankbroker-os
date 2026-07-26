@@ -52,6 +52,7 @@ export class DevelopmentMockMarketDataProvider implements MarketDataProvider {
     return Array.from({ length: count }, (_, index) => ({
       timestamp: new Date(now - (count - 1 - index) * interval).toISOString(),
       price: Number((quote.lastPrice! * (0.975 + index / count * .025 + Math.sin(index * 1.7) * .006)).toFixed(2)),
+      volume: Math.round((quote.volume ?? 1_000) / count * (.55 + ((index * 7) % 11) / 10)),
     }));
   }
   async getOrderBook(id: string): Promise<{ bids: OrderBookLevel[]; offers: OrderBookLevel[] }> {
