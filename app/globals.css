@@ -574,6 +574,43 @@ td b { display: block; color: var(--fx-text); font-size: 11.5px; } td small { di
 /* Selects wrapped in .brand-select already carry their own <i> caret, so they
    must beat the .form-section box rule: no inner border, fill or native arrow. */
 .brand-select select { border: 0; min-height: 0; padding: 0 18px 0 0; background: transparent; background-image: none; -webkit-appearance: none; appearance: none; }
+
+/* BrandSelect: a fully styled dropdown whose open menu we control (a native
+   <select> hands its option list to the OS, which CSS cannot reach). Used app
+   wide via the shared component; tokens keep it on-brand in light and dark. */
+.bselect { position: relative; display: block; width: 100%; }
+.bselect.bselect-inline, .bselect.crm-filter-select { width: auto; min-width: 148px; }
+.bselect.bselect-mini { width: auto; min-width: 62px; }
+.bselect-mini .bselect-trigger { min-height: 34px; padding: 0 9px; border-radius: 8px; font-size: 10.5px; }
+.bselect-investor .bselect-trigger { min-height: 48px; border-radius: 12px; background: #fff; border-color: var(--investor-ink-200, #d3e0e1); color: var(--investor-ink-900, #0b272c); font: 650 14px var(--font-body); padding: 0 13px; }
+.bselect-investor .bselect-trigger:hover:not(:disabled) { border-color: #b7cccd; }
+.bselect.bselect-bare { width: auto; }
+.bselect-bare .bselect-trigger { min-height: 0; padding: 2px 15px 2px 0; border: 0; background: transparent; font-size: 10.5px; font-weight: 600; }
+.bselect-bare .bselect-trigger:hover:not(:disabled) { border-color: transparent; }
+.su-role .bselect-trigger { color: #8fbabc; }
+.bselect-trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid var(--fx-line); border-radius: 11px; background: var(--fx-sunken); color: var(--fx-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; }
+.bselect-trigger:hover:not(:disabled) { border-color: #a6cac8; }
+.bselect-trigger:focus-visible { outline: 0; border-color: #78c8c3; box-shadow: 0 0 0 3px rgba(20,211,200,.16); }
+.bselect-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.bselect-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bselect-value.placeholder { color: var(--fx-text-3); }
+.bselect-caret { flex: 0 0 auto; width: 11px; height: 8px; background: var(--fx-chevron) center / contain no-repeat; transition: transform .15s ease; }
+.bselect-trigger[aria-expanded="true"] .bselect-caret { transform: rotate(180deg); }
+
+.bselect-pop { position: fixed; z-index: 90; margin: 0; padding: 5px; list-style: none; max-height: 244px; overflow-y: auto; border: 1px solid var(--fx-line); border-radius: 12px; background: var(--fx-card); box-shadow: 0 14px 40px rgba(4,39,43,.22); animation: bselect-in .13s ease-out; }
+.bselect-pop.drop-down { transform-origin: top; }
+.bselect-pop.drop-up { transform-origin: bottom; margin-bottom: 6px; }
+.bselect-pop.drop-down { margin-top: 6px; }
+@keyframes bselect-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+.bselect-option { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 8px; color: var(--fx-text); font-size: 12px; line-height: 1.3; cursor: pointer; }
+.bselect-option[data-active="true"]:not(.disabled) { background: var(--fx-sunken); }
+.bselect-option.selected { color: var(--fx-teal); font-weight: 700; }
+.bselect-option.disabled { color: var(--fx-text-3); cursor: not-allowed; }
+.bselect-check { flex: 0 0 auto; width: 13px; color: var(--fx-teal); font-size: 11px; font-weight: 850; }
+/* The popup is portaled to <body>, outside the themed shell, so give it the dark
+   token values directly when the app is in dark mode (broker + admin console). */
+:root[data-theme="dark"] .bselect-pop { --fx-card: #13292e; --fx-sunken: #193940; --fx-line: #26444a; --fx-text: #e6f0f0; --fx-text-3: #82999c; --fx-teal: #22b3b3; background: #13292e; border-color: #26444a; box-shadow: 0 16px 44px rgba(0,0,0,.5); }
+
 .client-directory-pagination button { border: 1px solid var(--line); border-radius: 8px; background: var(--fx-card); color: var(--fx-teal); padding: 7px 10px; cursor: pointer; font-size: 10px; font-weight: 750; }
 .client-directory-pagination button:disabled { opacity: .42; cursor: not-allowed; }
 .client-workspace-label { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; margin: 0 2px 8px; color: var(--muted); }

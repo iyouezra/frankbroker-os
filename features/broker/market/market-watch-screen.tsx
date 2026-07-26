@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DemoOrder, OrderLogResponse } from "../../../lib/demo-data";
 import { hasPermission, MARKET_PERMISSIONS, type Role } from "../../../lib/frank";
 import { isQuoteStale, marketLabel } from "../../../lib/market-data/format";
+import { BrandSelect } from "../../shared/brand-select";
 import type { MarketInstrument, OrderBookLevel, RecentTrade } from "../../../lib/market-data/types";
 import { isMarketLinkEligible } from "../../../lib/order-log";
 import { BROKER_TENANT_ID, EmptyState, SectionHeader, fmt, hydrateOrders } from "../shared/broker-foundation";
@@ -56,9 +57,9 @@ export function MarketWatchPage({ role, orders, onOpenOrder, onViewOrders }: {
           <section className="panel market-watchlist">
             <div className="market-controls">
               <label className="market-search">Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Symbol or instrument" /></label>
-              <label>Type<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">All types</option>{types.map((type) => <option key={type}>{type}</option>)}</select></label>
-              <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{["open", "pre_open", "closed", "halted", "unavailable"].map((status) => <option key={status} value={status}>{marketLabel(status)}</option>)}</select></label>
-              <label>Sort<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="symbol">Symbol</option><option value="price">Last price</option><option value="change">Price change</option><option value="volume">Volume</option></select></label>
+              <label>Type<BrandSelect className="bselect-inline" value={typeFilter} onChange={setTypeFilter} ariaLabel="Filter by type" options={[{ value: "all", label: "All types" }, ...types.map((type) => ({ value: type, label: type }))]} /></label>
+              <label>Status<BrandSelect className="bselect-inline" value={statusFilter} onChange={setStatusFilter} ariaLabel="Filter by status" options={[{ value: "all", label: "All statuses" }, ...["open", "pre_open", "closed", "halted", "unavailable"].map((status) => ({ value: status, label: marketLabel(status) }))]} /></label>
+              <label>Sort<BrandSelect className="bselect-inline" value={sort} onChange={(next) => setSort(next as typeof sort)} ariaLabel="Sort" options={[{ value: "symbol", label: "Symbol" }, { value: "price", label: "Last price" }, { value: "change", label: "Price change" }, { value: "volume", label: "Volume" }]} /></label>
             </div>
             <InstrumentTable rows={filtered} selectedId={effectiveSelectedId} onSelect={(id) => { setSelectedId(id); setActionSide(null); }} />
           </section>

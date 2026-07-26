@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { formatEtb } from "../../../lib/investor-data";
 import { getInvestorActivityStatus } from "../../../lib/investor-activity";
 import styles from "../../../app/investor/investor.module.css";
+import { BrandSelect } from "../../shared/brand-select";
 import {
   Button,
   linkedBankNumber,
@@ -100,7 +101,7 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
             {value > withdrawableCash && <small className={styles.fieldError}>Enter an amount within your available cash.</small>}
           </label>
           {approvedBanks.length > 0 ? <>
-            <label className={styles.formField}><span>Destination bank</span><div className={styles.selectField}><select value={selectedDestination?.id ?? ""} onChange={(event) => setDestinationBankId(event.target.value)}>{approvedBanks.map((account) => <option key={account.id} value={account.id}>{account.bankName}</option>)}</select><em>⌄</em></div></label>
+            <label className={styles.formField}><span>Destination bank</span><BrandSelect className="bselect-investor" value={selectedDestination?.id ?? ""} onChange={setDestinationBankId} ariaLabel="Destination bank" options={approvedBanks.map((account) => ({ value: account.id, label: account.bankName }))} /></label>
             <label className={`${styles.formField} ${styles.readOnlyField}`}><span>Account number</span><div><input value={selectedDestination ? linkedBankNumber(selectedDestination) : ""} readOnly /></div></label>
             <label className={`${styles.formField} ${styles.readOnlyField}`}><span>Account holder name</span><div><input value={selectedDestination?.accountHolderName ?? ""} readOnly /></div></label>
           </> : <div className={styles.cashNotice}><b>No approved bank account</b><span>Add a bank account under You. It will appear here after review and approval.</span></div>}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { DemoOrder, OrderLogResponse } from "../../../lib/demo-data";
 import type { Role } from "../../../lib/frank";
+import { BrandSelect } from "../../shared/brand-select";
 import { ACTIVE_ORDER_STATUSES, waitingTime } from "../../../lib/order-log";
 import { BROKER_TENANT_ID, EmptyState, SectionHeader, StatusBadge, displayLabel, etb, fmt, hydrateOrders, normalizedOrderType } from "../shared/broker-foundation";
 import type { OrderFocus } from "../market/market-watch-screen";
@@ -117,12 +118,12 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, onClearFocu
       <button className={`filter ${statusFilter === "exceptions" ? "active" : ""}`} onClick={() => chooseStatus("exceptions")}>Exceptions <b>{count(["validation_failed", "rejected", "cancelled", "failed"])}</b></button>
     </div>
     <div className="blotter-controls order-log-controls">
-      <label>Side<select value={sideFilter} onChange={(event) => { setSideFilter(event.target.value as typeof sideFilter); setPage(1); }}><option value="all">All sides</option><option value="buy">Buy</option><option value="sell">Sell</option></select></label>
-      <label>Order type<select value={orderTypeFilter} onChange={(event) => { setOrderTypeFilter(event.target.value); setPage(1); }}><option value="all">All types</option>{facets.orderTypes.map((type) => <option value={type} key={type}>{displayLabel(type)}</option>)}</select></label>
-      <label>Source<select value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setPage(1); }}><option value="all">All sources</option>{facets.sources.map((source) => <option value={source} key={source}>{displayLabel(source)}</option>)}</select></label>
-      <label>Period<select value={periodFilter} onChange={(event) => { setPeriodFilter(event.target.value as typeof periodFilter); setPage(1); }}><option value="all">All dates</option><option value="today">Today</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select></label>
-      <label>Risk<select value={riskFilter} onChange={(event) => { setRiskFilter(event.target.value as typeof riskFilter); setPage(1); }}><option value="all">All risk levels</option><option value="flagged">Flagged only</option></select></label>
-      <label>Sort<select value={sort} onChange={(event) => { setSort(event.target.value as typeof sort); setPage(1); }}><option value="newest">Newest first</option><option value="updated">Recently updated</option><option value="oldest">Oldest first</option><option value="value">Highest value</option></select></label>
+      <label>Side<BrandSelect className="bselect-inline" value={sideFilter} onChange={(next) => { setSideFilter(next as typeof sideFilter); setPage(1); }} ariaLabel="Filter by side" options={[{ value: "all", label: "All sides" }, { value: "buy", label: "Buy" }, { value: "sell", label: "Sell" }]} /></label>
+      <label>Order type<BrandSelect className="bselect-inline" value={orderTypeFilter} onChange={(next) => { setOrderTypeFilter(next); setPage(1); }} ariaLabel="Filter by order type" options={[{ value: "all", label: "All types" }, ...facets.orderTypes.map((type) => ({ value: type, label: displayLabel(type) }))]} /></label>
+      <label>Source<BrandSelect className="bselect-inline" value={sourceFilter} onChange={(next) => { setSourceFilter(next); setPage(1); }} ariaLabel="Filter by source" options={[{ value: "all", label: "All sources" }, ...facets.sources.map((source) => ({ value: source, label: displayLabel(source) }))]} /></label>
+      <label>Period<BrandSelect className="bselect-inline" value={periodFilter} onChange={(next) => { setPeriodFilter(next as typeof periodFilter); setPage(1); }} ariaLabel="Filter by period" options={[{ value: "all", label: "All dates" }, { value: "today", label: "Today" }, { value: "7d", label: "Last 7 days" }, { value: "30d", label: "Last 30 days" }]} /></label>
+      <label>Risk<BrandSelect className="bselect-inline" value={riskFilter} onChange={(next) => { setRiskFilter(next as typeof riskFilter); setPage(1); }} ariaLabel="Filter by risk" options={[{ value: "all", label: "All risk levels" }, { value: "flagged", label: "Flagged only" }]} /></label>
+      <label>Sort<BrandSelect className="bselect-inline" value={sort} onChange={(next) => { setSort(next as typeof sort); setPage(1); }} ariaLabel="Sort" options={[{ value: "newest", label: "Newest first" }, { value: "updated", label: "Recently updated" }, { value: "oldest", label: "Oldest first" }, { value: "value", label: "Highest value" }]} /></label>
       <span>{loading ? "Updating…" : `${pagination.total} matching orders`}</span>
     </div>
     <section className={`panel table-panel order-log-table${loading ? " loading" : ""}`}><OrderTable orders={rows} onOpen={onOpen} /></section>

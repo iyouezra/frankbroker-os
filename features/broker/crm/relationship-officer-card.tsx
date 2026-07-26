@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CRM_PERMISSIONS, hasPermission, type Role } from "../../../lib/frank";
 import { auditTime, initials, roleNames, type CrmAssignmentView } from "../shared/broker-foundation";
+import { BrandSelect } from "../../shared/brand-select";
 
 const officers = (Object.entries(roleNames) as [Role, string][])
   .filter(([role]) => hasPermission(role, CRM_PERMISSIONS.view) && role !== "super_admin" && role !== "management")
@@ -42,12 +43,9 @@ export function RelationshipOfficerCard({
 
       {canAssign && (
         <label className="crm-officer-assign">Assign to
-          <div className="brand-select">
-            <select value={current?.primaryOfficerId ?? ""} disabled={busy} onChange={(event) => onAssign(event.target.value || null)}>
-              <option value="">Unassigned</option>
-              {officers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name}</option>)}
-            </select><i>⌄</i>
-          </div>
+          <BrandSelect value={current?.primaryOfficerId ?? ""} disabled={busy} ariaLabel="Assign relationship officer"
+            onChange={(next) => onAssign(next || null)}
+            options={[{ value: "", label: "Unassigned" }, ...officers.map((officer) => ({ value: officer.id, label: officer.name }))]} />
         </label>
       )}
 

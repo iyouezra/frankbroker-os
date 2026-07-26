@@ -69,6 +69,7 @@ import { ComplaintsPage } from "../features/broker/crm/complaints-screen";
 import { NewThreadForm } from "../features/broker/crm/thread-composer";
 import { MarketWatchPage, type OrderFocus } from "../features/broker/market/market-watch-screen";
 import { BrokerOrderOutcomeDialog } from "../features/broker/orders/order-submission-feedback";
+import { BrandSelect } from "../features/shared/brand-select";
 import {
   failedOutcome,
   heldOutcome,
@@ -773,7 +774,7 @@ export default function FrankBrokerApp() {
             </div>;
           })}
         </nav>
-        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><select value={role} onChange={(event) => changeRole(event.target.value as Role)} aria-label="Active role">{Object.entries(roleLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select><i>⌄</i></div></div></div></div>
+        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={Object.entries(roleLabels).map(([id, label]) => ({ value: id, label }))} /></div></div></div></div>
       </aside>
 
       <div className="workspace">

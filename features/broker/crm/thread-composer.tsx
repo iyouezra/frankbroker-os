@@ -4,6 +4,7 @@ import { type FormEvent } from "react";
 import type { BrokerClient } from "../../../lib/demo-data";
 import { CATEGORY_LABELS, RELATED_TYPES, RELATED_TYPE_LABELS, THREAD_CATEGORIES, type RelatedType, type ThreadCategory } from "../../../lib/crm/categories";
 import type { NewThreadValue } from "../shared/broker-foundation";
+import { BrandSelect } from "../../shared/brand-select";
 
 export function NewThreadForm({
   value, setValue, clients, busy, onCancel, onSubmit,
@@ -26,27 +27,30 @@ export function NewThreadForm({
     </div>
     <div className="form-section">
       <label>Investor
-        <div className="brand-select">
-          <select value={value.clientId} onChange={(event) => set("clientId", event.target.value)} required>
-            <option value="">Select an investor…</option>
-            {clients.map((client) => <option key={client.id} value={client.id}>{client.code} · {client.name}</option>)}
-          </select><i>⌄</i>
-        </div>
+        <BrandSelect
+          value={value.clientId}
+          onChange={(next) => set("clientId", next)}
+          placeholder="Select an investor…"
+          ariaLabel="Investor"
+          options={clients.map((client) => ({ value: client.id, label: `${client.code} · ${client.name}` }))}
+        />
       </label>
       <div className="field-row">
         <label>Category
-          <div className="brand-select">
-            <select value={value.category} onChange={(event) => set("category", event.target.value)}>
-              {THREAD_CATEGORIES.map((category) => <option key={category} value={category}>{CATEGORY_LABELS[category as ThreadCategory]}</option>)}
-            </select><i>⌄</i>
-          </div>
+          <BrandSelect
+            value={value.category}
+            onChange={(next) => set("category", next)}
+            ariaLabel="Category"
+            options={THREAD_CATEGORIES.map((category) => ({ value: category, label: CATEGORY_LABELS[category as ThreadCategory] }))}
+          />
         </label>
         <label>Priority
-          <div className="brand-select">
-            <select value={value.priority} onChange={(event) => set("priority", event.target.value)}>
-              {["low", "normal", "high", "urgent"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-            </select><i>⌄</i>
-          </div>
+          <BrandSelect
+            value={value.priority}
+            onChange={(next) => set("priority", next)}
+            ariaLabel="Priority"
+            options={["low", "normal", "high", "urgent"].map((priority) => ({ value: priority, label: priority }))}
+          />
         </label>
       </div>
       <label>Subject
@@ -57,12 +61,12 @@ export function NewThreadForm({
       </label>
       <div className="field-row">
         <label>Related record (optional)
-          <div className="brand-select">
-            <select value={value.relatedType} onChange={(event) => set("relatedType", event.target.value)}>
-              <option value="">None</option>
-              {RELATED_TYPES.map((type) => <option key={type} value={type}>{RELATED_TYPE_LABELS[type as RelatedType]}</option>)}
-            </select><i>⌄</i>
-          </div>
+          <BrandSelect
+            value={value.relatedType}
+            onChange={(next) => set("relatedType", next)}
+            ariaLabel="Related record"
+            options={[{ value: "", label: "None" }, ...RELATED_TYPES.map((type) => ({ value: type, label: RELATED_TYPE_LABELS[type as RelatedType] }))]}
+          />
         </label>
         <label>Reference
           <input value={value.relatedId} onChange={(event) => set("relatedId", event.target.value)} placeholder="ORD-2026-1048" disabled={!value.relatedType} />

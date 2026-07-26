@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import styles from "../../../app/investor/investor.module.css";
+import { BrandSelect } from "../../shared/brand-select";
 import {
   Button,
   Card,
@@ -69,7 +70,7 @@ function LinkedBanksSheet({ accounts, accountHolderName, onClose, onAdd, onDelet
       </div>
       {!atLimit ? <div className={styles.linkBankForm}>
         <h3>Add a bank account</h3>
-        <label className={styles.formField}><span>Bank name</span><div className={styles.selectField}><select value={bankName} onChange={(event) => setBankName(event.target.value)}>{bankOptions.map((bank) => <option key={bank}>{bank}</option>)}</select><em>⌄</em></div></label>
+        <label className={styles.formField}><span>Bank name</span><BrandSelect className="bselect-investor" value={bankName} onChange={setBankName} ariaLabel="Bank name" options={bankOptions.map((bank) => ({ value: bank, label: bank }))} /></label>
         <label className={styles.formField}><span>Account number</span><div><input inputMode="numeric" value={accountNumber} onChange={(event) => setAccountNumber(event.target.value.replace(/\D/g, ""))} placeholder="Enter the full account number" /></div></label>
         <div className={styles.accountNameWarning}><b>Account holder name must match verified records</b><span>We will check the bank account against {accountHolderName}.</span></div>
         <div className={styles.cashNotice}><b>What happens next</b><span>Your broker reviews the account details. Once approved, the bank account will appear as a withdrawal option.</span></div>

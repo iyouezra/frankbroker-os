@@ -14,6 +14,7 @@ import {
   type CrmCaseView,
   type CrmCasesResponse,
 } from "../shared/broker-foundation";
+import { BrandSelect } from "../../shared/brand-select";
 
 /** A complaint is visually distinct from an ordinary enquiry: severity, target date, overdue flag. */
 export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings, onOpenThread }: {
@@ -65,12 +66,9 @@ export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings
           </label>
           <div className="crm-case-actions">
             <button className="btn secondary small" disabled={busy} onClick={() => onFindings(serviceCase, findings)}>Save findings</button>
-            <div className="brand-select">
-              <select value="" disabled={busy || !availableCaseStatuses(serviceCase.status).length} onChange={(event) => { if (event.target.value) onStatus(serviceCase, event.target.value); }} aria-label={`Update ${serviceCase.id}`}>
-                <option value="">Move to…</option>
-                {availableCaseStatuses(serviceCase.status).map((status) => <option key={status} value={status}>{CASE_STATUS_LABELS[status as CaseStatus]}</option>)}
-              </select><i>⌄</i>
-            </div>
+            <BrandSelect className="bselect-inline" value="" disabled={busy || !availableCaseStatuses(serviceCase.status).length} placeholder="Move to…" ariaLabel={`Update ${serviceCase.id}`}
+              onChange={(next) => { if (next) onStatus(serviceCase, next); }}
+              options={availableCaseStatuses(serviceCase.status).map((status) => ({ value: status, label: CASE_STATUS_LABELS[status as CaseStatus] }))} />
           </div>
         </div>
       ) : (

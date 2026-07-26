@@ -6,6 +6,7 @@ import { CATEGORY_LABELS, RELATED_TYPE_LABELS, type RelatedType, type ThreadCate
 import { THREAD_STATUS_LABELS, availableThreadStatuses, isThreadClosed, type ThreadStatus } from "../../../lib/crm/status";
 import { auditTime, type CrmAttachment, type CrmMessage, type CrmThreadDetail } from "../shared/broker-foundation";
 import { PriorityBadge } from "./thread-list";
+import { BrandSelect } from "../../shared/brand-select";
 
 const fileSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
@@ -101,27 +102,20 @@ export function ThreadDetail({
 
     <div className="crm-controls">
       <label>Owner
-        <div className="brand-select">
-          <select value={thread.assignedToUserId ?? ""} disabled={!canAssign || busy} onChange={(event) => void onAction("assign", { assignedToUserId: event.target.value || null }, [])}>
-            <option value="">Unassigned</option>
-            {teammates.map((mate) => <option key={mate.id} value={mate.id}>{mate.name}</option>)}
-          </select><i>⌄</i>
-        </div>
+        <BrandSelect value={thread.assignedToUserId ?? ""} disabled={!canAssign || busy} ariaLabel="Owner"
+          onChange={(next) => void onAction("assign", { assignedToUserId: next || null }, [])}
+          options={[{ value: "", label: "Unassigned" }, ...teammates.map((mate) => ({ value: mate.id, label: mate.name }))]} />
       </label>
       <label>Status
-        <div className="brand-select">
-          <select value="" disabled={!canStatus || busy || !availableThreadStatuses(thread.status).length} onChange={(event) => { if (event.target.value) void onAction("status", { status: event.target.value }, []); }}>
-            <option value="">{THREAD_STATUS_LABELS[thread.status as ThreadStatus] ?? thread.status}</option>
-            {availableThreadStatuses(thread.status).map((status) => <option key={status} value={status}>Move to {THREAD_STATUS_LABELS[status]}</option>)}
-          </select><i>⌄</i>
-        </div>
+        <BrandSelect value="" disabled={!canStatus || busy || !availableThreadStatuses(thread.status).length}
+          placeholder={THREAD_STATUS_LABELS[thread.status as ThreadStatus] ?? thread.status} ariaLabel="Change status"
+          onChange={(next) => { if (next) void onAction("status", { status: next }, []); }}
+          options={availableThreadStatuses(thread.status).map((status) => ({ value: status, label: `Move to ${THREAD_STATUS_LABELS[status]}` }))} />
       </label>
       <label>Priority
-        <div className="brand-select">
-          <select value={thread.priority} disabled={!canPriority || busy} onChange={(event) => void onAction("priority", { priority: event.target.value }, [])}>
-            {["low", "normal", "high", "urgent"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-          </select><i>⌄</i>
-        </div>
+        <BrandSelect value={thread.priority} disabled={!canPriority || busy} ariaLabel="Priority"
+          onChange={(next) => void onAction("priority", { priority: next }, [])}
+          options={["low", "normal", "high", "urgent"].map((priority) => ({ value: priority, label: priority }))} />
       </label>
       {(canOpenCase || canCreateTask) && <div className="crm-detail-actions">
         {canCreateTask && <button className="btn secondary small" disabled={busy} onClick={onCreateTask}>Add follow-up task</button>}

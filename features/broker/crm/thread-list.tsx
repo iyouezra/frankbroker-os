@@ -3,6 +3,7 @@
 import { CATEGORY_LABELS, THREAD_CATEGORIES, priorityTone, type ThreadCategory } from "../../../lib/crm/categories";
 import { THREAD_STATUSES, THREAD_STATUS_LABELS, type ThreadStatus } from "../../../lib/crm/status";
 import { EmptyState, auditTime, type CrmThreadSummary } from "../shared/broker-foundation";
+import { BrandSelect } from "../../shared/brand-select";
 
 export type ThreadFilters = { status: string; category: string; priority: string; assigned: string; query: string };
 
@@ -21,19 +22,12 @@ export function CrmFilters({ value, onChange, facets }: { value: ThreadFilters; 
       <button className={`filter${value.assigned === "me" ? " active" : ""}`} onClick={() => set("assigned", "me")}>Mine <b>{facets.mine}</b></button>
       <button className={`filter${value.assigned === "unassigned" ? " active" : ""}`} onClick={() => set("assigned", "unassigned")}>Unassigned <b>{facets.unassigned}</b></button>
       <span />
-      <div className="brand-select"><select value={value.status} onChange={(event) => set("status", event.target.value)} aria-label="Filter by status">
-        <option value="open_all">Needs attention</option>
-        <option value="">Any status</option>
-        {THREAD_STATUSES.map((status) => <option key={status} value={status}>{THREAD_STATUS_LABELS[status as ThreadStatus]}</option>)}
-      </select><i>⌄</i></div>
-      <div className="brand-select"><select value={value.category} onChange={(event) => set("category", event.target.value)} aria-label="Filter by category">
-        <option value="">Any category</option>
-        {THREAD_CATEGORIES.map((category) => <option key={category} value={category}>{CATEGORY_LABELS[category as ThreadCategory]}</option>)}
-      </select><i>⌄</i></div>
-      <div className="brand-select"><select value={value.priority} onChange={(event) => set("priority", event.target.value)} aria-label="Filter by priority">
-        <option value="">Any priority</option>
-        {["urgent", "high", "normal", "low"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-      </select><i>⌄</i></div>
+      <BrandSelect className="crm-filter-select" value={value.status} onChange={(next) => set("status", next)} ariaLabel="Filter by status"
+        options={[{ value: "open_all", label: "Needs attention" }, { value: "", label: "Any status" }, ...THREAD_STATUSES.map((status) => ({ value: status, label: THREAD_STATUS_LABELS[status as ThreadStatus] }))]} />
+      <BrandSelect className="crm-filter-select" value={value.category} onChange={(next) => set("category", next)} ariaLabel="Filter by category"
+        options={[{ value: "", label: "Any category" }, ...THREAD_CATEGORIES.map((category) => ({ value: category, label: CATEGORY_LABELS[category as ThreadCategory] }))]} />
+      <BrandSelect className="crm-filter-select" value={value.priority} onChange={(next) => set("priority", next)} ariaLabel="Filter by priority"
+        options={[{ value: "", label: "Any priority" }, ...["urgent", "high", "normal", "low"].map((priority) => ({ value: priority, label: priority }))]} />
     </div>
   </div>;
 }

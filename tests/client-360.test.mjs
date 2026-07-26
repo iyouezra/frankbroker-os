@@ -168,7 +168,7 @@ test("client accounts use a paginated directory with distinct client categories"
   assert.match(ui, /Individual/);
   assert.match(ui, /Corporate/);
   assert.match(ui, /Institutional/);
-  assert.match(ui, /Rows<select/);
+  assert.match(ui, /Rows<BrandSelect/);
   assert.doesNotMatch(ui, /className="client-picker"/);
   assert.match(directoryRoute, /pageSize/);
   assert.match(directoryRoute, /skip: \(page - 1\) \* pageSize/);

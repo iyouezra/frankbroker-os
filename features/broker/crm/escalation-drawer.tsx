@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CASE_SEVERITIES } from "../../../lib/crm/cases";
 import { TASK_TEMPLATES } from "../../../lib/crm/tasks";
 import { BROKER_TENANT_ID } from "../shared/broker-foundation";
+import { BrandSelect } from "../../shared/brand-select";
 import type { Role } from "../../../lib/frank";
 
 /** Default a follow-up to three business-ish days out; the officer can change it. */
@@ -85,40 +86,23 @@ export function EscalationDrawer({
         {mode === "task" ? (
           <div className="form-section">
             <label>Task type
-              <div className="brand-select">
-                <select value={taskType} onChange={(event) => pickTemplate(event.target.value)}>
-                  {TASK_TEMPLATES.map((template) => <option key={template.type} value={template.type}>{template.title}</option>)}
-                </select><i>⌄</i>
-              </div>
+              <BrandSelect value={taskType} onChange={pickTemplate} ariaLabel="Task type" options={TASK_TEMPLATES.map((template) => ({ value: template.type, label: template.title }))} />
             </label>
             <label>Title<input value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} /></label>
             <label>Details<textarea rows={3} value={description} maxLength={2000} onChange={(event) => setDescription(event.target.value)} placeholder="What needs doing, and anything the next person should know." /></label>
             <label>Due date<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label>
             <label>Priority
-              <div className="brand-select">
-                <select value={priority} onChange={(event) => setPriority(event.target.value)}>
-                  {["low", "normal", "high", "urgent"].map((value) => <option key={value} value={value}>{value}</option>)}
-                </select><i>⌄</i>
-              </div>
+              <BrandSelect value={priority} onChange={setPriority} ariaLabel="Priority" options={["low", "normal", "high", "urgent"].map((value) => ({ value, label: value }))} />
             </label>
             <label>Owner
-              <div className="brand-select">
-                <select value={assignedToUserId} onChange={(event) => setAssignedToUserId(event.target.value)}>
-                  <option value="">Unassigned</option>
-                  {teammates.map((mate) => <option key={mate.id} value={mate.id}>{mate.name}</option>)}
-                </select><i>⌄</i>
-              </div>
+              <BrandSelect value={assignedToUserId} onChange={setAssignedToUserId} ariaLabel="Owner" options={[{ value: "", label: "Unassigned" }, ...teammates.map((mate) => ({ value: mate.id, label: mate.name }))]} />
             </label>
           </div>
         ) : (
           <div className="form-section">
             <label>Case subject<input value={caseSubject} maxLength={160} onChange={(event) => setCaseSubject(event.target.value)} /></label>
             <label>Severity
-              <div className="brand-select">
-                <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
-                  {CASE_SEVERITIES.map((value) => <option key={value} value={value}>{value}</option>)}
-                </select><i>⌄</i>
-              </div>
+              <BrandSelect value={severity} onChange={setSeverity} ariaLabel="Severity" options={CASE_SEVERITIES.map((value) => ({ value, label: value }))} />
             </label>
             <div className="settings-note">Severity sets the target resolution date. The conversation is marked as a complaint and its priority is raised.</div>
           </div>

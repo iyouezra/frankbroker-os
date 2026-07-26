@@ -14,6 +14,7 @@ import {
   type CrmTaskView,
   type CrmTasksResponse,
 } from "../shared/broker-foundation";
+import { BrandSelect } from "../../shared/brand-select";
 
 const BUCKET_LABELS: Record<string, string> = { overdue: "Overdue", today: "Due today", upcoming: "Upcoming", no_due_date: "No due date", completed: "Completed" };
 
@@ -51,14 +52,9 @@ export function TaskCard({ task, role, busy, onStatus, onEscalate, onOpenClient 
     </div>
     {!closed && (
       <div className="crm-task-actions">
-        <div className="brand-select">
-          <select value="" disabled={busy || !canProgress} onChange={(event) => { if (event.target.value) onStatus(task, event.target.value); }} aria-label={`Update ${task.title}`}>
-            <option value="">Update…</option>
-            {availableTaskStatuses(task.status)
-              .filter((status) => status !== "completed" || canComplete)
-              .map((status) => <option key={status} value={status}>{TASK_STATUS_LABELS[status as TaskStatus]}</option>)}
-          </select><i>⌄</i>
-        </div>
+        <BrandSelect className="bselect-inline" value="" disabled={busy || !canProgress} placeholder="Update…" ariaLabel={`Update ${task.title}`}
+          onChange={(next) => { if (next) onStatus(task, next); }}
+          options={availableTaskStatuses(task.status).filter((status) => status !== "completed" || canComplete).map((status) => ({ value: status, label: TASK_STATUS_LABELS[status as TaskStatus] }))} />
         {canEscalate && <button className="btn secondary small" disabled={busy} onClick={() => onEscalate(task)}>{task.escalated ? "De-escalate" : "Escalate"}</button>}
       </div>
     )}
@@ -153,13 +149,8 @@ export function MyTasksPage({ role, onNotify, onOpenClient }: { role: Role; onNo
         </button>
       ))}
       <span />
-      <div className="brand-select">
-        <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter tasks by status">
-          <option value="open_all">Open tasks</option>
-          <option value="">Any status</option>
-          {Object.entries(TASK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select><i>⌄</i>
-      </div>
+      <BrandSelect className="crm-filter-select" value={status} onChange={setStatus} ariaLabel="Filter tasks by status"
+        options={[{ value: "open_all", label: "Open tasks" }, { value: "", label: "Any status" }, ...Object.entries(TASK_STATUS_LABELS).map(([value, label]) => ({ value, label }))]} />
     </div>
 
     {loading ? <div className="crm-loading" role="status">Loading tasks…</div>

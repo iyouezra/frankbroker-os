@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useId, useState } from "react";
 import styles from "../../../app/investor/investor.module.css";
+import { BrandSelect } from "../../shared/brand-select";
 import {
   AllocationBar,
   Button,
@@ -142,7 +143,7 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
     <div className={`${styles.kycForm} ${styles.onboardingBankList}`}>
       {linkedBanks.map((account, index) => <Card className={styles.onboardingBankCard} key={account.id}>
         <div className={styles.onboardingBankHead}><span><small>BANK ACCOUNT {index + 1}</small><b>{account.bankName}</b></span>{linkedBanks.length > 1 && <button onClick={() => removeLinkedBank(account.id)}>Remove</button>}</div>
-        <label className={styles.formField}><span>Bank name</span><div className={styles.selectField}><select value={account.bankName} onChange={(event) => updateLinkedBank(account.id, "bankName", event.target.value)}>{bankOptions.map((bank) => <option key={bank}>{bank}</option>)}</select></div></label>
+        <label className={styles.formField}><span>Bank name</span><BrandSelect className="bselect-investor" value={account.bankName} onChange={(next) => updateLinkedBank(account.id, "bankName", next)} ariaLabel="Bank name" options={bankOptions.map((bank) => ({ value: bank, label: bank }))} /></label>
         <label className={styles.formField}><span>Account number</span><div><input inputMode="numeric" value={account.accountNumber} onChange={(event) => updateLinkedBank(account.id, "accountNumber", event.target.value.replace(/\D/g, "").slice(0, 24))} placeholder="Enter the full account number" /></div></label>
         <label className={styles.formField}><span>Account holder name</span><div><input value={account.accountHolderName} onChange={(event) => updateLinkedBank(account.id, "accountHolderName", event.target.value)} placeholder="As shown on the bank account" /></div>{account.accountHolderName.trim() && account.accountHolderName.trim().toLocaleLowerCase() !== profile.fullName.trim().toLocaleLowerCase() && <small className={styles.fieldError}>Use the same name shown in your verified records.</small>}</label>
       </Card>)}
