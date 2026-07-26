@@ -41,6 +41,9 @@ test("order authorization is exact-payload-bound, expiring, attempt-limited, and
   assert.match(verification, /expiresAt/);
   assert.match(verification, /consumedAt: null/);
   assert.match(verification, /timingSafeEqual/);
+  assert.match(verification, /FRANK_DEMO_OTP_CODE/);
+  assert.match(verification, /must contain exactly six digits/);
+  assert.match(verification, /demoCode \?\? String\(randomInt/);
   assert.match(orderService, /consumeOrderVerification/);
   assert.match(orderService, /instructionVerificationId/);
 });

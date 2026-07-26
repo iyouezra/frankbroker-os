@@ -46,12 +46,21 @@ function codeHash(code: string, salt: string) {
   return createHash("sha256").update(`${salt}:${code}`).digest("hex");
 }
 
+function resolveDemoOtpCode() {
+  const configured = process.env.FRANK_DEMO_OTP_CODE?.trim();
+  if (configured && !/^\d{6}$/.test(configured)) {
+    throw new Error("FRANK_DEMO_OTP_CODE must contain exactly six digits.");
+  }
+  return configured || (process.env.NODE_ENV === "production" ? null : "246810");
+}
+
 export async function createOtpChallenge(input: {
   brokerId: string; clientId: string; accountId?: string; purpose: "kyc_phone" | "order_instruction";
   source: string; payloadHash: string; destinationHint?: string; deliveryChannel?: OtpDeliveryChannel; createdBy?: string | null;
 }) {
   const deliveryChannel = input.deliveryChannel ?? "sms";
-  const code = process.env.NODE_ENV === "production" ? String(randomInt(100000, 1000000)) : "246810";
+  const demoCode = resolveDemoOtpCode();
+  const code = demoCode ?? String(randomInt(100000, 1000000));
   const salt = randomBytes(16).toString("hex");
   const challenge = await prisma.verificationChallenge.create({ data: {
     id: `VER-${crypto.randomUUID().slice(0, 10).toUpperCase()}`,
@@ -66,7 +75,7 @@ export async function createOtpChallenge(input: {
     summary: `${input.purpose} verification requested by ${deliveryChannel} via ${input.source}`,
     newValue: JSON.stringify({ purpose: input.purpose, source: input.source, deliveryChannel, expiresAt: challenge.expiresAt }),
   } });
-  return { id: challenge.id, expiresAt: challenge.expiresAt, destinationHint: challenge.destinationHint, deliveryChannel, demoCode: process.env.NODE_ENV === "production" ? undefined : code };
+  return { id: challenge.id, expiresAt: challenge.expiresAt, destinationHint: challenge.destinationHint, deliveryChannel, demoCode: demoCode ?? undefined };
 }
 
 export async function confirmOtpChallenge(input: { id: string; brokerId: string; clientId: string; code: string }) {
