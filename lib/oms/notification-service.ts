@@ -57,6 +57,14 @@ export async function writeNotification(tx: Prisma.TransactionClient, input: Not
   return tx.notification.create({ data: notificationData(input) });
 }
 
+export async function writeNotificationOnce(tx: Prisma.TransactionClient, input: NotifyInput & { dedupeKey: string }) {
+  return tx.notification.upsert({
+    where: { dedupeKey: input.dedupeKey },
+    create: notificationData(input),
+    update: {},
+  });
+}
+
 /**
  * Create a notification only if one with the same `dedupeKey` does not already
  * exist. Used by the scheduled sweep so re-running the daily job (or running it
@@ -77,7 +85,6 @@ export async function createNotificationOnce(input: NotifyInput & { dedupeKey: s
 
 /** True when a broker user with `role` should see a broker-scoped notification. */
 export function roleMatches(role: string, roles: string | null): boolean {
-  if (role === "management" || role === "super_admin") return true; // oversight sees all
   if (!roles) return true; // untargeted broker notice = all staff
   return roles.split(",").map((item) => item.trim()).includes(role);
 }

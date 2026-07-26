@@ -260,7 +260,7 @@ export default function FrankBrokerApp() {
     for (const client of clients) {
       if (client.status === "pending_approval") {
         items.push({
-          key: `client-${client.id}`, permission: "approve", tone: "warning", icon: "clients",
+          key: `client-${client.id}`, permission: "report", roles: ["broker_admin", "relationship_officer", "service_officer", "operations"], tone: "warning", icon: "clients",
           title: "Client awaiting onboarding approval",
           detail: `${client.code} · ${client.name} · KYC ${displayLabel(client.kyc)}`,
           onOpen: () => { setClientsFocus({ status: "pending_approval" }); setSelectedClientId(client.id); setView("clients"); },
@@ -295,11 +295,25 @@ export default function FrankBrokerApp() {
   const notifyHeaders = { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role };
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/notifications", { signal: controller.signal, headers: notifyHeaders })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
-      .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
-      .catch(() => setNotifications(demoBrokerNotifications(role)));
-    return () => controller.abort();
+    const refreshBrokerAlerts = () => {
+      void Promise.all([
+        fetch("/api/notifications", { signal: controller.signal, headers: notifyHeaders })
+          .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline"))),
+        fetch("/api/clients", { signal: controller.signal, headers: notifyHeaders })
+          .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline"))),
+      ]).then(([notificationResult, clientResult]: [{ notifications: NotificationItem[] }, { clients?: BrokerClient[] }]) => {
+        setNotifications(notificationResult.notifications);
+        if (clientResult.clients) setClients(clientResult.clients);
+      }).catch(() => {
+        if (!controller.signal.aborted) setNotifications(demoBrokerNotifications(role));
+      });
+    };
+    refreshBrokerAlerts();
+    const interval = window.setInterval(refreshBrokerAlerts, 10_000);
+    return () => {
+      window.clearInterval(interval);
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
   // If the active role can't see the current view, fall back to the dashboard.
@@ -767,7 +781,15 @@ export default function FrankBrokerApp() {
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
           <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
           <label className="search"><span><Icon name="search" size={17} /></span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
-          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => setBellOpen((value) => !value)}><Icon name="bell" size={18} />{unreadCount > 0 && <em>{unreadCount > 9 ? "9+" : unreadCount}</em>}</button>{bellOpen && <><div className="notif-scrim" onClick={() => setBellOpen(false)} /><div className="notif-panel" role="dialog" aria-label="Notifications"><div className="notif-head"><b>Notifications</b>{unreadCount > 0 && <button onClick={markAllRead}>Mark all read</button>}</div><div className="notif-list">{notifications.length === 0 ? <div className="notif-empty">You&apos;re all caught up.</div> : notifications.map((item) => <button key={item.id} className={`notif-item${item.read ? "" : " unread"}`} onClick={() => openNotification(item)}><i className={`notif-dot sev-${item.severity}`} /><div><b>{item.title}</b><p>{item.body}</p><small>{item.category} · {timeAgo(item.createdAt)}</small></div></button>)}</div></div></>}</div></div>
+          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => {
+            setBellOpen((value) => !value);
+            if (!bellOpen) {
+              void fetch("/api/notifications", { headers: notifyHeaders })
+                .then((response) => response.ok ? response.json() : Promise.reject())
+                .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
+                .catch(() => undefined);
+            }
+          }}><Icon name="bell" size={18} />{unreadCount > 0 && <em>{unreadCount > 9 ? "9+" : unreadCount}</em>}</button>{bellOpen && <><div className="notif-scrim" onClick={() => setBellOpen(false)} /><div className="notif-panel" role="dialog" aria-label="Notifications"><div className="notif-head"><b>Notifications</b>{unreadCount > 0 && <button onClick={markAllRead}>Mark all read</button>}</div><div className="notif-list">{notifications.length === 0 ? <div className="notif-empty">You&apos;re all caught up.</div> : notifications.map((item) => <button key={item.id} className={`notif-item${item.read ? "" : " unread"}`} onClick={() => openNotification(item)}><i className={`notif-dot sev-${item.severity}`} /><div><b>{item.title}</b><p>{item.body}</p><small>{item.category} · {timeAgo(item.createdAt)}</small></div></button>)}</div></div></>}</div></div>
         </header>
 
         <main>

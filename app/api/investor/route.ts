@@ -17,6 +17,7 @@ import { categoryForServiceRequest } from "../../../lib/crm/categories";
 import { clientIdentityReference } from "../../../lib/client-identity";
 import { investorRelationshipOfficer } from "../../../lib/crm/assignment-service";
 import { prepareAttachments } from "../../../lib/crm/attachments";
+import { SERVICE, writeNotificationOnce } from "../../../lib/oms/notification-service";
 import {
   parseLinkedBanks,
   prepareDocuments,
@@ -397,7 +398,22 @@ export async function POST(request: Request) {
           && clash.phone?.replace(/\D/g, "") === String(payload.phone ?? "").replace(/\D/g, "");
         if (clash && !resumableApplication) throw new Response("These identity details are already registered with this broker.", { status: 409 });
         await tx.verificationChallenge.update({ where: { id: phoneVerification.id }, data: { status: "consumed", consumedAt: new Date() } });
-        if (resumableApplication) return clash;
+        if (resumableApplication) {
+          await writeNotificationOnce(tx, {
+            dedupeKey: `investor-onboarding:${clash.id}`,
+            scope: "broker",
+            brokerId,
+            roles: SERVICE,
+            category: "kyc",
+            severity: "warning",
+            title: "New account application",
+            body: `${clash.fullName} (${clash.clientCode}) is waiting for onboarding review.`,
+            entityType: "client",
+            entityId: clash.id,
+            link: "/?view=clients",
+          });
+          return clash;
+        }
         const next = newApplication
           ? await tx.client.create({
             data: {
@@ -442,6 +458,19 @@ export async function POST(request: Request) {
           id: crypto.randomUUID(), brokerId, actorId: null, action: "INVESTOR_KYC_SUBMITTED",
           entityType: "client", entityId: targetClientId, summary: `Digital KYC submitted for broker review for ${fullName}; only masked identifiers retained`,
         } });
+        await writeNotificationOnce(tx, {
+          dedupeKey: `investor-onboarding:${targetClientId}`,
+          scope: "broker",
+          brokerId,
+          roles: SERVICE,
+          category: "kyc",
+          severity: "warning",
+          title: "New account application",
+          body: `${fullName} (${next.clientCode}) is waiting for onboarding review.`,
+          entityType: "client",
+          entityId: targetClientId,
+          link: "/?view=clients",
+        });
         return next;
       });
       const account = await prisma.account.findFirst({ where: { clientId: updated.id } });

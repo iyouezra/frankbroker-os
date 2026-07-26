@@ -43,9 +43,8 @@ const demoPlatform: NotificationItem[] = [
 ];
 
 export function demoBrokerNotifications(role: string): NotificationItem[] {
-  const oversight = role === "management" || role === "super_admin";
   return demoBroker
-    .filter((item) => oversight || item.roles.includes(role))
+    .filter((item) => item.roles.includes(role))
     .map((item) => {
       const { roles, ...rest } = item;
       void roles; // role targeting is applied above; it is not part of the payload

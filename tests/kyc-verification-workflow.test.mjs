@@ -35,6 +35,8 @@ test("investor onboarding captures email and the full institutional document set
   assert.match(route, /const email = String\(payload\.email/);
   assert.match(route, /emailValid/);
   assert.match(route, /resumableApplication/);
+  assert.match(route, /roles: SERVICE/);
+  assert.match(route, /dedupeKey: `investor-onboarding:/);
   assert.match(route, /\n\s+email,\n/);
 
   const identityValidation = investor.slice(investor.indexOf("const identityStepValid"), investor.indexOf("const bankStepValid"));

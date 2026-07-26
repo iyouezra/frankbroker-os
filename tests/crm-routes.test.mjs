@@ -104,6 +104,8 @@ test("the thread transition error maps to 409 and support is a notification cate
   assert.match(api, /InvalidThreadTransitionError/);
   assert.match(notifications, /\| "support"/);
   assert.match(notifications, /export const SERVICE/);
+  assert.match(notifications, /writeNotificationOnce/);
+  assert.doesNotMatch(notifications, /role === "management" \|\| role === "super_admin"/);
 });
 
 test("schema and migration follow the project conventions", () => {

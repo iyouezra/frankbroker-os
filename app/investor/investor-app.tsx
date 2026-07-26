@@ -168,11 +168,20 @@ export default function InvestorApp() {
   useEffect(() => {
     if (phase !== "app") return;
     const controller = new AbortController();
-    void fetch("/api/notifications", { headers: investorHeaders, signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
-      .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
-      .catch(() => setNotifications(demoInvestorNotifications()));
-    return () => controller.abort();
+    const refreshInvestorNotifications = () => {
+      void fetch("/api/notifications", { headers: investorHeaders, signal: controller.signal })
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
+        .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
+        .catch(() => {
+          if (!controller.signal.aborted) setNotifications(demoInvestorNotifications());
+        });
+    };
+    refreshInvestorNotifications();
+    const interval = window.setInterval(refreshInvestorNotifications, 10_000);
+    return () => {
+      window.clearInterval(interval);
+      controller.abort();
+    };
   }, [investorHeaders, phase]);
   const unreadNotifs = notifications.filter((item) => !item.read).length;
   const markAllNotifsRead = () => {
@@ -619,7 +628,13 @@ export default function InvestorApp() {
                     : activityOpen
                     ? <ActivityScreen activity={activity} initialItem={activityInitialItem} onBack={() => { setActivityOpen(false); setActivityInitialItem(null); }} />
                     : tab === "home"
-                      ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} restricted={restrictedAccess} demoFallback={activeClientId === INVESTOR_CLIENT_ID} unread={unreadNotifs} onBell={() => setBellOpen(true)} onCash={() => restrictedAccess ? notify("Broker approval is required before you can add or withdraw money.") : setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
+                      ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} restricted={restrictedAccess} demoFallback={activeClientId === INVESTOR_CLIENT_ID} unread={unreadNotifs} onBell={() => {
+                        setBellOpen(true);
+                        void fetch("/api/notifications", { headers: investorHeaders })
+                          .then((response) => response.ok ? response.json() : Promise.reject())
+                          .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
+                          .catch(() => undefined);
+                      }} onCash={() => restrictedAccess ? notify("Broker approval is required before you can add or withdraw money.") : setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
                       : tab === "markets"
                         ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} />
                         : tab === "portfolio"

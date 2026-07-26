@@ -349,7 +349,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "market", label: "Market Watch", icon: "performance" },
   ] },
   { label: "Clients", items: [
-    { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance"] },
+    { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance", "relationship_officer", "service_officer"] },
     { id: "cash", label: "Client money", icon: "cash", roles: ["broker_admin", "operations", "settlement"] },
   ] },
   { label: "Client service", items: [
@@ -375,8 +375,8 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
 export const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
 export const navVisible = (item: NavItem, role: Role) => role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role);
 export const PENDING_CASH_STATUSES = ["pending_verification", "pending_approval", "approved"];
-export type QueueItem = { key: string; permission: string; tone: "warning" | "danger" | "info"; icon: string; title: string; detail: string; onOpen: () => void };
-export const queueVisible = (item: QueueItem, role: Role) => role === "management" || role === "super_admin" || hasPermission(role, item.permission);
+export type QueueItem = { key: string; permission: string; roles?: Role[]; tone: "warning" | "danger" | "info"; icon: string; title: string; detail: string; onOpen: () => void };
+export const queueVisible = (item: QueueItem, role: Role) => item.roles ? item.roles.includes(role) : role === "management" || role === "super_admin" || hasPermission(role, item.permission);
 export const roleNames: Record<Role, string> = {
   broker_admin: "Mekdes Tadesse",
   trader: "Dawit Alemu",
