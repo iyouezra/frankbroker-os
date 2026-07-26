@@ -515,6 +515,46 @@
 .termsCard p { margin: 5px 0 0; color: var(--investor-ink-500); font-size: 9.5px; line-height: 1.45; }
 
 .onboarding { height: 100%; display: flex; flex-direction: column; padding: 18px 20px 24px; background: white; }
+.demoSelector { height: 100%; overflow-y: auto; padding: 20px 20px 26px; background: linear-gradient(180deg,var(--investor-ink-50),white 44%); scrollbar-width: none; }
+.demoSelectorBrand { display: flex; align-items: center; justify-content: space-between; }
+.demoSelectorBrand > span { padding: 5px 8px; border: 1px solid var(--investor-ink-200); border-radius: 999px; color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+.demoSelectorBack { min-height: 42px; }
+.demoSelectorIntro { margin: 28px 1px 22px; }
+.demoSelectorBack + .demoSelectorIntro { margin-top: 9px; }
+.demoSelectorIntro > small { color: var(--investor-teal-700); font-size: 8.5px; font-weight: 800; letter-spacing: .1em; }
+.demoSelectorIntro h1 { max-width: 330px; margin: 6px 0 8px; font-size: 27px; line-height: 1.12; }
+.demoSelectorIntro p { margin: 0; color: var(--investor-ink-500); font-size: 12px; line-height: 1.55; }
+.entryChoiceList { display: flex; flex-direction: column; gap: 11px; margin-top: 30px; }
+.entryChoiceCard { width: 100%; min-height: 112px; display: grid; grid-template-columns: 46px minmax(0,1fr) auto; align-items: center; gap: 13px; padding: 15px; border: 1px solid var(--investor-ink-200); border-radius: 16px; background: white; color: inherit; box-shadow: 0 6px 20px rgba(8,62,71,.07); cursor: pointer; text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease; }
+.entryChoiceCard:hover { border-color: rgba(12,129,137,.35); box-shadow: 0 10px 26px rgba(8,62,71,.11); transform: translateY(-1px); }
+.entryChoiceCard:focus-visible { outline: 3px solid rgba(12,129,137,.25); outline-offset: 2px; }
+.entryChoiceCard > i { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 14px; background: var(--investor-aqua-100); color: var(--investor-teal-800); }
+.entryChoiceCard:nth-child(2) > i { background: var(--investor-teal-800); color: white; }
+.entryChoiceCard > span { min-width: 0; display: flex; flex-direction: column; }
+.entryChoiceCard b { font-size: 13px; }
+.entryChoiceCard small { margin-top: 5px; color: var(--investor-ink-500); font-size: 10px; line-height: 1.45; }
+.entryChoiceCard > svg { color: var(--investor-teal-700); transform: scale(.8); }
+.demoPersonaList { display: flex; flex-direction: column; gap: 9px; }
+.demoPersonaCard { width: 100%; min-height: 92px; display: grid; grid-template-columns: 43px minmax(0,1fr) auto; align-items: center; gap: 11px; padding: 13px; border: 1px solid var(--investor-ink-200); border-radius: 15px; background: white; color: inherit; box-shadow: 0 4px 16px rgba(8,62,71,.06); cursor: pointer; text-align: left; transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease; }
+.demoPersonaCard:hover { border-color: rgba(12,129,137,.35); box-shadow: 0 8px 22px rgba(8,62,71,.1); transform: translateY(-1px); }
+.demoPersonaCard:focus-visible { outline: 3px solid rgba(12,129,137,.25); outline-offset: 2px; }
+.demoPersonaCard:disabled { cursor: wait; opacity: .65; transform: none; }
+.demoPersonaCard > i { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 13px; background: var(--investor-aqua-100); color: var(--investor-teal-800); font-size: 12px; font-style: normal; font-weight: 800; }
+.demoPersonaCard > span { min-width: 0; display: flex; flex-direction: column; }
+.demoPersonaCard b { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.demoPersonaCard small { margin-top: 3px; color: var(--investor-teal-700); font-size: 9px; font-weight: 700; }
+.demoPersonaCard em { margin-top: 4px; color: var(--investor-ink-400); font-size: 8.5px; font-style: normal; line-height: 1.35; }
+.demoPersonaCard strong { display: flex; align-items: center; gap: 2px; color: var(--investor-teal-700); font-size: 9px; }
+.demoPersonaCard strong svg { transform: scale(.75); }
+.demoSelectorNote { margin: 13px 3px 0; color: var(--investor-ink-400); font-size: 9px; line-height: 1.5; text-align: center; }
+.restrictedAccessBanner { position: absolute; z-index: 8; top: 10px; right: 12px; left: 12px; min-height: 64px; display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #e8c675; border-radius: 13px; background: #fff4cf; color: #6f4a00; box-shadow: 0 5px 18px rgba(111,74,0,.12); }
+.restrictedAccessBanner > span { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: #f4d47e; }
+.restrictedAccessBanner > div { min-width: 0; display: flex; flex-direction: column; }
+.restrictedAccessBanner b { font-size: 10.5px; }
+.restrictedAccessBanner small { margin-top: 2px; font-size: 8.5px; line-height: 1.35; }
+.restrictedAccessBanner button { padding: 4px 2px; border: 0; background: transparent; color: #805600; font-size: 8.5px; font-weight: 800; cursor: pointer; }
+.restrictedScroll { padding-top: 82px; }
+.restrictedDetail { padding-top: 82px; }
 .kycProgress { margin: 0 0 4px; }
 .kycProgress > span { display: flex; align-items: center; justify-content: space-between; color: var(--investor-teal-700); }
 .kycProgress b { font-size: 9px; letter-spacing: .1em; }

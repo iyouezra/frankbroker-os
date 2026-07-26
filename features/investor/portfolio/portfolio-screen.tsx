@@ -4,7 +4,10 @@ import { formatEtb, investorHoldings, investorStocks, type InvestorStock } from 
 import styles from "../../../app/investor/investor.module.css";
 import { AllocationBar, Card, Delta, Icon, PortfolioChart, ScreenHeader, type InvestorBootstrap } from "../shared/investor-foundation";
 
-export function PortfolioScreen({ openStock, account }: { openStock: (stock: InvestorStock) => void; account: InvestorBootstrap["account"] }) {
+export function PortfolioScreen({ openStock, account, demoFallback }: { openStock: (stock: InvestorStock) => void; account: InvestorBootstrap["account"]; demoFallback: boolean }) {
+  if (!account && !demoFallback) {
+    return <div className={styles.screen}><ScreenHeader title="Portfolio" /><Card className={styles.portfolioSummary}><small>Total value</small><strong>{formatEtb(0)}</strong><div className={styles.summaryGrid}><span><small>Account status</small><b>Pending approval</b></span><span><small>Trading account</small><b>Not assigned</b></span></div></Card><Card><div className={styles.cardHeader}><h2>What you own</h2></div><div className={styles.activityEmpty}><b>No holdings yet</b><p>Your portfolio will become available after broker approval and account activation.</p></div></Card></div>;
+  }
   const holdings = account?.holdings.length ? account.holdings.filter((holding) => investorStocks.some((stock) => stock.ticker === holding.ticker)) : investorHoldings;
   const rows = holdings.map((holding) => { const stock = investorStocks.find((item) => item.ticker === holding.ticker)!; const value = stock.price * holding.quantity; const cost = holding.averageCost * holding.quantity; return { holding, stock, value, cost, gain: value - cost }; });
   const stockValue = rows.reduce((sum, row) => sum + row.value, 0);

@@ -174,7 +174,7 @@ export async function GET(request: Request) {
         } : null,
       },
       profile: client ? {
-        id: client.id, fullName: client.fullName, clientType: client.clientType, phone: client.phone,
+        id: client.id, fullName: client.fullName, clientType: client.clientType, phone: client.phone, status: client.status,
         kycStatus: client.kycStatus, faydaMasked: client.faydaLast7 ? `••••• ${client.faydaLast7}` : null,
         taxIdMasked: client.taxIdLast4 ? `••••••${client.taxIdLast4}` : null,
         address: client.address,
@@ -339,58 +339,93 @@ export async function POST(request: Request) {
         faydaId,
         businessRegistrationNumber: String(payload.registrationNumber ?? ""),
       });
+      const newApplication = payload.newApplication === true;
+      const applicationSuffix = crypto.randomUUID().slice(0, 6).toUpperCase();
+      const applicationClientId = `cli_${crypto.randomUUID().slice(0, 12)}`;
+      const applicationClientCode = `CL-${new Date().getUTCFullYear()}-${applicationSuffix}`;
+      const applicationClientType = payload.accountType === "institution" ? "institution" : "individual";
+      const clientData = {
+        fullName,
+        clientType: applicationClientType,
+        phone: String(payload.phone ?? "") || null,
+        email,
+        identityReference: identityRef,
+        faydaLast7: faydaId.slice(-7),
+        taxIdLast4: tin.slice(-4),
+        taxId: null,
+        address: String(payload.address ?? "").trim() || null,
+        proofOfAddressType: String(payload.proofOfAddressType ?? "").trim() || null,
+        proofOfAddressReference: String(payload.proofOfAddressReference ?? "").trim() || null,
+        proofOfAddressStatus: payload.proofOfAddressReference ? "received" : "pending",
+        businessRegistrationNumber: String(payload.registrationNumber ?? "").trim() || null,
+        authorizedRepresentativeName: String(payload.representativeName ?? "").trim() || null,
+        signatoryAuthorityConfirmed: payload.accountType !== "institution" || payload.signatoryAuthorityConfirmed === true,
+        beneficialOwners: payload.accountType === "institution" && String(payload.beneficialOwnerName ?? "").trim()
+          ? [{ name: String(payload.beneficialOwnerName).trim(), status: "declared" }]
+          : undefined,
+        kycStatus: "pending_review",
+        riskRating: "standard",
+        status: "pending_approval",
+        kycConsentAt: new Date(),
+        submittedAt: new Date(),
+        onboardingChannel: "investor_portal",
+        phoneVerifiedAt: new Date(),
+        sourceOfFunds: String(payload.sourceOfFunds ?? "").trim() || null,
+        investmentObjective: String(payload.investmentObjective ?? "").trim() || null,
+        taxResidency: String(payload.taxResidency ?? "Ethiopia").trim(),
+        pepStatus: String(payload.pepStatus ?? "not_pep"),
+        nationality: String(payload.nationality ?? "Ethiopian").trim(),
+        countryOfResidence: String(payload.countryOfResidence ?? "Ethiopia").trim(),
+        occupation: String(payload.occupation ?? "").trim() || null,
+        electronicDeliveryConsentAt: payload.electronicDeliveryConsent === true ? new Date() : null,
+      };
 
       // The raw identifiers are deliberately never stored. Production should send
       // them directly to an Ethiopia-resident identity provider and retain only its reference.
       const updated = await prisma.$transaction(async (tx) => {
-        const clash = await tx.client.findFirst({ where: { brokerId, identityReference: identityRef, id: { not: client.id } }, select: { id: true } });
+        const clash = await tx.client.findFirst({
+          where: {
+            brokerId,
+            identityReference: identityRef,
+            ...(newApplication ? {} : { id: { not: client.id } }),
+          },
+          select: { id: true },
+        });
         if (clash) throw new Response("These identity details are already registered with this broker.", { status: 409 });
         await tx.verificationChallenge.update({ where: { id: phoneVerification.id }, data: { status: "consumed", consumedAt: new Date() } });
-        const next = await tx.client.update({ where: { id: client.id }, data: {
-          fullName,
-          clientType: payload.accountType === "institution" ? "institution" : "individual",
-          phone: String(payload.phone ?? "") || null,
-          email,
-          identityReference: identityRef,
-          faydaLast7: faydaId.slice(-7), taxIdLast4: tin.slice(-4), taxId: null,
-          address: String(payload.address ?? "").trim() || null,
-          proofOfAddressType: String(payload.proofOfAddressType ?? "").trim() || null,
-          proofOfAddressReference: String(payload.proofOfAddressReference ?? "").trim() || null,
-          proofOfAddressStatus: payload.proofOfAddressReference ? "received" : "pending",
-          businessRegistrationNumber: String(payload.registrationNumber ?? "").trim() || null,
-          authorizedRepresentativeName: String(payload.representativeName ?? "").trim() || null,
-          signatoryAuthorityConfirmed: payload.accountType !== "institution" || payload.signatoryAuthorityConfirmed === true,
-          beneficialOwners: payload.accountType === "institution" && String(payload.beneficialOwnerName ?? "").trim()
-            ? [{ name: String(payload.beneficialOwnerName).trim(), status: "declared" }]
-            : undefined,
-          kycStatus: "pending_review", riskRating: "standard", status: "pending_approval", kycConsentAt: new Date(),
-          onboardingChannel: "investor_portal", phoneVerifiedAt: new Date(),
-          sourceOfFunds: String(payload.sourceOfFunds ?? "").trim() || null,
-          investmentObjective: String(payload.investmentObjective ?? "").trim() || null,
-          taxResidency: String(payload.taxResidency ?? "Ethiopia").trim(),
-          pepStatus: String(payload.pepStatus ?? "not_pep"),
-          nationality: String(payload.nationality ?? "Ethiopian").trim(),
-          countryOfResidence: String(payload.countryOfResidence ?? "Ethiopia").trim(),
-          occupation: String(payload.occupation ?? "").trim() || null,
-          electronicDeliveryConsentAt: payload.electronicDeliveryConsent === true ? new Date() : null,
-        } });
+        const next = newApplication
+          ? await tx.client.create({
+            data: {
+              id: applicationClientId,
+              brokerId,
+              clientCode: applicationClientCode,
+              ...clientData,
+            },
+          })
+          : await tx.client.update({ where: { id: client.id }, data: clientData });
+        const targetClientId = next.id;
         const documents = formData ? await prepareDocuments(formData) : [];
         const linkedBanks = parseLinkedBanks(payload.linkedBanks);
         await saveOnboardingEvidence(tx, {
           brokerId,
-          clientId: client.id,
+          clientId: targetClientId,
           source: "investor_portal",
           legalName: fullName,
-          clientType: payload.accountType === "institution" ? "institution" : "individual",
+          clientType: applicationClientType,
           documents,
           banks: linkedBanks,
           replaceBanks: true,
         });
-        await tx.account.updateMany({ where: { clientId: client.id }, data: { status: "pending_approval" } });
+        if (!newApplication) {
+          await tx.account.updateMany({
+            where: { clientId: targetClientId },
+            data: { status: "pending_approval", restrictionReason: "Awaiting client onboarding approval" },
+          });
+        }
         if (legalDocument && payload.termsAccepted === true) {
           await tx.clientConsent.create({ data: {
             id: crypto.randomUUID(),
-            clientId: client.id,
+            clientId: targetClientId,
             legalDocumentId: legalDocument.id,
             consentType: "brokerage_terms",
             version: legalDocument.version,
@@ -400,7 +435,7 @@ export async function POST(request: Request) {
         }
         await tx.auditLog.create({ data: {
           id: crypto.randomUUID(), brokerId, actorId: null, action: "INVESTOR_KYC_SUBMITTED",
-          entityType: "client", entityId: client.id, summary: `Digital KYC submitted for broker review for ${fullName}; only masked identifiers retained`,
+          entityType: "client", entityId: targetClientId, summary: `Digital KYC submitted for broker review for ${fullName}; only masked identifiers retained`,
         } });
         return next;
       });

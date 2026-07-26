@@ -266,6 +266,8 @@ export async function approveClient(actor: Actor, clientId: string) {
       throw new Response("The current brokerage agreement has not been accepted.", { status: 409 });
     }
     const approvedAt = new Date();
+    const accountNumber = client.accounts[0]?.accountNumber ?? `${client.clientCode.replace(/^CL-/, "TRD-")}-01`;
+    const accountId = client.accounts[0]?.id ?? `acc_${crypto.randomUUID().slice(0, 12)}`;
     await tx.client.update({
       where: { id: client.id },
       data: {
@@ -281,6 +283,16 @@ export async function approveClient(actor: Actor, clientId: string) {
       where: { clientId: client.id, status: "pending_approval" },
       data: { status: "active", restrictionReason: null, restrictedAt: null },
     });
+    if (client.accounts.length === 0) {
+      await tx.account.create({
+        data: {
+          id: accountId,
+          clientId: client.id,
+          accountNumber,
+          status: "active",
+        },
+      });
+    }
     await tx.auditLog.create({
       data: {
         id: crypto.randomUUID(),
@@ -291,7 +303,7 @@ export async function approveClient(actor: Actor, clientId: string) {
         entityId: client.id,
         summary: `${client.fullName} approved for account activation`,
         previousValue: JSON.stringify({ status: client.status, kycStatus: client.kycStatus }),
-        newValue: JSON.stringify({ status: "active", kycStatus: "approved", accountStatus: "active" }),
+        newValue: JSON.stringify({ status: "active", kycStatus: "approved", accountStatus: "active", accountNumber }),
       },
     });
     await writeNotification(tx, {
@@ -305,7 +317,7 @@ export async function approveClient(actor: Actor, clientId: string) {
       entityType: "client",
       entityId: client.id,
     });
-    return { status: "active", kycStatus: "approved" };
+    return { status: "active", kycStatus: "approved", accountId, accountNumber };
   }, transactionOptions);
 }
 

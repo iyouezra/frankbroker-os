@@ -5,14 +5,17 @@ import { readBrokerFrontend, readInvestorFrontend } from "./frontend-source.mjs"
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("digital KYC remains pending broker review and returns generated identifiers", async () => {
+test("digital KYC remains pending broker review and receives an account only after approval", async () => {
   const [route, clientService] = await Promise.all([read("app/api/investor/route.ts"), read("lib/client-service.ts")]);
   assert.match(route, /kycStatus: "pending_review"/);
   assert.match(route, /status: "pending_approval"/);
   assert.match(route, /clientCode: updated\.clientCode/);
   assert.match(route, /accountNumber: account\?\.accountNumber/);
+  assert.doesNotMatch(route, /applicationAccountNumber/);
   assert.match(clientService, /const clientId = `cli_/);
   assert.match(clientService, /const accountNumber = `TRD-/);
+  assert.match(clientService, /if \(client\.accounts\.length === 0\)/);
+  assert.match(clientService, /await tx\.account\.create/);
 });
 
 test("investor onboarding captures email and the full institutional document set", async () => {

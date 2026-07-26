@@ -70,8 +70,8 @@ export type InvestorInstrument = {
 };
 export type InvestorBootstrap = {
   tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
-  profile: { fullName: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
-  account: { id: string; accountNumber: string; totalCash: number; availableCash: number; blockedCash: number; holdings: Array<{ ticker: string; quantity: number; averageCost: number; price: number }>; orders: Array<{ id: string }> } | null;
+  profile: { fullName: string; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
+  account: { id: string; accountNumber: string; status?: string; totalCash: number; availableCash: number; blockedCash: number; holdings: Array<{ ticker: string; quantity: number; averageCost: number; price: number }>; orders: Array<{ id: string }> } | null;
   instruments: InvestorInstrument[];
   serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null }>;
   cashPools: CashPool[];
@@ -113,6 +113,9 @@ export function mergeBondInstrument(bond: InvestorBond, instrument?: InvestorIns
 export const INVESTOR_TENANT_ID = "brk_abyssinia";
 export const INVESTOR_CLIENT_ID = "cli_investor_demo";
 export const investorHeaders = { "x-frank-tenant-id": INVESTOR_TENANT_ID, "x-frank-client-id": INVESTOR_CLIENT_ID };
+export function investorHeadersFor(clientId: string) {
+  return { "x-frank-tenant-id": INVESTOR_TENANT_ID, "x-frank-client-id": clientId };
+}
 export const fallbackLinkedBanks: LinkedBankAccount[] = [
   { id: "bank_cbe_fallback", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057894108", accountHolderName: "Selam Mekonnen", status: "approved" },
   { id: "bank_awash_fallback", bankName: "Awash Bank", accountNumber: "0132098765432", accountHolderName: "Selam Mekonnen", status: "approved" },
@@ -314,6 +317,32 @@ export function ProgressDots({ step }: { step: number }) {
 
 export const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", email: "selam.mekonnen@example.et", faydaId: "1234567890123456", tin: "0012814908", address: "", proofOfAddressType: "Drivers License", proofOfAddressReference: "", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
 export const institutionDemo: InvestorKyc = { accountType: "institution", fullName: "Blue Nile Trading PLC", phone: "0115500017", email: "finance@bluenile.example", faydaId: "2345678901234567", tin: "0067047925", address: "Kirkos, Addis Ababa", proofOfAddressType: "", proofOfAddressReference: "", registrationNumber: "AA/2/12345/2018", representativeName: "Meron Bekele", beneficialOwnerName: "Selamawit Bekele", signatoryAuthorityConfirmed: false, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Authorized representative", sourceOfFunds: "Operating income", investmentObjective: "Capital preservation and growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
+export function emptyInvestorKyc(accountType: InvestorKyc["accountType"]): InvestorKyc {
+  return {
+    accountType,
+    fullName: "",
+    phone: "",
+    email: "",
+    faydaId: "",
+    tin: "",
+    address: "",
+    proofOfAddressType: "",
+    proofOfAddressReference: "",
+    registrationNumber: "",
+    representativeName: "",
+    beneficialOwnerName: "",
+    signatoryAuthorityConfirmed: false,
+    termsAccepted: false,
+    electronicDeliveryConsent: false,
+    nationality: "Ethiopian",
+    countryOfResidence: "Ethiopia",
+    occupation: "",
+    sourceOfFunds: "",
+    investmentObjective: "",
+    taxResidency: "Ethiopia",
+    pepStatus: "not_pep",
+  };
+}
 
 export function KycProgress({ step }: { step: number }) {
   return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 5</small></span><i><em style={{ width: `${((step + 1) / 5) * 100}%` }} /></i></div>;

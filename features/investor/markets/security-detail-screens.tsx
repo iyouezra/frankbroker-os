@@ -28,13 +28,13 @@ import {
   type PlaceResult,
 } from "../shared/investor-foundation";
 
-export function BondDetail({ bond, account, onBack, placeOrder, feeRule, allowedOrderTypes }: { bond: InvestorBond; account: InvestorBootstrap["account"]; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
+export function BondDetail({ bond, account, restricted, onBack, placeOrder, feeRule, allowedOrderTypes }: { bond: InvestorBond; account: InvestorBootstrap["account"]; restricted: boolean; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
   const [buying, setBuying] = useState(false);
   const pricePerBond = getBondPricePerUnit(bond);
   const couponPayment = getBondCouponPayment(bond);
-  const availableCash = account?.availableCash ?? 75_000;
+  const availableCash = restricted ? 0 : account?.availableCash ?? 75_000;
   const halted = bond.status === "halted";
-  return <div className={styles.detailScreen}>
+  return <div className={`${styles.detailScreen} ${restricted ? styles.restrictedDetail : ""}`}>
     <ScreenHeader title={bond.ticker} onBack={onBack} right={<span className={`${styles.badge} ${halted ? styles.haltedBadge : ""}`}>{halted ? "Trading paused" : "Government bond"}</span>} />
     <div className={styles.detailBody}>
       <p className={styles.companyName}>{bond.name}</p>
@@ -74,18 +74,18 @@ export function BondDetail({ bond, account, onBack, placeOrder, feeRule, allowed
       </Card>
       <p className={styles.disclaimer}>Yield assumes the bond is held to maturity and all scheduled payments are made.</p>
     </div>
-    <div className={`${styles.tradeBar} ${styles.bondTradeBar}`}><Button disabled={halted} onClick={() => setBuying(true)}>{halted ? "Trading paused" : "Buy bond"}</Button></div>
+    <div className={`${styles.tradeBar} ${styles.bondTradeBar}`}><Button disabled={halted || restricted} onClick={() => setBuying(true)}>{restricted ? "Approval required" : halted ? "Trading paused" : "Buy bond"}</Button></div>
     {buying && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["validation_failed", "error", "verification_cancelled"].includes(result.status)) setBuying(false); return result; }} />}
   </div>;
 }
 
-export function StockDetail({ stock, account, onBack, placeOrder, feeRule, allowedOrderTypes }: { stock: InvestorStock; account: InvestorBootstrap["account"]; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
+export function StockDetail({ stock, account, restricted, onBack, placeOrder, feeRule, allowedOrderTypes }: { stock: InvestorStock; account: InvestorBootstrap["account"]; restricted: boolean; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
   const [side, setSide] = useState<"Buy" | "Sell" | null>(null);
   const [range, setRange] = useState<MarketRange>("1M");
-  const holding = account?.holdings.find((item) => item.ticker === stock.ticker) ?? investorHoldings.find((item) => item.ticker === stock.ticker);
+  const holding = account?.holdings.find((item) => item.ticker === stock.ticker) ?? (restricted ? undefined : investorHoldings.find((item) => item.ticker === stock.ticker));
   const session = getInvestorSession(stock);
   const snapshot = getMarketSnapshot(stock);
-  return <div className={styles.detailScreen}>
+  return <div className={`${styles.detailScreen} ${restricted ? styles.restrictedDetail : ""}`}>
     <ScreenHeader title={stock.ticker} onBack={onBack} right={<span className={styles.badge}>{stock.sector}</span>} />
     <div className={styles.detailBody}>
       <p className={styles.companyName}>{stock.name}</p>
@@ -123,8 +123,7 @@ export function StockDetail({ stock, account, onBack, placeOrder, feeRule, allow
       </Card>
       <p className={styles.disclaimer}>Prices move. Invest money you won&apos;t need soon.</p>
     </div>
-    <div className={styles.tradeBar}><Button onClick={() => setSide("Buy")}>Buy</Button><Button variant="secondary" disabled={!holding} onClick={() => setSide("Sell")}>Sell</Button></div>
+    <div className={styles.tradeBar}><Button disabled={restricted} onClick={() => setSide("Buy")}>{restricted ? "Approval required" : "Buy"}</Button><Button variant="secondary" disabled={restricted || !holding} onClick={() => setSide("Sell")}>Sell</Button></div>
     {side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["validation_failed", "error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
   </div>;
 }
-
