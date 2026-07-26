@@ -48,6 +48,49 @@ const lessons = [
 
 export function LearnScreen() {
   const [openLesson, setOpenLesson] = useState<string | null>("investing");
-  return <div className={styles.screen}><ScreenHeader title="Learn" /><p className={styles.learnIntro}>Short lessons to help you make clear choices with your money.</p><div className={styles.lessonList}>{lessons.map((lesson) => { const open = openLesson === lesson.id; return <Card className={`${styles.lessonCard} ${open ? styles.lessonOpen : ""}`} key={lesson.id}><button onClick={() => setOpenLesson(open ? null : lesson.id)} aria-expanded={open}><span><b>{lesson.title}</b><small>{lesson.summary}</small></span><Icon name="chevron" size={17} /></button>{open && <div className={styles.lessonBody}>{lesson.points.map(([label, text]) => <div key={label}><b>{label}</b><p>{text}</p></div>)}</div>}</Card>; })}</div></div>;
-}
+  return <div className={styles.screen}>
+    <ScreenHeader title="Learn" />
+    <p className={styles.learnIntro}>Short lessons to help you make clear choices with your money.</p>
+    <div className={styles.lessonList}>{lessons.map((lesson) => {
+      const open = openLesson === lesson.id;
+      return <Card className={`${styles.lessonCard} ${open ? styles.lessonOpen : ""}`} key={lesson.id}>
+        <button onClick={() => setOpenLesson(open ? null : lesson.id)} aria-expanded={open}>
+          <span><b>{lesson.title}</b><small>{lesson.summary}</small></span>
+          <Icon name="chevron" size={17} />
+        </button>
+        {open && <div className={styles.lessonBody}>{lesson.points.map(([label, text]) => <div key={label}><b>{label}</b><p>{text}</p></div>)}</div>}
+      </Card>;
+    })}</div>
 
+    <section className={styles.learningResources} aria-labelledby="learning-resources-title">
+      <div className={styles.learningResourcesHeader}>
+        <span>CONTINUE LEARNING</span>
+        <h2 id="learning-resources-title">Trusted resources</h2>
+        <p>Go deeper with structured courses and Ethiopian finance articles.</p>
+      </div>
+      <div className={styles.learningResourceList}>
+        <a className={styles.learningResourceCard} href="https://academy.esx.et/" target="_blank" rel="noopener noreferrer">
+          <span className={styles.learningResourceMark}>ESX</span>
+          <span className={styles.learningResourceCopy}>
+            <small>OFFICIAL COURSES</small>
+            <b>ESX Academy</b>
+            <p>Study Ethiopian capital markets, financial instruments and regulation through structured courses.</p>
+            <em>academy.esx.et</em>
+          </span>
+          <span className={styles.externalLinkIcon} aria-hidden="true">↗</span>
+        </a>
+        <a className={styles.learningResourceCard} href="https://www.frankdigest.com/" target="_blank" rel="noopener noreferrer">
+          <span className={`${styles.learningResourceMark} ${styles.frankDigestMark}`}>ፍ</span>
+          <span className={styles.learningResourceCopy}>
+            <small>ARTICLES &amp; INSIGHTS</small>
+            <b>ፍራንክ Digest</b>
+            <p>Read approachable articles about Ethiopian finance, investing and personal money decisions.</p>
+            <em>frankdigest.com</em>
+          </span>
+          <span className={styles.externalLinkIcon} aria-hidden="true">↗</span>
+        </a>
+      </div>
+      <p className={styles.learningDisclaimer}>External educational resources are provided for general information. Their content does not constitute investment advice or guarantee investment returns.</p>
+    </section>
+  </div>;
+}

@@ -253,6 +253,24 @@
 .lessonBody > div { padding-top: 12px; }
 .lessonBody b { color: var(--investor-teal-800); font-size: 11px; }
 .lessonBody p { margin: 3px 0 0; color: var(--investor-ink-600); font-size: 11px; line-height: 1.5; }
+.learningResources { margin: 4px 0 24px; }
+.learningResourcesHeader { margin: 0 2px 11px; }
+.learningResourcesHeader > span { color: var(--investor-teal-700); font-size: 9px; font-weight: 750; letter-spacing: .11em; }
+.learningResourcesHeader h2 { margin: 4px 0 2px; font-size: 17px; }
+.learningResourcesHeader p { margin: 0; color: var(--investor-ink-500); font-size: 11px; line-height: 1.45; }
+.learningResourceList { display: flex; flex-direction: column; gap: 9px; }
+.learningResourceCard { min-height: 112px; display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: start; gap: 12px; padding: 15px; border: 1px solid var(--investor-ink-100); border-radius: 16px; background: white; color: inherit; box-shadow: 0 1px 2px rgba(8,62,71,.05), 0 6px 20px rgba(8,62,71,.07); text-decoration: none; transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
+.learningResourceCard:hover { border-color: rgba(12,129,137,.34); box-shadow: 0 10px 26px rgba(8,62,71,.12); transform: translateY(-1px); }
+.learningResourceCard:focus-visible { outline: 3px solid rgba(12,129,137,.3); outline-offset: 2px; }
+.learningResourceMark { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; background: var(--investor-teal-800); color: white; font-size: 11px; font-weight: 800; letter-spacing: .04em; }
+.frankDigestMark { background: linear-gradient(145deg,var(--investor-aqua-400),var(--investor-teal-700)); color: var(--investor-teal-900); font-family: var(--font-display); font-size: 18px; }
+.learningResourceCopy { min-width: 0; display: flex; flex-direction: column; }
+.learningResourceCopy small { color: var(--investor-teal-700); font-size: 8px; font-weight: 750; letter-spacing: .09em; }
+.learningResourceCopy b { margin-top: 3px; font-size: 13px; }
+.learningResourceCopy p { margin: 4px 0 0; color: var(--investor-ink-600); font-size: 10.5px; line-height: 1.45; }
+.learningResourceCopy em { margin-top: 6px; color: var(--investor-ink-400); font-size: 9px; font-style: normal; }
+.externalLinkIcon { color: var(--investor-teal-700); font-size: 18px; line-height: 1; }
+.learningDisclaimer { margin: 10px 3px 0; color: var(--investor-ink-400); font-size: 9.5px; line-height: 1.5; }
 .switchRow { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .switchRow > span { min-width: 0; display: flex; flex: 1; flex-direction: column; }
 .switchRow b { font-size: 13px; }
