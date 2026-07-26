@@ -548,7 +548,9 @@ td b { display: block; color: var(--fx-text); font-size: 11.5px; } td small { di
 .client-directory-summary span:first-child { margin-right: auto; }
 .client-directory-summary b { margin-left: 4px; color: var(--ink); font-family: var(--font-mono); }
 .client-directory-table { min-width: 1120px; }
-.client-directory-table tbody tr.selected { background: var(--mint); box-shadow: inset 3px 0 var(--teal); }
+.client-directory-table tbody tr.selected { background: var(--fx-accent-soft); box-shadow: inset 3px 0 var(--teal); }
+:root[data-theme="dark"] .client-directory-table tbody tr.selected { background: linear-gradient(90deg,rgba(34,179,179,.2),rgba(34,179,179,.1)); color: var(--fx-text); box-shadow: inset 4px 0 var(--cyan), inset 0 1px rgba(53,231,217,.2), inset 0 -1px rgba(53,231,217,.2); }
+:root[data-theme="dark"] .client-directory-table tbody tr.selected td small { color: var(--fx-text-2); }
 .directory-client-cell { display: flex; align-items: center; gap: 10px; }
 .directory-client-cell > i { width: 32px; height: 32px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 9px; background: linear-gradient(145deg, var(--mint), var(--fx-accent-soft)); color: var(--fx-teal); font-size: 9.5px; font-style: normal; font-weight: 850; }
 .directory-client-cell > span { min-width: 0; }
