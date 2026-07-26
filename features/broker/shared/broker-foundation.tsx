@@ -344,7 +344,10 @@ export function calculateConfiguredAmounts(side: "buy" | "sell", quantity: numbe
 
 export type NavItem = { id: View; label: string; icon: string; roles?: Role[] };
 export const navGroups: { label: string; items: NavItem[] }[] = [
-  { label: "Overview", items: [{ id: "dashboard", label: "Dashboard", icon: "dashboard" }] },
+  { label: "Overview", items: [
+    { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+    { id: "market", label: "Market Watch", icon: "performance" },
+  ] },
   { label: "Clients", items: [
     { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance"] },
     { id: "cash", label: "Client money", icon: "cash", roles: ["broker_admin", "operations", "settlement"] },
@@ -355,7 +358,6 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "crm_cases", label: "Complaints", icon: "complaints" },
   ] },
   { label: "Trading", items: [
-    { id: "market", label: "Market Watch", icon: "performance" },
     { id: "orders", label: "Order log", icon: "orders" },
     { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
     { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations"] },
