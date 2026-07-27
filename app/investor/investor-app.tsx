@@ -55,7 +55,6 @@ import {
 } from "../../features/investor/orders/order-submission-dialogs";
 import {
   failedOutcome,
-  heldOutcome,
   submittedOutcome,
   type OrderSubmissionOutcome,
 } from "../../lib/order-submission-ux";
@@ -409,12 +408,10 @@ export default function InvestorApp() {
       if (!verificationId) return { status: "verification_cancelled" };
       stage = "submission";
       const result = await postInvestor({ action: "order", ...order, submissionReference, verificationId });
-      const failed = (result.checks ?? []).filter((check) => !check.passed);
-      if (result.order?.status === "validation_failed") {
-        setOrderOutcome(heldOutcome({ audience: "investor", orderId: result.order.id, channel: "investor_portal", detail: failed[0]?.message }));
-      } else {
-        setOrderOutcome(submittedOutcome({ audience: "investor", orderId: result.order?.id ?? "Order", channel: "investor_portal" }));
-      }
+      // A recorded order is confirmed to the investor as received and being
+      // processed. If a pre-trade check holds it, the broker reviews the hold —
+      // nothing is required of the investor, so there is no "action required".
+      setOrderOutcome(submittedOutcome({ audience: "investor", orderId: result.order?.id ?? "Order", channel: "investor_portal" }));
       await refreshInvestor().catch(() => undefined);
       return { status: result.order?.status, checks: result.checks };
     } catch (error) {

@@ -75,7 +75,7 @@ export function BondDetail({ bond, account, restricted, onBack, placeOrder, feeR
       <p className={styles.disclaimer}>Yield assumes the bond is held to maturity and all scheduled payments are made.</p>
     </div>
     <div className={`${styles.tradeBar} ${styles.bondTradeBar}`}><Button disabled={halted || restricted} onClick={() => setBuying(true)}>{restricted ? "Approval required" : halted ? "Trading paused" : "Buy bond"}</Button></div>
-    {buying && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["validation_failed", "error", "verification_cancelled"].includes(result.status)) setBuying(false); return result; }} />}
+    {buying && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setBuying(false); return result; }} />}
   </div>;
 }
 
@@ -124,6 +124,6 @@ export function StockDetail({ stock, account, restricted, onBack, placeOrder, fe
       <p className={styles.disclaimer}>Prices move. Invest money you won&apos;t need soon.</p>
     </div>
     <div className={styles.tradeBar}><Button disabled={restricted} onClick={() => setSide("Buy")}>{restricted ? "Approval required" : "Buy"}</Button><Button variant="secondary" disabled={restricted || !holding} onClick={() => setSide("Sell")}>Sell</Button></div>
-    {side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["validation_failed", "error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
+    {side && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
   </div>;
 }
