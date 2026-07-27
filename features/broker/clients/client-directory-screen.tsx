@@ -50,6 +50,8 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
   const [workspaceView, setWorkspaceView] = useState<"directory" | "client360">(focus?.clientId ? "client360" : "directory");
   const [tab, setTab] = useState<Client360Tab>(focus?.tab ?? "overview");
   const [detail, setDetail] = useState<Client360Detail | null>(null);
+  const [detailState, setDetailState] = useState<"loading" | "live" | "offline" | "not_found" | "error">("loading");
+  const [detailClientId, setDetailClientId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -135,9 +137,22 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
       headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role },
       signal: controller.signal,
     })
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((data: Client360Detail) => setDetail(data))
-      .catch(() => setDetail(null));
+      .then(async (response) => {
+        if (response.ok) return response.json() as Promise<Client360Detail>;
+        const payload = await response.json().catch(() => ({})) as { offline?: boolean };
+        throw { status: response.status, offline: payload.offline === true };
+      })
+      .then((data) => {
+        setDetail(data);
+        setDetailClientId(selected.id);
+        setDetailState("live");
+      })
+      .catch((error: { status?: number; offline?: boolean } | undefined) => {
+        if (controller.signal.aborted) return;
+        setDetail(null);
+        setDetailClientId(selected.id);
+        setDetailState(error?.offline || error?.status === 503 ? "offline" : error?.status === 404 ? "not_found" : "error");
+      });
     return () => controller.abort();
   }, [selected, role, refreshKey]);
 
@@ -165,7 +180,14 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     capturedBy: trade.capturedBy,
   })));
   const fallbackReady = selected.kyc === "approved" && selected.status === "active" && Boolean(selected.termsAcceptedVersion);
-  const model: Client360Detail = detail ?? {
+  const activeDetailState = detailClientId === selected.id ? detailState : "loading";
+  const fallbackBlockingReasons = [
+    ...(selected.kyc === "approved" ? [] : ["KYC approval is required"]),
+    ...(selected.termsAcceptedVersion ? [] : ["Current legal terms have not been accepted"]),
+    ...(selected.status === "active" ? [] : [`Client account is ${displayLabel(selected.status).toLowerCase()}`]),
+    ...(selected.restrictionReason ? [selected.restrictionReason] : []),
+  ];
+  const model: Client360Detail = (detailClientId === selected.id ? detail : null) ?? {
     client: {
       id: selected.id,
       code: selected.code,
@@ -191,7 +213,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     },
     readiness: {
       canTrade: fallbackReady,
-      blockingReasons: fallbackReady ? [] : ["Connect the database to load the full readiness record"],
+      blockingReasons: fallbackReady ? [] : fallbackBlockingReasons,
       items: [
         { key: "kyc", label: "KYC approved", state: selected.kyc === "approved" ? "pass" : "fail", detail: displayLabel(selected.kyc) },
         { key: "documents", label: "Required documents uploaded", state: selected.proofOfAddressStatus === "received" ? "pass" : "warning", detail: selected.proofOfAddressStatus ?? "Demo evidence unavailable" },
@@ -228,6 +250,8 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     setTab("overview");
     setMessage("");
     setDetail(null);
+    setDetailClientId(null);
+    setDetailState("loading");
     setWorkspaceView("client360");
     window.scrollTo({ top: 0 });
   };
@@ -512,7 +536,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     {tab === "overview" && <div className="client-360-grid">
       <RelationshipOfficerCard current={model.relationship?.current ?? null} history={model.relationship?.history ?? []} role={role} busy={busy === "assign"} onAssign={(officerId) => void assignOfficer(officerId)} />
       <section className="panel onboarding-record"><div className="panel-head"><div><span className="eyebrow">ONBOARDING RECORD</span><h2>Submitted client details</h2></div><span className="account-number">{displayLabel(model.client.onboardingChannel ?? "in_person")}</span></div><dl><div><dt>Email</dt><dd>{model.client.email ?? "Not recorded"}</dd></div><div><dt>Phone</dt><dd>{model.client.phone ?? "Not recorded"}</dd></div><div><dt>Fayda FAN</dt><dd>{model.client.identityMasked ?? "Not recorded"}</dd></div><div><dt>TIN</dt><dd>{model.client.taxIdMasked ?? "Not recorded"}</dd></div>{model.client.type !== "individual" && <><div><dt>Registered address</dt><dd>{model.client.address ?? "Not recorded"}</dd></div><div><dt>Registration number</dt><dd>{model.client.businessRegistrationNumber ?? "Not recorded"}</dd></div><div><dt>Authorized representative</dt><dd>{model.client.authorizedRepresentativeName ?? "Not recorded"}</dd></div><div><dt>Signatory authority</dt><dd>{model.client.signatoryAuthorityConfirmed ? "Confirmed" : "Not confirmed"}</dd></div></>}</dl></section>
-      <section className="panel readiness-panel"><div className="panel-head"><div><span className="eyebrow">TRADING READINESS</span><h2>{model.readiness.canTrade ? "Client can trade" : "Action required"}</h2></div><span className={`readiness-score ${model.readiness.canTrade ? "ready" : "blocked"}`}>{model.readiness.items.filter((item) => item.state === "pass").length}/{model.readiness.items.length}</span></div>{!model.readiness.canTrade && model.readiness.blockingReasons.length > 0 && <div className="readiness-callout"><b>Trading is blocked</b><span>{model.readiness.blockingReasons.join(" · ")}</span></div>}<div className="readiness-list">{model.readiness.items.map((item) => <div key={item.key}><i className={item.state}>{item.state === "pass" ? "✓" : item.state === "fail" ? "!" : "-"}</i><span><b>{item.label}</b><small>{item.detail}</small></span></div>)}</div></section>
+      <section className="panel readiness-panel"><div className="panel-head"><div><span className="eyebrow">TRADING READINESS</span><h2>{activeDetailState === "loading" ? "Loading readiness…" : model.readiness.canTrade ? "Client can trade" : "Action required"}</h2></div>{activeDetailState === "loading" ? <span className="readiness-score">–/–</span> : <span className={`readiness-score ${model.readiness.canTrade ? "ready" : "blocked"}`}>{model.readiness.items.filter((item) => item.state === "pass").length}/{model.readiness.items.length}</span>}</div>{activeDetailState !== "live" && <div className="readiness-source-callout"><b>{activeDetailState === "loading" ? "LOADING" : "DEMO SNAPSHOT"}</b><span>{activeDetailState === "loading" ? "Retrieving the full readiness record…" : activeDetailState === "offline" ? "The database is unavailable. Readiness below is calculated from the demonstration snapshot." : activeDetailState === "not_found" ? "This demonstration client is not present in the connected database. Readiness below uses the local snapshot." : "The full client record could not be loaded. Readiness below uses the local snapshot."}</span></div>}{activeDetailState !== "loading" && !model.readiness.canTrade && model.readiness.blockingReasons.length > 0 && <div className="readiness-callout"><b>Trading is blocked</b><span>{model.readiness.blockingReasons.join(" · ")}</span></div>}<div className="readiness-list">{model.readiness.items.map((item) => <div key={item.key}><i className={item.state}>{item.state === "pass" ? "✓" : item.state === "fail" ? "!" : "-"}</i><span><b>{item.label}</b><small>{item.detail}</small></span></div>)}</div></section>
       <section className="panel overview-cash"><div className="panel-head"><div><span className="eyebrow">CASH POSITION</span><h2>Available to trade</h2></div><button onClick={() => setTab("assets")}>View ledger →</button></div><strong>{etb(model.cash?.available ?? 0)}</strong><div><span><small>Total cash</small><b>{etb(model.cash?.total ?? 0)}</b></span><span><small>Blocked</small><b>{etb(model.cash?.blocked ?? 0)}</b></span><span><small>Unsettled</small><b>{etb(model.cash?.unsettled ?? 0)}</b></span></div></section>
       <section className="panel legal-status-card"><div className="panel-head"><div><span className="eyebrow">LEGAL & DOCUMENTS</span><h2>Consent status</h2></div><span className={`status ${model.legal.accepted ? "status-success" : "status-warning"}`}><i />{model.legal.accepted ? "Accepted" : "Consent required"}</span></div><div className="legal-status-body"><span><small>Required version</small><b>{model.legal.latestRequiredVersion ?? "None configured"}</b></span><span><small>Accepted version</small><b>{model.legal.latestAcceptedVersion ?? "Not accepted"}</b></span><span><small>Last accepted</small><b>{model.legal.lastAcceptedAt ? new Date(model.legal.lastAcceptedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "-"}</b></span></div>{model.legal.missingDocuments.length > 0 && <div className="missing-docs"><small>MISSING / ACTION REQUIRED</small>{model.legal.missingDocuments.map((item) => <span key={item}>{item}</span>)}</div>}{canAdjust && !model.legal.accepted && <div className="record-resolution-actions"><button className="btn secondary small" onClick={() => { setTermsEvidence(""); setTermsEvidenceOpen(true); }}>Record witnessed acceptance</button></div>}</section>
       <section className="panel flags-card"><div className="panel-head"><div><span className="eyebrow">RESTRICTIONS & FLAGS</span><h2>Control indicators</h2></div></div>{model.restrictions.flags.length || model.restrictions.restricted ? <div className="flag-list">{model.restrictions.restricted && <div className="serious"><i>!</i><span><b>Account restricted</b><small>{model.restrictions.reason ?? "Reason not recorded"}</small></span></div>}{model.restrictions.flags.map((flag) => <div key={flag}><i>◇</i><span><b>{flag}</b><small>Review the relevant client record before activity.</small></span></div>)}</div> : <EmptyState title="No active flags" copy="No client, KYC, consent, or account restriction is currently blocking activity." />}</section>
