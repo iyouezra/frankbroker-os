@@ -59,7 +59,7 @@ export function NewOrderForm({ value, setValue, clients, instruments, controls, 
 }
 
 
-export function OrderDetail({ order, role, busy, controls, manualTradeCapture, onApprove, onReject, onCancel, onFail, onTrade, onSettle, onContract }: { order: DemoOrder; role: Role; busy: string | null; controls: TenantControls; manualTradeCapture: boolean; onApprove: () => void; onReject: () => void; onCancel: () => void; onFail: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
+export function OrderDetail({ order, client, role, busy, controls, manualTradeCapture, onApprove, onReject, onCancel, onFail, onTrade, onSettle, onContract }: { order: DemoOrder; client: BrokerClient | null; role: Role; busy: string | null; controls: TenantControls; manualTradeCapture: boolean; onApprove: () => void; onReject: () => void; onCancel: () => void; onFail: () => void; onTrade: () => void; onSettle: () => void; onContract: () => void }) {
   const remaining = order.remainingQuantity ?? order.quantity;
   const filled = order.filledQuantity ?? 0;
   const actions = new Set(order.availableActions ?? (
@@ -80,9 +80,17 @@ export function OrderDetail({ order, role, busy, controls, manualTradeCapture, o
   // Mirror the server rule: four-eyes applies only when the tenant has maker-checker
   // on and the order value meets the approval threshold.
   const requiresFourEyes = controls.makerChecker && order.estimatedNet >= controls.approvalThreshold;
+  const reservedForOrder = order.side === "buy" ? order.blockedCash ?? 0 : 0;
+  const fundingAvailable = (client?.availableCash ?? 0) + reservedForOrder;
+  const orderIsFunded = Boolean(client) && fundingAvailable >= order.estimatedNet;
   return <div className="drawer-content">
     <div className="drawer-title"><span className="eyebrow">ORDER CONTROL</span><h2>{order.id}</h2><div className="title-badges"><StatusBadge status={order.status} /><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></div></div>
     <div className="order-hero"><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · {order.accountNumber ?? order.accountId.replace("acc_", "TRD-").toUpperCase()}</span></div><strong>{fmt.format(order.quantity)} <small>{order.symbol}</small></strong><p>@ {fmt.format(order.price)} ETB · {order.orderType}{order.triggerPrice ? ` · Trigger ${fmt.format(order.triggerPrice)} ETB` : ""}</p></div>
+    <section className={`order-buying-power${order.side === "buy" ? " order-buying-power-buy" : ""}`}>
+      <header><div><small>{order.side === "buy" ? "CLIENT BUYING POWER" : "CLIENT CASH POSITION"}</small><strong>{client ? etb(client.availableCash) : "Unavailable"}</strong><span>{order.side === "buy" ? "Available to invest now" : "Available cash"}</span></div>{order.side === "buy" && client && <em className={orderIsFunded ? "funded" : "shortfall"}>{orderIsFunded ? "Cash covered" : "Cash shortfall"}</em>}</header>
+      <div><span><small>Available cash</small><b>{client ? etb(client.availableCash) : "Unavailable"}</b></span><span><small>{order.side === "buy" ? "Reserved for this order" : "Total blocked cash"}</small><b>{client ? etb(order.side === "buy" ? reservedForOrder : client.blockedCash) : "Unavailable"}</b></span><span><small>{order.side === "buy" ? "Estimated order cost" : "Total client cash"}</small><b>{client ? etb(order.side === "buy" ? order.estimatedNet : client.totalCash) : "Unavailable"}</b></span></div>
+      <p>{order.side === "buy" ? "Available cash excludes active reservations. This order's reserved amount is shown separately." : "This cash position is shown for context. Sell-order validation is based on available holdings."}</p>
+    </section>
     <MarketContextCard instrumentId={order.instrumentId} orderLimit={order.price} role={role} />
     <div className="current-action-card"><span><small>NEXT ACTION</small><b>{responsibility.nextAction}</b><em>{ACTIVE_ORDER_STATUSES.has(order.status) ? waitingTime(lastChangedAt) : `Last updated ${new Date(lastChangedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`}</em></span><span><small>RESPONSIBLE</small><strong>{responsibility.actionOwner}</strong><em>{order.trader !== "Unassigned" ? `Assigned trader: ${order.trader}` : "No individual assigned"}</em></span></div>
     {exceptionReason && <div className="order-exception-card"><i>!</i><span><b>{displayLabel(order.status)}</b><p>{exceptionReason}</p></span></div>}

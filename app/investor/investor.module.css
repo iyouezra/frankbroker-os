@@ -114,6 +114,12 @@
 .heroCard > div { display: flex; align-items: center; gap: 9px; }
 .heroCard .deltaPill { background: rgba(111,242,230,.15); color: var(--investor-aqua-300) !important; }
 .heroCard > div > span:last-child { color: rgba(255,255,255,.58); font-size: 11px; }
+.homeAvailableCash { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: -4px; padding: 15px 17px; border-color: rgba(12,129,137,.2); background: linear-gradient(145deg, rgba(20,211,200,.1), rgba(12,129,137,.04)); }
+.homeAvailableCash > div { display: flex; min-width: 0; flex-direction: column; }
+.homeAvailableCash small { color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+.homeAvailableCash strong { margin-top: 4px; font-family: var(--font-mono); font-size: 20px; font-variant-numeric: tabular-nums; }
+.homeAvailableCash span { margin-top: 4px; color: var(--investor-ink-500); font-size: 9px; line-height: 1.45; }
+.homeAvailableCash button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; padding: 7px 0 7px 8px; border: 0; background: transparent; color: var(--investor-accent); cursor: pointer; font-size: 10px; font-weight: 750; }
 .quickActions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .quickActions .button { width: 100%; }
 
