@@ -24,11 +24,16 @@ const [broker, investor, foundation, shell, clientDirectory, myTasks, complaints
 /** JSX and code only - a comment mentioning a word is not the word shipping. */
 const stripComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-test("the three servicing surfaces sit in their own nav group", () => {
-  assert.match(foundation, /label: "Client service"/);
+test("the three servicing surfaces are sub-nav under Clients & accounts", () => {
+  // They reveal beneath the client directory rather than sitting in their own
+  // top-level group, so the sidebar stays uncrowded.
+  assert.match(foundation, /label: "Clients & accounts"[\s\S]*?children: \[/);
   for (const item of [/id: "crm", label: "Conversations"/, /id: "crm_tasks", label: "My tasks"/, /id: "crm_cases", label: "Complaints"/]) {
     assert.match(foundation, item);
   }
+  assert.doesNotMatch(foundation, /label: "Client service"/);
+  // The shell renders the revealed sub-nav for the parent's children.
+  assert.match(shell, /nav-subnav/);
   // Every grouped item needs an icon, or the collapsed sidebar shows a blank row.
   assert.match(foundation, /\n  tasks:/);
   assert.match(foundation, /\n  complaints:/);

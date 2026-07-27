@@ -27,6 +27,7 @@ export function BrandSelect({
   disabled = false,
   ariaLabel,
   className,
+  menuClassName,
   id,
 }: {
   value: string;
@@ -36,6 +37,7 @@ export function BrandSelect({
   disabled?: boolean;
   ariaLabel?: string;
   className?: string;
+  menuClassName?: string;
   id?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -145,7 +147,7 @@ export function BrandSelect({
       ref={listRef}
       id={listId}
       role="listbox"
-      className={`bselect-pop drop-${coords.drop}`}
+      className={`bselect-pop drop-${coords.drop}${menuClassName ? ` ${menuClassName}` : ""}`}
       style={{ left: coords.left, width: coords.width, ...(coords.drop === "down" ? { top: coords.top } : { bottom: coords.bottom }) }}
     >
       {options.map((option, index) => (

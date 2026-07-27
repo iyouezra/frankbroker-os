@@ -342,20 +342,21 @@ export function calculateConfiguredAmounts(side: "buy" | "sell", quantity: numbe
   return { gross, fees, net, brokerage, regulator, exchange, csd };
 }
 
-export type NavItem = { id: View; label: string; icon: string; roles?: Role[] };
+export type NavItem = { id: View; label: string; icon: string; roles?: Role[]; children?: NavItem[] };
 export const navGroups: { label: string; items: NavItem[] }[] = [
   { label: "Overview", items: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
     { id: "market", label: "Market Watch", icon: "performance" },
   ] },
   { label: "Clients", items: [
-    { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance", "relationship_officer", "service_officer"] },
+    // The client-servicing surfaces live as sub-nav under the directory: opening
+    // "Clients & accounts" shows the directory and reveals these beneath it.
+    { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance", "relationship_officer", "service_officer"], children: [
+      { id: "crm", label: "Conversations", icon: "conversations" },
+      { id: "crm_tasks", label: "My tasks", icon: "tasks" },
+      { id: "crm_cases", label: "Complaints", icon: "complaints" },
+    ] },
     { id: "cash", label: "Client money", icon: "cash", roles: ["broker_admin", "operations", "settlement"] },
-  ] },
-  { label: "Client service", items: [
-    { id: "crm", label: "Conversations", icon: "conversations" },
-    { id: "crm_tasks", label: "My tasks", icon: "tasks" },
-    { id: "crm_cases", label: "Complaints", icon: "complaints" },
   ] },
   { label: "Trading", items: [
     { id: "orders", label: "Order log", icon: "orders" },
@@ -372,7 +373,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "settings", label: "Settings", icon: "settings", roles: ["broker_admin"] },
   ] },
 ];
-export const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
+export const navItems: NavItem[] = navGroups.flatMap((group) => group.items.flatMap((item) => [item, ...(item.children ?? [])]));
 export const navVisible = (item: NavItem, role: Role) => role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role);
 export const PENDING_CASH_STATUSES = ["pending_verification", "pending_approval", "approved"];
 export type QueueItem = { key: string; permission: string; roles?: Role[]; tone: "warning" | "danger" | "info"; icon: string; title: string; detail: string; onOpen: () => void };

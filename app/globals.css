@@ -132,6 +132,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sidebar nav button > i { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,.06); color: #93c4c5; display: grid; place-items: center; flex: 0 0 auto; }
 .sidebar nav button > span { flex: 1; min-width: 0; }
 .sidebar nav button.active > i { background: rgba(53,231,217,.16); color: var(--aqua); }
+/* Revealed sub-nav under a parent item (e.g. client-servicing under Clients) */
+.nav-item { display: flex; flex-direction: column; gap: 3px; }
+.nav-subnav { display: flex; flex-direction: column; gap: 2px; margin: 1px 0 5px 25px; padding-left: 11px; border-left: 1px solid rgba(255,255,255,.1); }
+.sidebar nav button.nav-sub { padding: 7px 9px; font-size: 12.5px; gap: 9px; }
+.sidebar nav button.nav-sub > i { width: 24px; height: 24px; border-radius: 7px; }
+.sidebar.collapsed:not(:hover) .nav-subnav { display: none; }
 /* Collapsed rail - a slim icon strip that expands on hover as an overlay */
 .sidebar.collapsed { width: 78px; padding-left: 13px; padding-right: 13px; }
 .sidebar.collapsed:hover { width: 248px; padding-left: 16px; padding-right: 16px; box-shadow: 8px 0 30px rgba(4,35,38,.32); }
@@ -631,6 +637,10 @@ td b { display: block; color: var(--fx-text); font-size: 11.5px; } td small { di
 .bselect-option.selected { color: var(--fx-teal); font-weight: 700; }
 .bselect-option.disabled { color: var(--fx-text-3); cursor: not-allowed; }
 .bselect-check { flex: 0 0 auto; width: 13px; color: var(--fx-teal); font-size: 11px; font-weight: 850; }
+/* The sidebar role switcher has a narrow trigger but nine long role labels, so
+   give its menu room to show every role on one line without scrolling. */
+.bselect-pop.role-switcher-menu { min-width: 210px; max-height: 460px; }
+.role-switcher-menu .bselect-option { white-space: nowrap; }
 /* The popup is portaled to <body>, outside the themed shell, so give it the dark
    token values directly when the app is in dark mode (broker + admin console). */
 :root[data-theme="dark"] .bselect-pop { --fx-card: #13292e; --fx-sunken: #193940; --fx-line: #26444a; --fx-text: #e6f0f0; --fx-text-3: #82999c; --fx-teal: #22b3b3; background: #13292e; border-color: #26444a; box-shadow: 0 16px 44px rgba(0,0,0,.5); }

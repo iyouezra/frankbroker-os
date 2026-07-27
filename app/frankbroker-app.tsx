@@ -766,15 +766,31 @@ export default function FrankBrokerApp() {
         </div>
         <nav aria-label="Main navigation">
           {navGroups.map((group) => {
-            const items = group.items.filter((item) => navVisible(item, role));
+            // Show an item when the role can see it, or when it only owns
+            // sub-nav the role can see (e.g. trader/settlement reach the CRM
+            // sub-nav without the client directory).
+            const items = group.items.filter((item) => navVisible(item, role) || (item.children ?? []).some((child) => navVisible(child, role)));
             if (!items.length) return null;
             return <div className="nav-group" key={group.label}>
               <span className="nav-label">{group.label}</span>
-              {items.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "clients" && pendingClientCount > 0 && <em className="warn">{pendingClientCount}</em>}{item.id === "cash" && pendingCashCount > 0 && <em className="warn">{pendingCashCount}</em>}{item.id === "crm" && crmUnread > 0 && <em className="warn">{crmUnread}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>)}
+              {items.map((item) => {
+                const children = item.children?.filter((child) => navVisible(child, role)) ?? [];
+                const canOpenSelf = navVisible(item, role);
+                // If the role cannot open the parent's own view, its click lands
+                // on the first sub-nav item it is allowed to see.
+                const target = canOpenSelf ? item.id : children[0]?.id ?? item.id;
+                const inSection = view === item.id || children.some((child) => child.id === view);
+                return <div className="nav-item" key={item.id}>
+                  <button className={view === item.id ? "active" : ""} onClick={() => { setView(target); setDrawer(null); }} title={item.label}><i><Icon name={item.icon} size={20} /></i><span>{item.label}</span>{item.id === "orders" && pendingOrderCount > 0 && <em>{pendingOrderCount}</em>}{item.id === "clients" && canOpenSelf && pendingClientCount > 0 && <em className="warn">{pendingClientCount}</em>}{item.id === "cash" && pendingCashCount > 0 && <em className="warn">{pendingCashCount}</em>}{item.id === "reconciliation" && reconBatch.exceptionRecords > 0 && <em className="warn">{reconBatch.exceptionRecords}</em>}</button>
+                  {children.length > 0 && inSection && <div className="nav-subnav">
+                    {children.map((child) => <button key={child.id} className={`nav-sub${view === child.id ? " active" : ""}`} onClick={() => { setView(child.id); setDrawer(null); }} title={child.label}><i><Icon name={child.icon} size={17} /></i><span>{child.label}</span>{child.id === "crm" && crmUnread > 0 && <em className="warn">{crmUnread}</em>}</button>)}
+                  </div>}
+                </div>;
+              })}
             </div>;
           })}
         </nav>
-        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={Object.entries(roleLabels).map(([id, label]) => ({ value: id, label }))} /></div></div></div></div>
+        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={Object.entries(roleLabels).map(([id, label]) => ({ value: id, label }))} /></div></div></div></div>
       </aside>
 
       <div className="workspace">
