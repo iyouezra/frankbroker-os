@@ -286,18 +286,16 @@ export default function FrankBrokerApp() {
   const notifyHeaders = { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role };
   useEffect(() => {
     const controller = new AbortController();
+    // Poll only the lightweight notifications here. The client book is heavy to
+    // load and rarely changes second to second, so it is fetched once on mount
+    // and refreshed after each mutation via refreshOmsData rather than every 10s.
     const refreshBrokerAlerts = () => {
-      void Promise.all([
-        fetch("/api/notifications", { signal: controller.signal, headers: notifyHeaders })
-          .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline"))),
-        fetch("/api/clients", { signal: controller.signal, headers: notifyHeaders })
-          .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline"))),
-      ]).then(([notificationResult, clientResult]: [{ notifications: NotificationItem[] }, { clients?: BrokerClient[] }]) => {
-        setNotifications(notificationResult.notifications);
-        if (clientResult.clients) setClients(clientResult.clients);
-      }).catch(() => {
-        if (!controller.signal.aborted) setNotifications(demoBrokerNotifications(role));
-      });
+      void fetch("/api/notifications", { signal: controller.signal, headers: notifyHeaders })
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
+        .then((result: { notifications: NotificationItem[] }) => setNotifications(result.notifications))
+        .catch(() => {
+          if (!controller.signal.aborted) setNotifications(demoBrokerNotifications(role));
+        });
     };
     refreshBrokerAlerts();
     const interval = window.setInterval(refreshBrokerAlerts, 10_000);
