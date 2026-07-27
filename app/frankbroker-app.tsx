@@ -3,10 +3,11 @@
 /* The logo dimensions are controlled by the portal and printable-note styles. */
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { demoAudit, initialOrders, type BrokerClient, type DemoOrder } from "../lib/demo-data";
 import { CRM_PERMISSIONS, hasPermission, roleLabels, type OrderStatus, type Role } from "../lib/frank";
 import type { Period } from "../lib/broker-analytics";
+import type { AppTarget, WorkItem } from "../lib/back-office";
 import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/notifications-demo";
 import { isOrderEligibleClient } from "../lib/client-readiness";
 import {
@@ -32,7 +33,6 @@ import {
   navVisible,
   newClientDefaults,
   normalizedOrderType,
-  queueVisible,
   roleNames,
   statusLabels,
   type AuditEntry,
@@ -45,7 +45,6 @@ import {
   type CrmFocus,
   type CrmThreadsResponse,
   type NewThreadValue,
-  type QueueItem,
   type ReconBatch,
   type TenantApiResult,
   type TenantControls,
@@ -70,6 +69,7 @@ import { NewThreadForm } from "../features/broker/crm/thread-composer";
 import { MarketWatchPage, type OrderFocus } from "../features/broker/market/market-watch-screen";
 import { BrokerOrderOutcomeDialog } from "../features/broker/orders/order-submission-feedback";
 import { BrandSelect } from "../features/shared/brand-select";
+import { UniversalSearch } from "../features/broker/shared/universal-search";
 import {
   failedOutcome,
   heldOutcome,
@@ -109,8 +109,13 @@ export default function FrankBrokerApp() {
   const [orderFocus, setOrderFocus] = useState<OrderFocus | null>(null);
   const [orderOutcome, setOrderOutcome] = useState<OrderSubmissionOutcome | null>(null);
   // Set when arriving at Clients from the queue so the directory opens pre-filtered.
-  const [clientsFocus, setClientsFocus] = useState<{ status: string } | null>(null);
+  const [clientsFocus, setClientsFocus] = useState<{ status?: string; clientId?: string; tab?: "overview" | "documents" } | null>(null);
   const [crmFocus, setCrmFocus] = useState<CrmFocus>(null);
+  const [taskFocus, setTaskFocus] = useState<string | null>(null);
+  const [caseFocus, setCaseFocus] = useState<string | null>(null);
+  const [cashFocus, setCashFocus] = useState<string | null>(null);
+  const [reconciliationFocus, setReconciliationFocus] = useState<string | null>(null);
+  const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [crmUnread, setCrmUnread] = useState(0);
   const [newThread, setNewThread] = useState<NewThreadValue>({ clientId: "", category: "general", priority: "normal", subject: "", body: "", relatedType: "", relatedId: "" });
   const pendingOrderCount = orders.filter((order) => order.status === "pending_broker_review").length;
@@ -206,8 +211,21 @@ export default function FrankBrokerApp() {
 
   const selected = orderDetails[selectedId] ?? orders.find((order) => order.id === selectedId) ?? orders[0];
 
+  const refreshWorkItems = useCallback(() => {
+    void fetch("/api/work-items", { headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data: { items: WorkItem[] }) => setWorkItems(data.items))
+      .catch(() => setWorkItems([]));
+  }, [role]);
+  useEffect(() => {
+    refreshWorkItems();
+    const interval = window.setInterval(refreshWorkItems, 10_000);
+    return () => window.clearInterval(interval);
+  }, [refreshWorkItems]);
+
   const notify = (message: string, tone: "success" | "error" = "success") => {
     setToast({ message, tone });
+    if (tone === "success") refreshWorkItems();
     window.setTimeout(() => setToast(null), 3600);
   };
 
@@ -236,59 +254,32 @@ export default function FrankBrokerApp() {
     void loadOrderDetail(order.id);
   };
 
-  // Cross-domain work queue: orders, onboarding, cash instructions, and
-  // reconciliation breaks in one place, filtered to what this role can action.
-  const queueItems = useMemo<QueueItem[]>(() => {
-    const items: QueueItem[] = [];
-    for (const order of orders) {
-      if (order.status === "pending_broker_review") {
-        items.push({
-          key: `order-${order.id}`, permission: "approve", tone: order.riskFlag !== "none" ? "danger" : "warning", icon: "orders",
-          title: order.riskFlag !== "none" ? "Order awaiting approval · enhanced review" : "Order awaiting approval",
-          detail: `${order.id} · ${order.client} · ${order.side.toUpperCase()} ${fmt.format(order.quantity)} ${order.symbol}`,
-          onOpen: () => openDetail(order),
-        });
-      } else if (order.status === "validation_failed") {
-        items.push({
-          key: `order-${order.id}`, permission: "create", tone: "danger", icon: "orders",
-          title: "Order validation failed",
-          detail: `${order.id} · ${order.client} · needs correction or cancellation`,
-          onOpen: () => openDetail(order),
-        });
-      }
+  const navigateToTarget = useCallback((target: AppTarget) => {
+    setDrawer(null);
+    if (target.view === "orders" || target.view === "settlement") {
+      const orderReference = target.view === "settlement" ? target.orderId : target.entityId;
+      const order = orders.find((item) => item.id === orderReference || item.tradeId === orderReference);
+      if (order) openDetail(order);
+      else setView(target.view);
+      return;
     }
-    for (const client of clients) {
-      if (client.status === "pending_approval") {
-        items.push({
-          key: `client-${client.id}`, permission: "report", roles: ["broker_admin", "relationship_officer", "service_officer", "operations"], tone: "warning", icon: "clients",
-          title: "Client awaiting onboarding approval",
-          detail: `${client.code} · ${client.name} · KYC ${displayLabel(client.kyc)}`,
-          onOpen: () => { setClientsFocus({ status: "pending_approval" }); setSelectedClientId(client.id); setView("clients"); },
-        });
-      }
+    if (target.view === "clients") {
+      setSelectedClientId(target.entityId);
+      setClientsFocus({ clientId: target.entityId, tab: target.tab });
+    } else if (target.view === "crm") {
+      setCrmFocus({ threadId: target.entityId });
+    } else if (target.view === "crm_tasks") {
+      setTaskFocus(target.entityId);
+    } else if (target.view === "crm_cases") {
+      setCaseFocus(target.entityId);
+    } else if (target.view === "cash") {
+      setCashFocus(target.entityId);
+    } else if (target.view === "reconciliation") {
+      setReconciliationFocus(target.entityId);
     }
-    for (const movement of cashOperations.movements) {
-      if (!PENDING_CASH_STATUSES.includes(movement.status)) continue;
-      const isDeposit = movement.type === "deposit";
-      items.push({
-        key: `cash-${movement.id}`, permission: "adjust", tone: "warning", icon: "cash",
-        title: movement.status === "approved" ? "Withdrawal awaiting payment" : isDeposit ? "Deposit awaiting verification" : "Withdrawal awaiting approval",
-        detail: `${movement.id} · ${movement.client?.name ?? "Client"} · ${fmt.format(movement.amount)} ${movement.currency}`,
-        onOpen: () => setView("cash"),
-      });
-    }
-    if (reconBatch.exceptionRecords > 0) {
-      items.push({
-        key: "recon-exceptions", permission: "adjust", tone: "danger", icon: "reconciliation",
-        title: `${reconBatch.exceptionRecords} reconciliation ${reconBatch.exceptionRecords === 1 ? "exception" : "exceptions"} open`,
-        detail: `${reconBatch.id} · unresolved cash or securities breaks`,
-        onOpen: () => setView("reconciliation"),
-      });
-    }
-    return items;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, clients, cashOperations, reconBatch]);
-  const visibleQueue = queueItems.filter((item) => queueVisible(item, role));
+    setView(target.view);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
   // Notifications are role-aware: switching the demo role reloads the feed so
   // approvers, traders, and settlement each see what they must act on.
@@ -331,16 +322,16 @@ export default function FrankBrokerApp() {
     setNotifications((current) => current.map((row) => row.id === item.id ? { ...row, read: true } : row));
     void fetch("/api/notifications", { method: "PATCH", headers: { "content-type": "application/json", ...notifyHeaders }, body: JSON.stringify({ id: item.id }) }).catch(() => undefined);
     setBellOpen(false);
-    if (item.entityType === "order" && item.entityId) {
-      const order = orders.find((row) => row.id === item.entityId);
-      if (order) { openDetail(order); return; }
-      setView("orders");
-    } else if (item.entityType === "communication_thread") {
-      setCrmFocus(item.entityId ? { threadId: item.entityId } : null);
-      setView("crm");
-    } else if (item.entityType === "client") setView("clients");
-    else if (item.entityType === "cash_movement") setView("cash");
-    else if (item.entityType === "reconciliation") setView("reconciliation");
+    if (!item.entityId) return;
+    if (item.entityType === "order") navigateToTarget({ view: "orders", entityType: "order", entityId: item.entityId });
+    else if (item.entityType === "communication_thread") navigateToTarget({ view: "crm", entityType: "communication_thread", entityId: item.entityId });
+    else if (item.entityType === "crm_task") navigateToTarget({ view: "crm_tasks", entityType: "crm_task", entityId: item.entityId });
+    else if (item.entityType === "service_case") navigateToTarget({ view: "crm_cases", entityType: "service_case", entityId: item.entityId });
+    else if (item.entityType === "client") navigateToTarget({ view: "clients", entityType: "client", entityId: item.entityId });
+    else if (item.entityType === "cash_movement") navigateToTarget({ view: "cash", entityType: "cash_movement", entityId: item.entityId });
+    else if (item.entityType === "reconciliation_exception") navigateToTarget({ view: "reconciliation", entityType: "reconciliation_exception", entityId: item.entityId });
+    else if (item.entityType === "reconciliation" || item.entityType === "reconciliation_batch") navigateToTarget({ view: "reconciliation", entityType: "reconciliation_batch", entityId: item.entityId });
+    else if (item.entityType === "settlement") navigateToTarget({ view: "settlement", entityType: "settlement", entityId: item.entityId });
   };
 
   const updateStatus = (id: string, status: OrderStatus, extra: Partial<DemoOrder> = {}) => {
@@ -615,14 +606,10 @@ export default function FrankBrokerApp() {
 
   /** Jump from a conversation's related-record card to the underlying record. */
   const openRelatedRecord = (type: string, id: string) => {
-    if (type === "order" || type === "trade") {
-      const order = orders.find((item) => item.id === id);
-      if (order) { openDetail(order); return; }
-      setView("orders");
-      return;
-    }
-    if (type === "cash_movement") { setView("cash"); return; }
-    if (type === "service_request" || type === "account" || type === "kyc" || type === "document") setView("clients");
+    if (type === "order" || type === "trade") navigateToTarget({ view: "orders", entityType: type, entityId: id });
+    else if (type === "cash_movement") navigateToTarget({ view: "cash", entityType: "cash_movement", entityId: id });
+    else if (type === "account") navigateToTarget({ view: "clients", entityType: "account", entityId: selectedClientId });
+    else if (type === "kyc" || type === "document") navigateToTarget({ view: "clients", entityType: "client", entityId: selectedClientId, tab: "documents" });
   };
 
   const submitThread = async (event: FormEvent) => {
@@ -796,7 +783,7 @@ export default function FrankBrokerApp() {
         <header className="topbar">
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
           <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
-          <label className="search"><span><Icon name="search" size={17} /></span><input aria-label="Search orders or clients" placeholder="Search orders or clients…" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label>
+          <UniversalSearch role={role} onSelect={navigateToTarget} />
           <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => {
             setBellOpen((value) => !value);
             if (!bellOpen) {
@@ -809,17 +796,17 @@ export default function FrankBrokerApp() {
         </header>
 
         <main>
-          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} queue={visibleQueue} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onOpen={openDetail} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} />}
+          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} queue={workItems} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} onOpenWork={(item) => navigateToTarget(item.target)} />}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "market" && <MarketWatchPage role={role} orders={orders} onOpenOrder={openDetail} onViewOrders={(focus) => { setOrderFocus(focus); setQuery(""); setView("orders"); setDrawer(null); }} />}
           {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} focus={orderFocus} onClearFocus={() => setOrderFocus(null)} onOpen={openDetail} onNewOrder={openNewOrder} />}
-          {view === "clients" && <ClientsPage clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} focus={clientsFocus} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} />}
+          {view === "clients" && <ClientsPage key={`${clientsFocus?.clientId ?? ""}:${clientsFocus?.tab ?? ""}`} clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} focus={clientsFocus} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} onOpenConversation={(threadId) => navigateToTarget({ view: "crm", entityType: "communication_thread", entityId: threadId })} />}
           {view === "crm" && <CrmInboxPage key={crmFocus?.threadId ?? crmFocus?.clientId ?? "inbox"} role={role} focus={crmFocus} clients={clients} onNotify={notify} onNewThread={openNewThread} onOpenRelated={openRelatedRecord} />}
-          {view === "crm_tasks" && <MyTasksPage role={role} onNotify={notify} onOpenClient={(clientId) => { setSelectedClientId(clientId); setView("clients"); }} />}
-          {view === "crm_cases" && <ComplaintsPage role={role} onNotify={notify} onOpenThread={(threadId) => { setCrmFocus({ threadId }); setView("crm"); }} />}
-          {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
+          {view === "crm_tasks" && <MyTasksPage role={role} focusId={taskFocus} onNotify={notify} onOpenClient={(clientId) => navigateToTarget({ view: "clients", entityType: "client", entityId: clientId })} />}
+          {view === "crm_cases" && <ComplaintsPage role={role} focusId={caseFocus} onNotify={notify} onOpenThread={(threadId) => navigateToTarget({ view: "crm", entityType: "communication_thread", entityId: threadId })} />}
+          {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} focusId={cashFocus} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
-          {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
+          {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} focusId={reconciliationFocus} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
           {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} onDownloaded={(name) => notify(`${name} exported as CSV.`)} />}
           {view === "audit" && <AuditPage events={auditEntries} />}
           {view === "users" && <UsersPage role={role} />}

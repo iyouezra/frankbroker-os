@@ -10,10 +10,11 @@ import {
   postBrokerMessage,
 } from "../../../../../../lib/crm/thread-service";
 import { prepareAttachments } from "../../../../../../lib/crm/attachments";
+import { completeServiceRequest } from "../../../../../../lib/crm/service-request-service";
 
 export const runtime = "nodejs";
 
-type ThreadAction = "reply" | "note" | "assign" | "status" | "priority" | "read";
+type ThreadAction = "reply" | "note" | "assign" | "status" | "priority" | "read" | "service_request";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -54,6 +55,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (action === "read") {
       const actor = requirePermission(request, CRM_PERMISSIONS.view);
       return Response.json(await markThreadReadByBroker(actor, id));
+    }
+    if (action === "service_request") {
+      const actor = requirePermission(request, "adjust");
+      const decision = String(payload.decision ?? "");
+      if (!["resolve", "reject", "approve_closure"].includes(decision)) {
+        return Response.json({ error: "Choose a supported request decision." }, { status: 400 });
+      }
+      return Response.json({
+        ok: true,
+        ...(await completeServiceRequest(actor, {
+          threadId: id,
+          decision: decision as "resolve" | "reject" | "approve_closure",
+          outcomeSummary: payload.outcomeSummary,
+        })),
+      });
     }
 
     return Response.json({ error: "Unsupported conversation action." }, { status: 400 });

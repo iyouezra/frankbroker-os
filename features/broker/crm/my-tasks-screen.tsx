@@ -32,7 +32,7 @@ export function TaskCard({ task, role, busy, onStatus, onEscalate, onOpenClient 
   const closed = isTaskClosed(task.status);
   const overdue = task.bucket === "overdue";
 
-  return <article className={`crm-task${overdue ? " overdue" : ""}${closed ? " done" : ""}`}>
+  return <article id={`task-${task.id}`} className={`crm-task${overdue ? " overdue" : ""}${closed ? " done" : ""}`}>
     <div className="crm-task-main">
       <span className="crm-task-top">
         <b>{task.title}</b>
@@ -61,11 +61,11 @@ export function TaskCard({ task, role, busy, onStatus, onEscalate, onOpenClient 
   </article>;
 }
 
-export function MyTasksPage({ role, onNotify, onOpenClient }: { role: Role; onNotify: (message: string, tone?: "success" | "error") => void; onOpenClient?: (clientId: string) => void }) {
+export function MyTasksPage({ role, focusId, onNotify, onOpenClient }: { role: Role; focusId?: string | null; onNotify: (message: string, tone?: "success" | "error") => void; onOpenClient?: (clientId: string) => void }) {
   const [tasks, setTasks] = useState<CrmTaskView[]>([]);
   const [facets, setFacets] = useState({ overdue: 0, today: 0, upcoming: 0, no_due_date: 0, completed: 0 });
-  const [scope, setScope] = useState<"mine" | "all" | "unassigned">("mine");
-  const [status, setStatus] = useState("open_all");
+  const [scope, setScope] = useState<"mine" | "all" | "unassigned">(focusId ? "all" : "mine");
+  const [status, setStatus] = useState(focusId ? "" : "open_all");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -78,6 +78,7 @@ export function MyTasksPage({ role, onNotify, onOpenClient }: { role: Role; onNo
       setLoading(true);
       try {
         const params = new URLSearchParams({ status });
+        if (focusId) params.set("query", focusId);
         if (scope !== "all") params.set("scope", scope);
         const response = await fetch(`/api/crm/tasks?${params}`, { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } });
         if (!response.ok) throw new Error("Tasks unavailable");
@@ -94,7 +95,10 @@ export function MyTasksPage({ role, onNotify, onOpenClient }: { role: Role; onNo
     };
     void load();
     return () => controller.abort();
-  }, [role, scope, status, refreshKey]);
+  }, [role, scope, status, refreshKey, focusId]);
+  useEffect(() => {
+    if (!loading && focusId) document.getElementById(`task-${focusId}`)?.scrollIntoView({ block: "center" });
+  }, [loading, focusId]);
 
   const act = async (taskId: string, body: Record<string, unknown>, message: string) => {
     setBusy(true);

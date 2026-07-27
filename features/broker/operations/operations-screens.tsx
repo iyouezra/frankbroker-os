@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import type { DemoOrder } from "../../../lib/demo-data";
 import { EmptyState, Metric, SectionHeader, StatusBadge, displayLabel, etb, fmt, type ReconBatch } from "../shared/broker-foundation";
 
@@ -10,9 +11,17 @@ export function SettlementPage({ orders, onOpen, onExport }: { orders: DemoOrder
   return <><SectionHeader eyebrow="POST-TRADE CONTROL" title="Settlement tracking" copy="Confirm cash and securities legs, value dates, and operational exceptions." action={<button className="btn secondary" onClick={onExport}>Export queue</button>} /><section className="metric-grid settlement-metrics"><Metric label="Settlement records" value={String(queue.length)} note={`${queue.filter((order) => order.status !== "settled").length} awaiting completion`} tone="warning" /><Metric label="Cash confirmed" value={`${settledCash} / ${queue.length}`} note={`${queue.length - settledCash} awaiting confirmation`} tone="success" /><Metric label="Securities confirmed" value={`${settledSecurities} / ${queue.length}`} note={`${queue.length - settledSecurities} awaiting confirmation`} tone="purple" /><Metric label="Exceptions" value={String(queue.filter((order) => order.cashStatus === "exception" || order.securitiesStatus === "exception").length)} note="From settlement records" tone="danger" /></section><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Client</th><th>Instrument</th><th>Value date</th><th className="num">Net amount</th><th>Cash</th><th>Securities</th><th>Overall</th></tr></thead><tbody>{queue.map((order) => { const cash = order.cashStatus ?? (order.status === "settled" ? "settled" : "pending"); const securities = order.securitiesStatus ?? (order.status === "settled" ? "settled" : "pending"); return <tr key={order.id} onClick={() => onOpen(order)}><td><b>{order.tradeId ?? "Trade pending"}</b><small>{order.id}</small></td><td><b>{order.client}</b></td><td><b>{order.symbol}</b><small>{order.side.toUpperCase()} {fmt.format(order.tradeQuantity ?? order.quantity)}</small></td><td><b>{order.settlementDate ?? "Pending"}</b></td><td className="num"><b>{fmt.format(order.tradeNet ?? order.estimatedNet)}</b><small>ETB</small></td><td><span className={`leg ${cash === "settled" ? "done" : "pending"}`}>{displayLabel(cash)}</span></td><td><span className={`leg ${securities === "settled" ? "done" : "pending"}`}>{displayLabel(securities)}</span></td><td><StatusBadge status={order.status} /></td></tr>; })}</tbody></table></div></section></>;
 }
 
-export function ReconciliationPage({ batch, busy, onFile, onDownload, onResolve, resolvingId }: { batch: ReconBatch; busy: boolean; onFile: (file: File) => void; onDownload: () => void; onResolve: (id: string) => void; resolvingId: string | null }) {
+export function ReconciliationPage({ batch, busy, focusId, onFile, onDownload, onResolve, resolvingId }: { batch: ReconBatch; busy: boolean; focusId?: string | null; onFile: (file: File) => void; onDownload: () => void; onResolve: (id: string) => void; resolvingId: string | null }) {
   const openExceptions = batch.exceptions.filter((exception) => exception.status !== "resolved");
   const matchRate = batch.totalRecords ? (batch.matchedRecords / batch.totalRecords) * 100 : 0;
+  useEffect(() => {
+    if (!focusId) return;
+    const reference = batch.exceptions.find((item) => item.id === focusId)?.reference ?? focusId;
+    const row = Array.from(document.querySelectorAll<HTMLElement>(".exception-row")).find((item) => item.textContent?.includes(reference));
+    row?.scrollIntoView({ block: "center" });
+    row?.classList.add("focused-record");
+    return () => row?.classList.remove("focused-record");
+  }, [focusId, openExceptions.length, batch.exceptions]);
   return <>
     <SectionHeader eyebrow="END-OF-DAY CONTROL" title="Reconciliation" copy="Import external confirmations, match them to captured trades, and resolve cash or securities breaks." action={<button className="btn secondary" onClick={onDownload}>Download CSV template</button>} />
     <div className="recon-grid">

@@ -58,12 +58,18 @@ export function serializeCase(row: CaseRow) {
   };
 }
 
-export async function listCases(actor: Actor, query: { page: number; pageSize: number; status?: string; severity?: string; clientId?: string }) {
+export async function listCases(actor: Actor, query: { page: number; pageSize: number; status?: string; severity?: string; clientId?: string; query?: string }) {
   const where: Prisma.ServiceCaseWhereInput = { brokerId: actor.brokerId };
   if (query.status === "open_all") where.status = { in: OPEN_CASE_STATUSES };
   else if (query.status && isCaseStatus(query.status)) where.status = query.status;
   if (query.severity) where.severity = query.severity;
   if (query.clientId) where.clientId = query.clientId;
+  const search = (query.query ?? "").trim().slice(0, 120);
+  if (search) where.OR = [
+    { id: { contains: search, mode: "insensitive" } },
+    { subject: { contains: search, mode: "insensitive" } },
+    { client: { fullName: { contains: search, mode: "insensitive" } } },
+  ];
 
   const [rows, total, openCount] = await Promise.all([
     prisma.serviceCase.findMany({

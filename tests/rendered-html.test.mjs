@@ -49,7 +49,7 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(app, /controls\.allowedOrderTypes/);
   assert.match(app, /controls\.brokerageFeePct/);
   assert.match(app, /features\.manualTradeCapture/);
-  assert.match(app, /roles: \["broker_admin", "relationship_officer", "service_officer", "operations"\]/);
+  assert.match(app, /\/api\/work-items/);
   assert.match(app, /window\.setInterval\(refreshBrokerAlerts, 10_000\)/);
   assert.doesNotMatch(app, /Instrument master/);
   assert.match(investorApp, /Own a piece of Ethiopia/);

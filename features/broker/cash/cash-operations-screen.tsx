@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { BrokerClient } from "../../../lib/demo-data";
 import { hasPermission, type Role } from "../../../lib/frank";
 import { EmptyState, Metric, SectionHeader, compactEtb, displayLabel, etb, fmt, type BrokerCashInput, type CashMovementView, type CashOperationsData } from "../shared/broker-foundation";
 import { BrandSelect } from "../../shared/brand-select";
 
-export function CashOperationsPage({ data, clients, role, busy, onCreate, onAction }: { data: CashOperationsData; clients: BrokerClient[]; role: Role; busy: string | null; onCreate: (input: BrokerCashInput) => Promise<boolean>; onAction: (id: string, action: "verify" | "approve" | "complete" | "reject" | "fail", detail: { reason?: string; bankReference?: string }) => Promise<boolean> }) {
+export function CashOperationsPage({ data, clients, role, busy, focusId, onCreate, onAction }: { data: CashOperationsData; clients: BrokerClient[]; role: Role; busy: string | null; focusId?: string | null; onCreate: (input: BrokerCashInput) => Promise<boolean>; onAction: (id: string, action: "verify" | "approve" | "complete" | "reject" | "fail", detail: { reason?: string; bankReference?: string }) => Promise<boolean> }) {
   const [recording, setRecording] = useState(false);
-  const [filter, setFilter] = useState<"all" | "pending" | "deposit" | "withdrawal">("pending");
+  const [filter, setFilter] = useState<"all" | "pending" | "deposit" | "withdrawal">(focusId ? "all" : "pending");
   const [actionState, setActionState] = useState<{ movement: CashMovementView; action: "verify" | "approve" | "complete" | "reject" | "fail" } | null>(null);
   const [actionDetail, setActionDetail] = useState("");
   const activeClients = clients.filter((client) => client.status === "active" && client.accountStatus === "active");
@@ -18,6 +18,13 @@ export function CashOperationsPage({ data, clients, role, busy, onCreate, onActi
   const movements = data.movements.filter((movement) => filter === "all" || (filter === "pending" ? pendingStatuses.includes(movement.status) : movement.type === filter));
   const variance = data.summary.statementTotal - data.summary.beneficialTotal;
   const movementTone = (status: string) => status === "completed" ? "success" : ["rejected", "failed"].includes(status) ? "danger" : status === "approved" ? "brand" : "warning";
+  useEffect(() => {
+    if (!focusId) return;
+    const row = Array.from(document.querySelectorAll<HTMLTableRowElement>(".cash-table tbody tr")).find((item) => item.textContent?.includes(focusId));
+    row?.scrollIntoView({ block: "center" });
+    row?.classList.add("focused-record");
+    return () => row?.classList.remove("focused-record");
+  }, [focusId, movements.length]);
   const chooseClient = (clientId: string) => {
     const client = activeClients.find((item) => item.id === clientId);
     setForm((current) => ({ ...current, clientId, accountId: client?.accountId }));

@@ -351,6 +351,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         subject: item.subject,
         description: item.description,
         orderId: item.orderId,
+        threadId: item.threadId,
         submittedAt: item.submittedAt.toISOString(),
         resolutionNotes: item.resolutionNotes,
       })),

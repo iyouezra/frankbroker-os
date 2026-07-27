@@ -651,6 +651,7 @@ export async function POST(request: Request) {
           category: categoryForServiceRequest(requestType),
           clientName: client.fullName,
         });
+        await tx.clientServiceRequest.update({ where: { id: next.id }, data: { threadId: thread.id } });
         return { ...next, threadId: thread.id };
       });
       return Response.json({ request: { id: created.id, status: created.status, threadId: created.threadId } }, { status: 201 });

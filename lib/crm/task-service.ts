@@ -19,6 +19,7 @@ import {
   taskBucket,
   type TaskStatus,
 } from "./tasks";
+import { auditAutomaticRouting, routeUnownedTask, type RoutedOwner } from "./routing-service";
 
 /**
  * Follow-up tasks. Same shape as the other services: Serializable transaction,
@@ -153,10 +154,13 @@ export async function createTask(actor: Actor, input: CreateTaskInput) {
       const serviceCase = await tx.serviceCase.findFirst({ where: { id: input.caseId, brokerId: actor.brokerId, clientId: client.id }, select: { id: true } });
       if (!serviceCase) throw new Response("Service case not found.", { status: 404 });
     }
-    let assignee: { id: string; fullName: string } | null = null;
+    let assignee: ({ id: string; fullName: string } & Partial<Pick<RoutedOwner, "reason">>) | null = null;
     if (input.assignedToUserId) {
       assignee = await tx.user.findFirst({ where: { id: input.assignedToUserId, brokerId: actor.brokerId, status: "active" }, select: { id: true, fullName: true } });
       if (!assignee) throw new Response("That team member is not available in this tenant.", { status: 404 });
+    }
+    if (!assignee) {
+      assignee = await routeUnownedTask(tx, { brokerId: actor.brokerId, threadId: input.threadId, caseId: input.caseId });
     }
 
     const id = newTaskId();
@@ -187,6 +191,12 @@ export async function createTask(actor: Actor, input: CreateTaskInput) {
       entityId: id,
       summary: `Task "${title}" created for ${client.fullName}`,
       newValue: { taskType, priority, dueDate: dueDate?.toISOString().slice(0, 10) ?? null, assignedToUserId: assignee?.id ?? null },
+    });
+    await auditAutomaticRouting(tx, {
+      brokerId: actor.brokerId,
+      entityType: "crm_task",
+      entityId: id,
+      owner: assignee ? { id: assignee.id, fullName: assignee.fullName, reason: assignee.reason ?? "explicit_owner" } : null,
     });
     // Notify the desk when a task lands unowned; an owned task is already known
     // to its owner because they were chosen deliberately.

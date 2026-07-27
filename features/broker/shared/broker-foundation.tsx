@@ -104,7 +104,18 @@ export type CrmThreadSummary = {
   resolvedAt: string | null;
   closedAt: string | null;
 };
-export type CrmThreadDetail = CrmThreadSummary & { messages: CrmMessage[] };
+export type CrmThreadDetail = CrmThreadSummary & {
+  messages: CrmMessage[];
+  serviceRequest?: {
+    id: string;
+    requestType: string;
+    status: string;
+    subject: string;
+    resolutionNotes: string | null;
+    resolvedAt: string | null;
+    allowedDecisions: Array<"resolve" | "reject" | "approve_closure">;
+  } | null;
+};
 export type CrmThreadsResponse = {
   threads: CrmThreadSummary[];
   pagination: { page: number; pageSize: number; total: number; pageCount: number };

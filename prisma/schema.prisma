@@ -591,6 +591,7 @@ model ClientServiceRequest {
   clientId        String    @map("client_id")
   accountId       String?   @map("account_id")
   orderId         String?   @map("order_id")
+  threadId        String?   @unique @map("thread_id")
   requestType     String    @map("request_type")
   status          String    @default("open")
   subject         String
@@ -607,6 +608,7 @@ model ClientServiceRequest {
   client          Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
   account         Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
   order           Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  thread          CommunicationThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
 
   @@index([brokerId, status, submittedAt])
   @@index([clientId, status])
@@ -984,6 +986,7 @@ model CommunicationThread {
   attachments         CommunicationAttachment[]
   tasks               CrmTask[]
   serviceCase         ServiceCase?
+  serviceRequest      ClientServiceRequest?
 
   @@index([brokerId, status, lastMessageAt])
   @@index([clientId, lastMessageAt])

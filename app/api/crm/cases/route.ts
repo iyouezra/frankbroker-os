@@ -16,6 +16,7 @@ export async function GET(request: Request) {
       status: url.searchParams.get("status") ?? undefined,
       severity: url.searchParams.get("severity") ?? undefined,
       clientId: url.searchParams.get("clientId") ?? undefined,
+      query: url.searchParams.get("query") ?? undefined,
     }));
   } catch (error) {
     return apiError(error);

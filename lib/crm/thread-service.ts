@@ -41,6 +41,7 @@ import {
   type ThreadPriority,
 } from "./categories";
 import type { PreparedAttachment } from "./attachments";
+import { auditAutomaticRouting, routeInvestorConversation } from "./routing-service";
 
 /**
  * Investor-servicing conversations. Mirrors `lib/oms/order-service.ts`: every
@@ -59,6 +60,7 @@ const threadInclude = {
   client: { select: { id: true, clientCode: true, fullName: true } },
   account: { select: { id: true, accountNumber: true } },
   assignedTo: { select: { id: true, fullName: true } },
+  serviceRequest: { select: { id: true, requestType: true, status: true, subject: true, resolutionNotes: true, resolvedAt: true } },
 } satisfies Prisma.CommunicationThreadInclude;
 
 const messageInclude = {
@@ -93,7 +95,7 @@ type AppendInput = {
  * `system` authorship - the mechanism that stops an internal note producing a
  * state change the investor could observe.
  */
-async function appendMessage(
+export async function appendMessage(
   tx: Prisma.TransactionClient,
   thread: {
     id: string;
@@ -245,7 +247,20 @@ export async function getThread(actor: Actor, threadId: string, page = 1, pageSi
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   return {
-    thread: serializeThreadDetail("broker", thread, messages.slice().reverse()),
+    thread: {
+      ...serializeThreadDetail("broker", thread, messages.slice().reverse()),
+      serviceRequest: thread.serviceRequest ? {
+        id: thread.serviceRequest.id,
+        requestType: thread.serviceRequest.requestType,
+        status: thread.serviceRequest.status,
+        subject: thread.serviceRequest.subject,
+        resolutionNotes: thread.serviceRequest.resolutionNotes,
+        resolvedAt: thread.serviceRequest.resolvedAt?.toISOString() ?? null,
+        allowedDecisions: ["open", "under_review"].includes(thread.serviceRequest.status)
+          ? thread.serviceRequest.requestType === "account_closure" ? ["approve_closure", "resolve", "reject"] : ["resolve", "reject"]
+          : [],
+      } : null,
+    },
     pagination: { page: Math.min(page, pageCount), pageSize, total, pageCount },
   };
 }
@@ -614,6 +629,7 @@ export async function createInvestorThread(
 
     const id = newThreadId();
     const now = new Date();
+    const routedOwner = await routeInvestorConversation(tx, { brokerId: context.brokerId, clientId: client.id, category });
     await tx.communicationThread.create({
       data: {
         id,
@@ -627,6 +643,7 @@ export async function createInvestorThread(
         status: "pending_broker",
         relatedType,
         relatedId,
+        assignedToUserId: routedOwner?.id ?? null,
         openedBy: "investor",
         messageCount: 0,
         lastMessageAt: now,
@@ -648,8 +665,9 @@ export async function createInvestorThread(
       entityType: "communication_thread",
       entityId: id,
       summary: `${client.fullName} opened a support request: ${subject}`,
-      newValue: { category, relatedType, relatedId, channel: "investor_portal" },
+      newValue: { category, relatedType, relatedId, channel: "investor_portal", assignedToUserId: routedOwner?.id ?? null, routingReason: routedOwner?.reason ?? "no_eligible_owner" },
     });
+    await auditAutomaticRouting(tx, { brokerId: context.brokerId, entityType: "communication_thread", entityId: id, owner: routedOwner });
     await writeNotification(tx, {
       scope: "broker",
       brokerId: context.brokerId,
@@ -764,6 +782,7 @@ export async function openThreadForServiceRequest(
 ) {
   const id = newThreadId();
   const now = new Date();
+  const routedOwner = await routeInvestorConversation(tx, { brokerId: input.brokerId, clientId: input.clientId, category: input.category });
   await tx.communicationThread.create({
     data: {
       id,
@@ -776,6 +795,7 @@ export async function openThreadForServiceRequest(
       status: "pending_broker",
       relatedType: "service_request",
       relatedId: input.requestId,
+      assignedToUserId: routedOwner?.id ?? null,
       openedBy: "investor",
       messageCount: 0,
       lastMessageAt: now,
@@ -797,6 +817,7 @@ export async function openThreadForServiceRequest(
     summary: `${input.clientName} opened a support request: ${input.subject}`,
     newValue: { category: input.category, relatedType: "service_request", relatedId: input.requestId },
   });
+  await auditAutomaticRouting(tx, { brokerId: input.brokerId, entityType: "communication_thread", entityId: id, owner: routedOwner });
   await writeNotification(tx, {
     scope: "broker",
     brokerId: input.brokerId,

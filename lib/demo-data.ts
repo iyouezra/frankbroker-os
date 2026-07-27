@@ -161,6 +161,7 @@ export type BrokerClient = {
     subject: string;
     description: string;
     orderId?: string | null;
+    threadId?: string | null;
     submittedAt: string;
     resolutionNotes?: string | null;
   }>;

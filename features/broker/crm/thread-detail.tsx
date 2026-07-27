@@ -43,11 +43,11 @@ export function RelatedRecordCard({ thread, onOpenRelated }: { thread: CrmThread
   const label = RELATED_TYPE_LABELS[thread.relatedType as RelatedType] ?? thread.relatedType;
   return <div className="crm-related">
     <span><small>RELATED RECORD</small><b>{label} · {thread.relatedId}</b></span>
-    {onOpenRelated && <button className="btn secondary small" onClick={() => onOpenRelated(thread.relatedType!, thread.relatedId!)}>Open record</button>}
+    {onOpenRelated && thread.relatedType !== "service_request" && <button className="btn secondary small" onClick={() => onOpenRelated(thread.relatedType!, thread.relatedId!)}>Open record</button>}
   </div>;
 }
 
-export type ThreadAction = "reply" | "note" | "assign" | "status" | "priority";
+export type ThreadAction = "reply" | "note" | "assign" | "status" | "priority" | "service_request";
 
 export function ThreadDetail({
   thread, role, busy, teammates, onBack, onAction, onOpenRelated, onOpenCase, onCreateTask,
@@ -66,6 +66,8 @@ export function ThreadDetail({
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<"reply" | "note">("reply");
   const [files, setFiles] = useState<File[]>([]);
+  const [requestDecision, setRequestDecision] = useState<"resolve" | "reject" | "approve_closure">("resolve");
+  const [outcomeSummary, setOutcomeSummary] = useState("");
   const canReply = hasPermission(role, CRM_PERMISSIONS.reply);
   const canNote = hasPermission(role, CRM_PERMISSIONS.note);
   const canAssign = hasPermission(role, CRM_PERMISSIONS.assign);
@@ -73,6 +75,7 @@ export function ThreadDetail({
   const canPriority = hasPermission(role, CRM_PERMISSIONS.priority);
   const canOpenCase = Boolean(onOpenCase) && hasPermission(role, CRM_PERMISSIONS.caseManage);
   const canCreateTask = Boolean(onCreateTask) && hasPermission(role, CRM_PERMISSIONS.taskCreate);
+  const canManageRequest = hasPermission(role, "adjust") && Boolean(thread.serviceRequest?.allowedDecisions.length);
   const closed = isThreadClosed(thread.status);
   const composerMode = mode === "reply" && !canReply ? "note" : mode;
   const canCompose = (composerMode === "reply" ? canReply : canNote) && !closed;
@@ -99,6 +102,28 @@ export function ThreadDetail({
     </header>
 
     <RelatedRecordCard thread={thread} onOpenRelated={onOpenRelated} />
+
+    {thread.serviceRequest && <section className="crm-service-request">
+      <div>
+        <span className="eyebrow">CLIENT INSTRUCTION · {thread.serviceRequest.id}</span>
+        <h3>{thread.serviceRequest.subject}</h3>
+        <p>Status: {thread.serviceRequest.status.replaceAll("_", " ")}</p>
+        {thread.serviceRequest.resolutionNotes && <p><b>Outcome:</b> {thread.serviceRequest.resolutionNotes}</p>}
+      </div>
+      {canManageRequest && <div className="crm-service-request-actions">
+        <label>Decision
+          <BrandSelect value={requestDecision} onChange={(next) => setRequestDecision(next as typeof requestDecision)} ariaLabel="Service request decision"
+            options={thread.serviceRequest.allowedDecisions.map((decision) => ({ value: decision, label: decision === "approve_closure" ? "Approve account closure" : decision === "reject" ? "Reject request" : "Resolve request" }))} />
+        </label>
+        <label>Investor-visible outcome
+          <textarea rows={3} value={outcomeSummary} maxLength={2000} onChange={(event) => setOutcomeSummary(event.target.value)} placeholder="Explain what was decided and what happens next." />
+        </label>
+        <button className="btn primary small" disabled={busy || outcomeSummary.trim().length < 10}
+          onClick={() => void onAction("service_request", { decision: requestDecision, outcomeSummary }, [])}>
+          {busy ? "Completing…" : "Complete request"}
+        </button>
+      </div>}
+    </section>}
 
     <div className="crm-controls">
       <label>Owner

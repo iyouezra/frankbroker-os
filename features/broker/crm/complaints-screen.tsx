@@ -28,7 +28,7 @@ export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings
   const [findings, setFindings] = useState(serviceCase.internalFindings ?? "");
   const canManage = hasPermission(role, CRM_PERMISSIONS.caseManage);
 
-  return <section className={`panel crm-case${serviceCase.overdue ? " overdue" : ""}`}>
+  return <section id={`case-${serviceCase.id}`} className={`panel crm-case${serviceCase.overdue ? " overdue" : ""}`}>
     <div className="panel-head">
       <div>
         <span className="eyebrow">{serviceCase.id} · {displayLabel(serviceCase.category)}</span>
@@ -78,10 +78,10 @@ export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings
   </section>;
 }
 
-export function ComplaintsPage({ role, onNotify, onOpenThread }: { role: Role; onNotify: (message: string, tone?: "success" | "error") => void; onOpenThread?: (threadId: string) => void }) {
+export function ComplaintsPage({ role, focusId, onNotify, onOpenThread }: { role: Role; focusId?: string | null; onNotify: (message: string, tone?: "success" | "error") => void; onOpenThread?: (threadId: string) => void }) {
   const [cases, setCases] = useState<CrmCaseView[]>([]);
   const [facets, setFacets] = useState({ open: 0, overdue: 0 });
-  const [status, setStatus] = useState("open_all");
+  const [status, setStatus] = useState(focusId ? "" : "open_all");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -93,7 +93,7 @@ export function ComplaintsPage({ role, onNotify, onOpenThread }: { role: Role; o
     const load = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`/api/crm/cases?status=${encodeURIComponent(status)}`, { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } });
+        const response = await fetch(`/api/crm/cases?status=${encodeURIComponent(status)}${focusId ? `&query=${encodeURIComponent(focusId)}` : ""}`, { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } });
         if (!response.ok) throw new Error("Cases unavailable");
         const data = (await response.json()) as CrmCasesResponse;
         setCases(data.cases);
@@ -108,7 +108,10 @@ export function ComplaintsPage({ role, onNotify, onOpenThread }: { role: Role; o
     };
     void load();
     return () => controller.abort();
-  }, [role, status, refreshKey]);
+  }, [role, status, refreshKey, focusId]);
+  useEffect(() => {
+    if (!loading && focusId) document.getElementById(`case-${focusId}`)?.scrollIntoView({ block: "center" });
+  }, [loading, focusId]);
 
   const act = async (caseId: string, body: Record<string, unknown>, message: string) => {
     setBusy(true);
