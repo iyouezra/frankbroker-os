@@ -60,6 +60,11 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
   const [onboardingRejectionReason, setOnboardingRejectionReason] = useState("");
   const [evidenceRejection, setEvidenceRejection] = useState<{ kind: "documents" | "bank-accounts"; id: string; label: string } | null>(null);
   const [evidenceRejectionReason, setEvidenceRejectionReason] = useState("");
+  const [restrictionOpen, setRestrictionOpen] = useState(false);
+  const [restrictionCategory, setRestrictionCategory] = useState("compliance_review");
+  const [restrictionNote, setRestrictionNote] = useState("");
+  const [termsEvidenceOpen, setTermsEvidenceOpen] = useState(false);
+  const [termsEvidence, setTermsEvidence] = useState("");
   const selected = directoryRows.find((client) => client.id === selectedId)
     ?? clients.find((client) => client.id === selectedId)
     ?? (directorySelection?.id === selectedId ? directorySelection : null)
@@ -230,6 +235,8 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
   const canApproveClient = hasPermission(role, "approve");
   const canRejectClient = hasPermission(role, "reject");
   const pendingOnboardingDecision = model.client.clientStatus === "pending_approval";
+  const canRestoreRestriction = model.client.clientStatus === "restricted" && model.client.accountStatus === "restricted";
+  const canPlaceRestriction = model.client.clientStatus === "active" && model.client.accountStatus === "active";
   const expectedDocuments = model.documents.expected ?? [];
   const missingDocuments = expectedDocuments.filter((type) => !model.documents.kyc.some((document) => document.type === type));
   const documentsAwaitingApproval = model.documents.kyc.filter((document) => Boolean(document.type && expectedDocuments.includes(document.type)) && document.status !== "approved");
@@ -241,7 +248,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     ...(!model.legal.accepted ? ["Brokerage terms have not been accepted"] : []),
   ];
   const applicationReadyForApproval = approvalBlockers.length === 0;
-  const act = async (action: "approve_client" | "reject_client" | "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note", requestId?: string, decisionReason?: string) => {
+  const act = async (action: "approve_client" | "reject_client" | "restrict" | "restore" | "record_terms_acceptance" | "complete_kyc_review" | "resolve_request" | "approve_closure" | "reject_request" | "add_note", requestId?: string, decisionReason?: string, actionData: Record<string, unknown> = {}) => {
     const key = requestId ?? action;
     setBusy(key);
     setMessage("");
@@ -254,14 +261,17 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
           requestId,
           noteText: action === "add_note" ? noteText : undefined,
           category: action === "add_note" ? noteCategory : undefined,
-          reason: action === "restrict" ? "Restricted pending compliance review" : action === "reject_client" ? decisionReason ?? "Client onboarding rejected after compliance review" : undefined,
+          reason: action === "reject_client" ? decisionReason ?? "Client onboarding rejected after compliance review" : decisionReason,
           resolutionNotes: action === "reject_request" ? "Request rejected after broker review." : "Reviewed and resolved by broker operations.",
+          ...actionData,
         }),
       });
       const result = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Client action failed.");
       if (action === "add_note") setNoteText("");
       if (action === "approve_client" || action === "reject_client") setApplicationReviewOpen(false);
+      if (action === "restrict") setRestrictionOpen(false);
+      if (action === "record_terms_acceptance") setTermsEvidenceOpen(false);
       setRefreshKey((current) => current + 1);
       await onRefresh();
       setMessage(action === "add_note" ? "Internal note added and audit logged." : action === "approve_client" ? "Client approved and activated. The account is now eligible for New Order." : action === "reject_client" ? "Client onboarding rejected and retained in the audit trail." : "Control action recorded in the client audit trail.");
@@ -325,6 +335,29 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
       setBusy(null);
     }
   };
+  const uploadClientDocument = async (documentType: string, file: File) => {
+    setBusy(`upload-${documentType}`);
+    setMessage("");
+    try {
+      const formData = new FormData();
+      formData.set("documentType", documentType);
+      formData.set("file", file);
+      const response = await fetch(`/api/clients/${encodeURIComponent(selected.id)}/documents`, {
+        method: "POST",
+        headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role },
+        body: formData,
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Document upload failed.");
+      setRefreshKey((current) => current + 1);
+      await onRefresh();
+      setMessage(`${displayLabel(documentType)} uploaded on the client's behalf and added to the audit trail.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Document upload failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
   const tabs: Array<{ id: Client360Tab; label: string; count?: number }> = [
     { id: "overview", label: "Overview" },
     { id: "assets", label: "Cash & holdings" },
@@ -378,7 +411,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
           {(canApproveClient || canRejectClient) && <button className="btn primary" disabled={Boolean(busy)} onClick={() => { setApplicationReviewStep(0); setOnboardingRejectionReason(""); setApplicationReviewOpen(true); }}>Review application</button>}
           {!canApproveClient && !canRejectClient && <span>Your role can review this record but cannot make the onboarding decision.</span>}
         </div>
-      </div> : canAdjust && <div className="client-360-secondary-action">{model.restrictions.restricted ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore")}>Restore account</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => void act("restrict")}>Restrict account</button>}</div>}
+      </div> : canAdjust && (canRestoreRestriction || canPlaceRestriction) && <div className="client-360-secondary-action">{canRestoreRestriction ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore", undefined, "Restriction resolved after broker review")}>Restore account</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => { setRestrictionCategory("compliance_review"); setRestrictionNote(""); setRestrictionOpen(true); }}>Restrict account</button>}</div>}
     </section>
     <nav className="client-360-tabs" aria-label="Client 360 sections">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}{item.count !== undefined && <span>{item.count}</span>}</button>)}</nav>
     {message && <p className="control-message client-360-message">{message}</p>}
@@ -452,13 +485,36 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
         <div><button className="btn secondary" disabled={Boolean(busy)} onClick={() => setEvidenceRejection(null)}>Cancel</button><button className="btn danger" disabled={Boolean(busy) || evidenceRejectionReason.trim().length < 5} onClick={() => void reviewEvidence(evidenceRejection.kind, evidenceRejection.id, "reject", evidenceRejectionReason)}>Confirm not approved</button></div>
       </section>
     </div>}
+    {restrictionOpen && <div className="evidence-rejection-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setRestrictionOpen(false); }}>
+      <section className="evidence-rejection-dialog restriction-dialog" role="dialog" aria-modal="true" aria-labelledby="restriction-title">
+        <span className="evidence-rejection-icon">!</span><small>ACCOUNT CONTROL</small><h2 id="restriction-title">Restrict {model.client.name}</h2><p>Trading and money movement will stop immediately. Select the reason that will be visible on the client record.</p>
+        <label><span>Reason</span><BrandSelect value={restrictionCategory} onChange={setRestrictionCategory} ariaLabel="Restriction reason" options={[
+          { value: "compliance_review", label: "Compliance review" },
+          { value: "kyc_overdue", label: "KYC overdue" },
+          { value: "missing_documents", label: "Missing documents" },
+          { value: "suspicious_activity", label: "Suspicious activity review" },
+          { value: "legal_regulatory", label: "Legal or regulatory" },
+          { value: "client_request", label: "Client request" },
+          { value: "other", label: "Other" },
+        ]} /></label>
+        <label><span>Additional note {restrictionCategory === "other" ? "(required)" : "(optional)"}</span><textarea rows={4} value={restrictionNote} onChange={(event) => setRestrictionNote(event.target.value)} placeholder="Add concise context for staff and the audit trail" /></label>
+        <div><button className="btn secondary" disabled={Boolean(busy)} onClick={() => setRestrictionOpen(false)}>Cancel</button><button className="btn danger" disabled={Boolean(busy) || (restrictionCategory === "other" && restrictionNote.trim().length < 5)} onClick={() => void act("restrict", undefined, undefined, { restrictionCategory, restrictionNote: restrictionNote.trim() })}>Confirm restriction</button></div>
+      </section>
+    </div>}
+    {termsEvidenceOpen && <div className="evidence-rejection-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setTermsEvidenceOpen(false); }}>
+      <section className="evidence-rejection-dialog" role="dialog" aria-modal="true" aria-labelledby="terms-evidence-title">
+        <span className="evidence-rejection-icon">✓</span><small>LEGAL ACCEPTANCE</small><h2 id="terms-evidence-title">Record witnessed acceptance</h2><p>Only use this when the client has reviewed and accepted the current agreement outside the investor portal.</p>
+        <label><span>Evidence note</span><textarea autoFocus rows={4} value={termsEvidence} onChange={(event) => setTermsEvidence(event.target.value)} placeholder="For example, signed copy received at Bole branch on 27 Jul 2026" /></label>
+        <div><button className="btn secondary" disabled={Boolean(busy)} onClick={() => setTermsEvidenceOpen(false)}>Cancel</button><button className="btn primary" disabled={Boolean(busy) || termsEvidence.trim().length < 5} onClick={() => void act("record_terms_acceptance", undefined, termsEvidence.trim())}>Record acceptance</button></div>
+      </section>
+    </div>}
 
     {tab === "overview" && <div className="client-360-grid">
       <RelationshipOfficerCard current={model.relationship?.current ?? null} history={model.relationship?.history ?? []} role={role} busy={busy === "assign"} onAssign={(officerId) => void assignOfficer(officerId)} />
       <section className="panel onboarding-record"><div className="panel-head"><div><span className="eyebrow">ONBOARDING RECORD</span><h2>Submitted client details</h2></div><span className="account-number">{displayLabel(model.client.onboardingChannel ?? "in_person")}</span></div><dl><div><dt>Email</dt><dd>{model.client.email ?? "Not recorded"}</dd></div><div><dt>Phone</dt><dd>{model.client.phone ?? "Not recorded"}</dd></div><div><dt>Fayda FAN</dt><dd>{model.client.identityMasked ?? "Not recorded"}</dd></div><div><dt>TIN</dt><dd>{model.client.taxIdMasked ?? "Not recorded"}</dd></div>{model.client.type !== "individual" && <><div><dt>Registered address</dt><dd>{model.client.address ?? "Not recorded"}</dd></div><div><dt>Registration number</dt><dd>{model.client.businessRegistrationNumber ?? "Not recorded"}</dd></div><div><dt>Authorized representative</dt><dd>{model.client.authorizedRepresentativeName ?? "Not recorded"}</dd></div><div><dt>Signatory authority</dt><dd>{model.client.signatoryAuthorityConfirmed ? "Confirmed" : "Not confirmed"}</dd></div></>}</dl></section>
       <section className="panel readiness-panel"><div className="panel-head"><div><span className="eyebrow">TRADING READINESS</span><h2>{model.readiness.canTrade ? "Client can trade" : "Action required"}</h2></div><span className={`readiness-score ${model.readiness.canTrade ? "ready" : "blocked"}`}>{model.readiness.items.filter((item) => item.state === "pass").length}/{model.readiness.items.length}</span></div>{!model.readiness.canTrade && model.readiness.blockingReasons.length > 0 && <div className="readiness-callout"><b>Trading is blocked</b><span>{model.readiness.blockingReasons.join(" · ")}</span></div>}<div className="readiness-list">{model.readiness.items.map((item) => <div key={item.key}><i className={item.state}>{item.state === "pass" ? "✓" : item.state === "fail" ? "!" : "-"}</i><span><b>{item.label}</b><small>{item.detail}</small></span></div>)}</div></section>
       <section className="panel overview-cash"><div className="panel-head"><div><span className="eyebrow">CASH POSITION</span><h2>Available to trade</h2></div><button onClick={() => setTab("assets")}>View ledger →</button></div><strong>{etb(model.cash?.available ?? 0)}</strong><div><span><small>Total cash</small><b>{etb(model.cash?.total ?? 0)}</b></span><span><small>Blocked</small><b>{etb(model.cash?.blocked ?? 0)}</b></span><span><small>Unsettled</small><b>{etb(model.cash?.unsettled ?? 0)}</b></span></div></section>
-      <section className="panel legal-status-card"><div className="panel-head"><div><span className="eyebrow">LEGAL & DOCUMENTS</span><h2>Consent status</h2></div><span className={`status ${model.legal.accepted ? "status-success" : "status-warning"}`}><i />{model.legal.accepted ? "Accepted" : "Consent required"}</span></div><div className="legal-status-body"><span><small>Required version</small><b>{model.legal.latestRequiredVersion ?? "None configured"}</b></span><span><small>Accepted version</small><b>{model.legal.latestAcceptedVersion ?? "Not accepted"}</b></span><span><small>Last accepted</small><b>{model.legal.lastAcceptedAt ? new Date(model.legal.lastAcceptedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "-"}</b></span></div>{model.legal.missingDocuments.length > 0 && <div className="missing-docs"><small>MISSING / ACTION REQUIRED</small>{model.legal.missingDocuments.map((item) => <span key={item}>{item}</span>)}</div>}</section>
+      <section className="panel legal-status-card"><div className="panel-head"><div><span className="eyebrow">LEGAL & DOCUMENTS</span><h2>Consent status</h2></div><span className={`status ${model.legal.accepted ? "status-success" : "status-warning"}`}><i />{model.legal.accepted ? "Accepted" : "Consent required"}</span></div><div className="legal-status-body"><span><small>Required version</small><b>{model.legal.latestRequiredVersion ?? "None configured"}</b></span><span><small>Accepted version</small><b>{model.legal.latestAcceptedVersion ?? "Not accepted"}</b></span><span><small>Last accepted</small><b>{model.legal.lastAcceptedAt ? new Date(model.legal.lastAcceptedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "-"}</b></span></div>{model.legal.missingDocuments.length > 0 && <div className="missing-docs"><small>MISSING / ACTION REQUIRED</small>{model.legal.missingDocuments.map((item) => <span key={item}>{item}</span>)}</div>}{canAdjust && !model.legal.accepted && <div className="record-resolution-actions"><button className="btn secondary small" onClick={() => { setTermsEvidence(""); setTermsEvidenceOpen(true); }}>Record witnessed acceptance</button></div>}</section>
       <section className="panel flags-card"><div className="panel-head"><div><span className="eyebrow">RESTRICTIONS & FLAGS</span><h2>Control indicators</h2></div></div>{model.restrictions.flags.length || model.restrictions.restricted ? <div className="flag-list">{model.restrictions.restricted && <div className="serious"><i>!</i><span><b>Account restricted</b><small>{model.restrictions.reason ?? "Reason not recorded"}</small></span></div>}{model.restrictions.flags.map((flag) => <div key={flag}><i>◇</i><span><b>{flag}</b><small>Review the relevant client record before activity.</small></span></div>)}</div> : <EmptyState title="No active flags" copy="No client, KYC, consent, or account restriction is currently blocking activity." />}</section>
       <section className="panel request-panel client-360-requests"><div className="panel-head"><div><span className="eyebrow">CLIENT INSTRUCTIONS</span><h2>Requests and discrepancies</h2></div><span className="exception-count">{model.requests.filter((item) => ["open", "under_review"].includes(item.status)).length} open</span></div>{model.requests.length ? model.requests.map((item) => { const open = ["open", "under_review"].includes(item.status); return <div className="client-request-row" key={item.id}><span><b>{item.subject}</b><small>{item.description}</small>{item.orderId && <em>{item.orderId}</em>}</span><strong>{displayLabel(item.status)}</strong>{open && canAdjust && <div>{item.requestType === "account_closure" && <button className="btn primary small" disabled={busy === item.id} onClick={() => void act("approve_closure", item.id)}>Approve closure</button>}<button className="btn secondary small" disabled={busy === item.id} onClick={() => void act("resolve_request", item.id)}>Resolve</button><button className="btn secondary small" disabled={busy === item.id} onClick={() => void act("reject_request", item.id)}>Reject</button></div>}</div>; }) : <EmptyState title="No client requests" copy="Investor discrepancies, corrections, and closure requests will appear here." />}</section>
     </div>}
@@ -477,8 +533,9 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
       <section className="panel document-card onboarding-documents"><div className="panel-head"><div><span className="eyebrow">ONBOARDING DOCUMENTS</span><h2>Identity and authority</h2></div><span className="account-number">{model.documents.kyc.length} received</span></div>
         {(model.documents.expected ?? []).map((type) => {
           const document = model.documents.kyc.find((item) => item.type === type);
-          return <div className="document-review-row" key={type}><span><b>{displayLabel(type)}</b><small>{document ? `${document.name}${document.sizeBytes ? ` · ${(document.sizeBytes / 1024).toFixed(0)} KB` : ""}${document.uploadedAt ? ` · ${new Date(document.uploadedAt).toLocaleDateString("en-GB")}` : ""}` : "Not received"}</small>{document?.rejectionReason && <em>{document.rejectionReason}</em>}</span><strong data-status={document?.status ?? "not_received"}>{document ? displayLabel(document.status) : "Not received"}</strong>{document && <div>{document.hasFile && <a className="btn secondary small" href={`/api/clients/${encodeURIComponent(selected.id)}/documents/${encodeURIComponent(document.id)}`} target="_blank" rel="noreferrer">Open</a>}{hasPermission(role, "approve") && document.status !== "approved" && <button className="btn primary small" disabled={busy === document.id} onClick={() => void reviewEvidence("documents", document.id, "approve")}>Approve</button>}{hasPermission(role, "reject") && document.status !== "rejected" && <button className="btn danger small" disabled={busy === document.id} onClick={() => { setEvidenceRejection({ kind: "documents", id: document.id, label: displayLabel(type) }); setEvidenceRejectionReason(""); }}>Not approve</button>}</div>}</div>;
+          return <div className="document-review-row" key={type}><span><b>{displayLabel(type)}</b><small>{document ? `${document.name}${document.sizeBytes ? ` · ${(document.sizeBytes / 1024).toFixed(0)} KB` : ""}${document.uploadedAt ? ` · ${new Date(document.uploadedAt).toLocaleDateString("en-GB")}` : ""}` : "Not received"}</small>{document?.rejectionReason && <em>{document.rejectionReason}</em>}</span><strong data-status={document?.status ?? "not_received"}>{document ? displayLabel(document.status) : "Not received"}</strong><div>{canAdjust && <label className="btn secondary small broker-file-button">{busy === `upload-${type}` ? "Uploading…" : document ? "Replace file" : "Upload for client"}<input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={Boolean(busy)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadClientDocument(type, file); event.currentTarget.value = ""; }} /></label>}{document?.hasFile && <a className="btn secondary small" href={`/api/clients/${encodeURIComponent(selected.id)}/documents/${encodeURIComponent(document.id)}`} target="_blank" rel="noreferrer">Open</a>}{document && hasPermission(role, "approve") && document.status !== "approved" && <button className="btn primary small" disabled={busy === document.id} onClick={() => void reviewEvidence("documents", document.id, "approve")}>Approve</button>}{document && hasPermission(role, "reject") && document.status !== "rejected" && <button className="btn danger small" disabled={busy === document.id} onClick={() => { setEvidenceRejection({ kind: "documents", id: document.id, label: displayLabel(type) }); setEvidenceRejectionReason(""); }}>Not approve</button>}</div></div>;
         })}
+        {canAdjust && model.client.kycStatus !== "approved" && <div className="record-resolution-actions"><button className="btn primary small" disabled={Boolean(busy)} onClick={() => void act("complete_kyc_review", undefined, "Required KYC documents reviewed and approved")}>Complete KYC review</button></div>}
       </section>
       <section className="panel document-card linked-bank-review"><div className="panel-head"><div><span className="eyebrow">LINKED BANKS</span><h2>Withdrawal destinations</h2></div><span className="account-number">{model.linkedBanks?.length ?? 0} of 3</span></div>{model.linkedBanks?.length ? model.linkedBanks.map((bank) => <div className="document-review-row" key={bank.id}><span><b>{bank.bankName}</b><small>{bank.accountNumberMasked} · {bank.accountHolderName}</small>{bank.rejectionReason && <em>{bank.rejectionReason}</em>}</span><strong data-status={bank.status}>{displayLabel(bank.status)}</strong><div>{hasPermission(role, "approve") && bank.status !== "approved" && <button className="btn primary small" disabled={busy === bank.id} onClick={() => void reviewEvidence("bank-accounts", bank.id, "approve")}>Approve</button>}{hasPermission(role, "reject") && bank.status !== "rejected" && <button className="btn danger small" disabled={busy === bank.id} onClick={() => { setEvidenceRejection({ kind: "bank-accounts", id: bank.id, label: `${bank.bankName} account` }); setEvidenceRejectionReason(""); }}>Not approve</button>}</div></div>) : <EmptyState title="No linked banks" copy="Linked bank accounts will appear here when the client submits them." />}</section>
       <section className="panel document-card"><div className="panel-head"><div><span className="eyebrow">LEGAL ACCEPTANCE</span><h2>Accepted agreements</h2></div></div>{model.documents.legal.length ? model.documents.legal.map((document) => <div className="document-row" key={document.id}><span><b>{document.name}</b><small>Version {document.version} · {new Date(document.acceptedAt).toLocaleDateString("en-GB")}</small></span><strong>{displayLabel(document.status)}</strong></div>) : <EmptyState title="No legal acceptance" copy="The current brokerage terms have not been accepted by this client." />}</section>

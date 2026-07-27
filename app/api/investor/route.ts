@@ -77,6 +77,42 @@ export async function GET(request: Request) {
     const account = client?.accounts[0];
     const legalDocument = broker.legalDocuments[0] ?? null;
     const feeSchedule = broker.feeSchedules[0] ?? null;
+    const acceptedCurrentTerms = !legalDocument || Boolean(client?.consents.some((consent) =>
+      consent.consentType === "brokerage_terms"
+      && consent.legalDocumentId === legalDocument.id
+      && consent.version === legalDocument.version
+      && consent.accepted
+      && !consent.withdrawnAt
+    ));
+    const kycReady = client?.kycStatus === "approved";
+    const accountActive = client?.status === "active" && account?.status === "active";
+    const explicitlyRestricted = client?.status === "restricted" || account?.status === "restricted" || Boolean(account?.restrictionReason);
+    const canTrade = Boolean(client && account && kycReady && accountActive && !explicitlyRestricted && (!(broker.settings?.requireTermsAcceptance ?? true) || acceptedCurrentTerms));
+    const canMoveCash = Boolean(client && account && kycReady && accountActive && !explicitlyRestricted);
+    const accessReasons = [
+      explicitlyRestricted ? {
+        code: "broker_restriction",
+        message: account?.restrictionReason ?? "Your broker has restricted this account.",
+        action: null,
+      } : null,
+      !kycReady ? {
+        code: "kyc",
+        message: client?.kycStatus === "review_due" ? "Your KYC review is due." : "Your KYC review is not complete.",
+        action: "update_kyc" as const,
+      } : null,
+      (broker.settings?.requireTermsAcceptance ?? true) && !acceptedCurrentTerms ? {
+        code: "terms",
+        message: `Accept ${legalDocument?.title ?? "the current brokerage agreement"} before trading.`,
+        action: "accept_terms" as const,
+      } : null,
+      !accountActive && !explicitlyRestricted ? {
+        code: "account_status",
+        message: client?.status === "pending_approval" || account?.status === "pending_approval"
+          ? "Your account is awaiting broker approval."
+          : "Your account is not active.",
+        action: null,
+      } : null,
+    ].filter((value): value is { code: string; message: string; action: "accept_terms" | "update_kyc" | null } => Boolean(value));
     const activity = sortInvestorActivity([
       ...(account?.orders.flatMap((order): InvestorActivity[] => [
         {
@@ -186,6 +222,8 @@ export async function GET(request: Request) {
       account: account ? {
         id: account.id, accountNumber: account.accountNumber, totalCash: toNum(account.totalCash),
         availableCash: toNum(account.availableCash), blockedCash: toNum(account.blockedCash), status: account.status,
+        restrictionReason: account.restrictionReason,
+        restrictedAt: account.restrictedAt?.toISOString() ?? null,
         holdings: account.holdings.map((holding) => ({
           instrumentId: holding.instrumentId, ticker: holding.instrument.symbol, name: holding.instrument.name,
           quantity: toNum(holding.totalQuantity), availableQuantity: toNum(holding.availableQuantity),
@@ -197,6 +235,12 @@ export async function GET(request: Request) {
           status: order.status, createdAt: order.createdAt.toISOString(),
         })),
       } : null,
+      access: {
+        restricted: !canTrade || !canMoveCash,
+        canTrade,
+        canMoveCash,
+        reasons: accessReasons,
+      },
       // Customer-facing view of who looks after this account: name and role only.
       relationshipOfficer: await investorRelationshipOfficer({ brokerId, clientId }),
       serviceRequests: (client?.serviceRequests ?? []).map((item) => ({
@@ -301,6 +345,81 @@ export async function POST(request: Request) {
           blockedCash: toNum(account.blockedCash),
         } : null,
       }, { status: 201 });
+    }
+
+    if (payload.action === "accept_terms") {
+      const [client, legalDocument] = await Promise.all([
+        prisma.client.findFirst({ where: { id: clientId, brokerId } }),
+        prisma.legalDocument.findFirst({
+          where: { brokerId, documentType: "brokerage_terms", status: "published" },
+          orderBy: [{ effectiveAt: "desc" }, { publishedAt: "desc" }],
+        }),
+      ]);
+      if (!client) return Response.json({ error: "Investor profile not found." }, { status: 404 });
+      if (!legalDocument) return Response.json({ error: "There is no published brokerage agreement to accept." }, { status: 409 });
+      if (String(payload.termsVersion ?? "") !== legalDocument.version || payload.accepted !== true) {
+        return Response.json({ error: "Review and accept the current brokerage agreement." }, { status: 400 });
+      }
+      const existing = await prisma.clientConsent.findFirst({
+        where: { clientId, legalDocumentId: legalDocument.id, consentType: "brokerage_terms", accepted: true, withdrawnAt: null },
+      });
+      if (!existing) {
+        await prisma.$transaction(async (tx) => {
+          const consent = await tx.clientConsent.create({ data: {
+            id: crypto.randomUUID(),
+            clientId,
+            legalDocumentId: legalDocument.id,
+            consentType: "brokerage_terms",
+            version: legalDocument.version,
+            channel: "investor_portal",
+            metadata: { source: "account_records" },
+          } });
+          await tx.auditLog.create({ data: {
+            id: crypto.randomUUID(),
+            brokerId,
+            actorId: null,
+            action: "BROKERAGE_TERMS_ACCEPTED",
+            entityType: "client",
+            entityId: clientId,
+            summary: `${client.fullName} accepted brokerage agreement version ${legalDocument.version} in the investor portal`,
+            newValue: JSON.stringify({ consentId: consent.id, version: legalDocument.version, channel: "investor_portal" }),
+          } });
+        });
+      }
+      return Response.json({ ok: true, version: legalDocument.version });
+    }
+
+    if (payload.action === "kyc_documents") {
+      if (!formData) return Response.json({ error: "Attach at least one KYC document." }, { status: 400 });
+      const client = await prisma.client.findFirst({ where: { id: clientId, brokerId } });
+      if (!client) return Response.json({ error: "Investor profile not found." }, { status: 404 });
+      const documents = await prepareDocuments(formData);
+      if (!documents.length) return Response.json({ error: "Attach at least one PDF, PNG, or JPG document." }, { status: 400 });
+      await prisma.$transaction(async (tx) => {
+        await saveOnboardingEvidence(tx, {
+          brokerId,
+          clientId,
+          source: "investor_portal",
+          legalName: client.fullName,
+          clientType: client.clientType,
+          documents,
+          banks: [],
+        });
+        if (documents.some((document) => document.documentType === "proof_of_address")) {
+          await tx.client.update({ where: { id: clientId }, data: { proofOfAddressStatus: "received" } });
+        }
+        await tx.auditLog.create({ data: {
+          id: crypto.randomUUID(),
+          brokerId,
+          actorId: null,
+          action: "INVESTOR_KYC_DOCUMENTS_UPDATED",
+          entityType: "client",
+          entityId: clientId,
+          summary: `${client.fullName} uploaded or updated KYC documents`,
+          newValue: JSON.stringify({ documentTypes: documents.map((document) => document.documentType), source: "investor_portal" }),
+        } });
+      });
+      return Response.json({ ok: true, uploaded: documents.map((document) => document.documentType) }, { status: 201 });
     }
 
     if (payload.action === "kyc") {

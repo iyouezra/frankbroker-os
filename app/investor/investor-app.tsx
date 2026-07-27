@@ -282,6 +282,12 @@ export default function InvestorApp() {
           kycReviewDueAt: null,
         },
         account: null,
+        access: {
+          restricted: true,
+          canTrade: false,
+          canMoveCash: false,
+          reasons: [{ code: "account_status", message: "Your account is awaiting broker approval.", action: null }],
+        },
         serviceRequests: [],
         cashMovements: [],
         activity: [],
@@ -558,8 +564,8 @@ export default function InvestorApp() {
     }
   };
   const createCashMovement = async (input: CashMovementInput) => {
-    if (submittedApplication && bootstrap?.account?.status !== "active") {
-      notify("Broker approval is required before you can add or withdraw money.");
+    if (bootstrap?.access && !bootstrap.access.canMoveCash) {
+      notify(bootstrap.access.reasons[0]?.message ?? "Cash access is restricted.");
       return false;
     }
     try {
@@ -579,6 +585,25 @@ export default function InvestorApp() {
       return false;
     }
   };
+  const acceptBrokerageTerms = async () => {
+    const version = bootstrap?.tenant.legalDocument?.version;
+    if (!version) throw new Error("There is no published brokerage agreement to accept.");
+    await postInvestor({ action: "accept_terms", termsVersion: version, accepted: true });
+    await refreshInvestor();
+    notify(`Brokerage agreement version ${version} accepted.`);
+  };
+  const updateKycDocuments = async (files: Partial<Record<string, File>>) => {
+    const formData = new FormData();
+    formData.set("payload", JSON.stringify({ action: "kyc_documents" }));
+    Object.entries(files).forEach(([type, file]) => {
+      if (file) formData.set(type, file);
+    });
+    const response = await fetch("/api/investor", { method: "POST", headers: investorHeaders, body: formData });
+    const result = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) throw new Error(result.error ?? "Unable to update KYC documents.");
+    await refreshInvestor();
+    notify("KYC documents sent to your broker for review.");
+  };
   const feePct = bootstrap?.tenant.brokerageFeePct ?? .5;
   const minimumFee = bootstrap?.tenant.minimumFee ?? 25;
   const equityFeeRule = bootstrap?.tenant.feeSchedule?.rules.find((rule) => rule.assetClass === "equity") ?? {
@@ -596,10 +621,12 @@ export default function InvestorApp() {
     bootstrap?.activity ?? [],
     activeClientId === INVESTOR_CLIENT_ID ? demoInvestorActivity : [],
   );
-  const applicationActive = bootstrap?.profile?.status === "active"
-    && bootstrap?.profile?.kycStatus === "approved"
-    && bootstrap?.account?.status === "active";
-  const restrictedAccess = Boolean(submittedApplication && !applicationActive);
+  const tradeRestricted = bootstrap ? !bootstrap.access.canTrade : false;
+  const cashRestricted = bootstrap ? !bootstrap.access.canMoveCash : false;
+  const restrictedAccess = Boolean(bootstrap?.access.restricted);
+  const restrictionReason = bootstrap?.access.reasons[0]?.message ?? "Trading or money movement is unavailable for this account.";
+  const restrictedScope = tradeRestricted && cashRestricted ? "Trading and money movement are unavailable." : tradeRestricted ? "Trading is unavailable." : "Money movement is unavailable.";
+  const restrictionCanSelfResolve = Boolean(bootstrap?.access.reasons.some((reason) => reason.action));
   const linkedBanks = bootstrap?.linkedBanks?.length
     ? bootstrap.linkedBanks
     : activeClientId === INVESTOR_CLIENT_ID
@@ -618,10 +645,10 @@ export default function InvestorApp() {
     </section>
     <section className={styles.appFrame} aria-label="Frank Money investor app">
       <div className={styles.appViewport}>
-        {phase === "app" && restrictedAccess && submittedApplication && <div className={styles.restrictedAccessBanner} role="status">
+        {phase === "app" && restrictedAccess && <div className={styles.restrictedAccessBanner} role="status">
           <span><Icon name="shield" size={18} /></span>
-          <div><b>Restricted access</b><small>Your application is pending broker approval. Trading and money movement are unavailable.</small></div>
-          <button onClick={() => void refreshInvestor(submittedApplication.id)}>Refresh</button>
+          <div><b>Restricted access</b><small>{restrictionReason} {restrictedScope}</small></div>
+          <button onClick={() => { setTab("profile"); setStock(null); setBond(null); }}>{restrictionCanSelfResolve ? "Resolve" : "View"}</button>
         </div>}
         {phase === "select" ? <div className={styles.demoSelector}>
           <div className={styles.demoSelectorBrand}><AppLogo /><span>PLATFORM DEMO</span></div>
@@ -660,8 +687,8 @@ export default function InvestorApp() {
             </div>
           </div>
           : phase === "onboarding" ? <Onboarding initialAccountType={onboardingType} onBack={() => setPhase("select")} onVerifyIdentity={verifyOnboardingPhone} onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} />
-          : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} restricted={restrictedAccess} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} />
-            : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} restricted={restrictedAccess} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} />
+          : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} restricted={tradeRestricted} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} />
+            : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} restricted={tradeRestricted} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} />
               : <>
                 <div className={`${styles.scrollArea} ${restrictedAccess ? styles.restrictedScroll : ""}`}>
                   {supportOpen
@@ -671,24 +698,24 @@ export default function InvestorApp() {
                     : activityOpen
                     ? <ActivityScreen activity={activity} initialItem={activityInitialItem} onBack={() => { setActivityOpen(false); setActivityInitialItem(null); }} />
                     : tab === "home"
-                      ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} restricted={restrictedAccess} demoFallback={activeClientId === INVESTOR_CLIENT_ID} unread={unreadNotifs} onBell={() => {
+                      ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} tradeRestricted={tradeRestricted} cashRestricted={cashRestricted} demoFallback={activeClientId === INVESTOR_CLIENT_ID} unread={unreadNotifs} onBell={() => {
                         setBellOpen(true);
                         void fetch("/api/notifications", { headers: investorHeaders })
                           .then((response) => response.ok ? response.json() : Promise.reject())
                           .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
                           .catch(() => undefined);
-                      }} onCash={() => restrictedAccess ? notify("Broker approval is required before you can add or withdraw money.") : setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
+                      }} onCash={() => cashRestricted ? notify(bootstrap?.access.reasons[0]?.message ?? "Cash access is restricted.") : setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
                       : tab === "markets"
                         ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} />
                         : tab === "portfolio"
                           ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} demoFallback={activeClientId === INVESTOR_CLIENT_ID} />
                           : tab === "learn"
                             ? <LearnScreen />
-                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
                 </div>
                 <BottomNav active={tab} onChange={navigate} />
               </>}
-        {cashOpen && !restrictedAccess && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} linkedBanks={linkedBanks} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
+        {cashOpen && !cashRestricted && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} linkedBanks={linkedBanks} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
         {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
         {newRequestOpen && <NewRequestSheet busy={supportBusy} onClose={() => setNewRequestOpen(false)} onSubmit={createSupportRequest} />}
         {onboardingOtp && <InvestorOrderOtpDialog key={onboardingOtp.id} context="onboarding" challenge={onboardingOtp} onVerify={(code) => void verifyApplicantOtp(code)} onResend={() => void resendApplicantOtp()} onCancel={cancelApplicantOtp} />}

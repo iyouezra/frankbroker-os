@@ -9,7 +9,7 @@ export const DOCUMENT_TYPES = [
 ] as const;
 
 export type ClientDocumentType = typeof DOCUMENT_TYPES[number];
-export type OnboardingSource = "investor_portal" | "digital" | "in_person" | "neway" | "phone";
+export type OnboardingSource = "investor_portal" | "broker_desk" | "digital" | "in_person" | "neway" | "phone";
 export type LinkedBankInput = {
   bankName: string;
   accountNumber: string;

@@ -105,6 +105,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ...client.serviceRequests.map((item) => item.id),
       ...client.cashMovements.map((item) => item.id),
       ...client.notes.map((note) => note.id),
+      ...client.documents.map((document) => document.id),
+      ...client.consents.map((consent) => consent.id),
+      ...client.linkedBankAccounts.map((bank) => bank.id),
     ];
     const auditRows = await prisma.auditLog.findMany({
       where: { brokerId: actor.brokerId, entityId: { in: entityIds } },

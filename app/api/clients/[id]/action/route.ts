@@ -3,10 +3,12 @@ import { prisma } from "../../../../../lib/prisma";
 import { ZERO } from "../../../../../lib/money";
 import { requirePermission } from "../../../../../lib/server-auth";
 import { approveClient, rejectClient } from "../../../../../lib/client-service";
+import { expectedDocumentTypes } from "../../../../../lib/onboarding-evidence";
 
 export const runtime = "nodejs";
 
-type ClientAction = "approve_client" | "reject_client" | "restrict" | "restore" | "resolve_request" | "approve_closure" | "reject_request" | "add_note";
+type ClientAction = "approve_client" | "reject_client" | "restrict" | "restore" | "record_terms_acceptance" | "complete_kyc_review" | "resolve_request" | "approve_closure" | "reject_request" | "add_note";
+const restrictionCategories = new Set(["compliance_review", "kyc_overdue", "missing_documents", "suspicious_activity", "legal_regulatory", "client_request", "other"]);
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -18,6 +20,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       resolutionNotes?: string;
       noteText?: string;
       category?: string;
+      restrictionCategory?: string;
+      restrictionNote?: string;
     };
     if (!payload.action) return Response.json({ error: "A client action is required." }, { status: 400 });
     const permission = payload.action === "approve_client" ? "approve" : payload.action === "reject_client" ? "reject" : "adjust";
@@ -67,19 +71,87 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return Response.json({ ok: true, note: { id: note.id, category: note.category, createdAt: note.createdAt.toISOString() } }, { status: 201 });
     }
 
+    if (payload.action === "record_terms_acceptance") {
+      const [client, legalDocument] = await Promise.all([
+        prisma.client.findFirst({ where: { id, brokerId: actor.brokerId } }),
+        prisma.legalDocument.findFirst({
+          where: { brokerId: actor.brokerId, documentType: "brokerage_terms", status: "published" },
+          orderBy: [{ effectiveAt: "desc" }, { publishedAt: "desc" }],
+        }),
+      ]);
+      if (!client) return Response.json({ error: "Client not found for this tenant." }, { status: 404 });
+      if (!legalDocument) return Response.json({ error: "There is no published brokerage agreement." }, { status: 409 });
+      if (reason.length < 5) return Response.json({ error: "Record how the client's acceptance was evidenced." }, { status: 400 });
+      const existing = await prisma.clientConsent.findFirst({ where: { clientId: id, legalDocumentId: legalDocument.id, accepted: true, withdrawnAt: null } });
+      if (!existing) {
+        await prisma.$transaction(async (tx) => {
+          const consent = await tx.clientConsent.create({ data: {
+            id: crypto.randomUUID(),
+            clientId: id,
+            legalDocumentId: legalDocument.id,
+            consentType: "brokerage_terms",
+            version: legalDocument.version,
+            channel: "broker_desk",
+            metadata: { recordedBy: actor.id, evidenceNote: reason },
+          } });
+          await tx.auditLog.create({ data: {
+            id: crypto.randomUUID(), brokerId: actor.brokerId, actorId: actor.id,
+            action: "BROKER_RECORDED_TERMS_ACCEPTANCE", entityType: "client", entityId: id,
+            summary: `Broker recorded ${client.fullName}'s acceptance of brokerage agreement version ${legalDocument.version}`,
+            reason,
+            newValue: JSON.stringify({ consentId: consent.id, version: legalDocument.version, channel: "broker_desk" }),
+          } });
+        });
+      }
+      return Response.json({ ok: true, version: legalDocument.version });
+    }
+
+    if (payload.action === "complete_kyc_review") {
+      const client = await prisma.client.findFirst({
+        where: { id, brokerId: actor.brokerId },
+        include: { documents: true, broker: { include: { settings: true } } },
+      });
+      if (!client) return Response.json({ error: "Client not found for this tenant." }, { status: 404 });
+      const expected = expectedDocumentTypes(client.clientType);
+      const incomplete = expected.filter((type) => !client.documents.some((document) => document.documentType === type && document.status === "approved"));
+      if (incomplete.length) return Response.json({ error: `Approve all required KYC documents first: ${incomplete.join(", ")}.` }, { status: 409 });
+      const reviewedAt = new Date();
+      const dueAt = new Date(reviewedAt);
+      dueAt.setUTCMonth(dueAt.getUTCMonth() + (client.broker.settings?.kycReviewMonths ?? 12));
+      await prisma.$transaction(async (tx) => {
+        await tx.client.update({ where: { id }, data: { kycStatus: "approved", kycReviewDueAt: dueAt } });
+        await tx.auditLog.create({ data: {
+          id: crypto.randomUUID(), brokerId: actor.brokerId, actorId: actor.id,
+          action: "CLIENT_KYC_REVIEW_COMPLETED", entityType: "client", entityId: id,
+          summary: `KYC review completed for ${client.fullName}`,
+          reason: reason || "Required KYC documents reviewed and approved",
+          previousValue: JSON.stringify({ kycStatus: client.kycStatus, kycReviewDueAt: client.kycReviewDueAt }),
+          newValue: JSON.stringify({ kycStatus: "approved", kycReviewDueAt: dueAt.toISOString() }),
+        } });
+      });
+      return Response.json({ ok: true, kycStatus: "approved", kycReviewDueAt: dueAt.toISOString() });
+    }
+
     if (payload.action === "restrict" || payload.action === "restore") {
       const client = await prisma.client.findFirst({ where: { id, brokerId: actor.brokerId }, include: { accounts: true } });
       if (!client) return Response.json({ error: "Client not found for this tenant." }, { status: 404 });
-      if (payload.action === "restrict" && reason.length < 5) {
-        return Response.json({ error: "A restriction reason is required." }, { status: 400 });
+      const restrictionCategory = String(payload.restrictionCategory ?? "").trim();
+      const restrictionNote = String(payload.restrictionNote ?? "").trim();
+      if (payload.action === "restrict" && !restrictionCategories.has(restrictionCategory)) {
+        return Response.json({ error: "Choose a restriction reason." }, { status: 400 });
       }
+      if (payload.action === "restrict" && restrictionCategory === "other" && restrictionNote.length < 5) {
+        return Response.json({ error: "Add a note explaining the other restriction reason." }, { status: 400 });
+      }
+      const categoryLabel = restrictionCategory.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+      const recordedReason = payload.action === "restrict" ? `${categoryLabel}${restrictionNote ? ` — ${restrictionNote}` : ""}` : reason;
       const nextStatus = payload.action === "restrict" ? "restricted" : "active";
       await prisma.$transaction(async (tx) => {
         await tx.client.update({ where: { id }, data: { status: nextStatus } });
         await tx.account.updateMany({
           where: { clientId: id, status: { not: "closed" } },
           data: payload.action === "restrict"
-            ? { status: "restricted", restrictionReason: reason, restrictedAt: new Date() }
+            ? { status: "restricted", restrictionReason: recordedReason, restrictedAt: new Date() }
             : { status: "active", restrictionReason: null, restrictedAt: null },
         });
         await tx.auditLog.create({ data: {
@@ -90,9 +162,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           entityType: "client",
           entityId: id,
           summary: `${client.fullName} ${payload.action === "restrict" ? "restricted" : "restored"}`,
-          reason: reason || null,
+          reason: recordedReason || null,
           previousValue: JSON.stringify({ clientStatus: client.status, accountStatuses: client.accounts.map((account) => account.status) }),
-          newValue: JSON.stringify({ status: nextStatus }),
+          newValue: JSON.stringify({ status: nextStatus, restrictionCategory: payload.action === "restrict" ? restrictionCategory : null, restrictionNote: payload.action === "restrict" ? restrictionNote || null : null }),
         } });
       });
       return Response.json({ ok: true, status: nextStatus });

@@ -71,14 +71,20 @@ export type InvestorInstrument = {
 export type InvestorBootstrap = {
   tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
   profile: { fullName: string; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
-  account: { id: string; accountNumber: string; status?: string; totalCash: number; availableCash: number; blockedCash: number; holdings: Array<{ ticker: string; quantity: number; averageCost: number; price: number }>; orders: Array<{ id: string }> } | null;
+  account: { id: string; accountNumber: string; status?: string; restrictionReason?: string | null; restrictedAt?: string | null; totalCash: number; availableCash: number; blockedCash: number; holdings: Array<{ ticker: string; quantity: number; averageCost: number; price: number }>; orders: Array<{ id: string }> } | null;
+  access: {
+    restricted: boolean;
+    canTrade: boolean;
+    canMoveCash: boolean;
+    reasons: Array<{ code: string; message: string; action?: "accept_terms" | "update_kyc" | null }>;
+  };
   instruments: InvestorInstrument[];
   serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null }>;
   cashPools: CashPool[];
   cashMovements: CashMovementView[];
   activity: InvestorActivity[];
   linkedBanks: LinkedBankAccount[];
-  documents: Array<{ id: string; type: string; name: string; status: string; hasFile: boolean }>;
+  documents: Array<{ id: string; type: string; name: string; status: string; hasFile: boolean; uploadedAt?: string; rejectionReason?: string | null }>;
   // Name and job title only - never an employee's private contact details.
   relationshipOfficer?: { name: string; role: string } | null;
 };
