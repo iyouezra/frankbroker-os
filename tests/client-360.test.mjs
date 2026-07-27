@@ -162,7 +162,10 @@ test("client accounts use a paginated directory with distinct client categories"
     readFile(new URL("lib/client-service.ts", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
-  assert.match(ui, /CLIENT DIRECTORY/);
+  assert.match(ui, /Client Directory/);
+  assert.match(ui, /Client 360 Workspace/);
+  assert.match(ui, /setWorkspaceView\("client360"\)/);
+  assert.match(ui, /openClientWorkspace\(client\)/);
   assert.match(ui, /Search name, client code, or account/);
   assert.match(ui, /All clients/);
   assert.match(ui, /Individual/);
@@ -177,6 +180,7 @@ test("client accounts use a paginated directory with distinct client categories"
   assert.match(directoryRoute, /clientType: requestedType/);
   assert.match(service, /"individual" \| "corporate" \| "institution"/);
   assert.match(styles, /\.client-directory-table/);
+  assert.match(styles, /\.client-page-tabs/);
   assert.match(styles, /\.client-type-badge\.type-corporate/);
   assert.match(styles, /\.segmented\.three/);
 });
