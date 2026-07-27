@@ -20,14 +20,9 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const themeInit = `(function(){try{var t=localStorage.getItem('frank-theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();`;
-
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    // The theme script sets data-theme on <html> before hydration to avoid a
-    // flash; suppressHydrationWarning stops React flagging that intended mismatch.
-    <html lang="en" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeInit }} /></head>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

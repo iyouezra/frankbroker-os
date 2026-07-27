@@ -8,6 +8,8 @@ const profileScreen = await readFile(new URL("../features/investor/profile/profi
 const clientAction = await readFile(new URL("../app/api/clients/[id]/action/route.ts", import.meta.url), "utf8");
 const brokerDocuments = await readFile(new URL("../app/api/clients/[id]/documents/route.ts", import.meta.url), "utf8");
 const clientScreen = await readFile(new URL("../features/broker/clients/client-directory-screen.tsx", import.meta.url), "utf8");
+const brokerApp = await readFile(new URL("../app/frankbroker-app.tsx", import.meta.url), "utf8");
+const rootLayout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
 
 test("investor access explains trade and cash restrictions and exposes self-service records", () => {
   assert.match(investorRoute, /canTrade/);
@@ -32,4 +34,10 @@ test("broker restriction resolution is categorized, audited, and supports client
   assert.match(clientScreen, /Upload for client/);
   assert.match(clientScreen, /Record witnessed acceptance/);
   assert.match(clientScreen, /Complete KYC review/);
+});
+
+test("broker theme hydrates consistently in light mode", () => {
+  assert.match(brokerApp, /useState<"light" \| "dark">\("light"\)/);
+  assert.doesNotMatch(rootLayout, /frank-theme|dangerouslySetInnerHTML/);
+  assert.doesNotMatch(brokerApp, /localStorage\.setItem\("frank-theme"/);
 });

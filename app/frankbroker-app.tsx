@@ -100,7 +100,7 @@ export default function FrankBrokerApp() {
   const [features, setFeatures] = useState<TenantFeatures>(fallbackFeatures);
   const [instruments, setInstruments] = useState<BrokerInstrument[]>(fallbackInstruments);
   const [collapsed, setCollapsed] = useState(true);
-  const [theme, setTheme] = useState<"light" | "dark">(() => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
@@ -215,7 +215,6 @@ export default function FrankBrokerApp() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("frank-theme", next); } catch { /* storage unavailable */ }
   };
 
   const loadOrderDetail = async (id: string) => {
