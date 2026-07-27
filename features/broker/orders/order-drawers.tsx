@@ -83,13 +83,25 @@ export function OrderDetail({ order, client, role, busy, controls, manualTradeCa
   const reservedForOrder = order.side === "buy" ? order.blockedCash ?? 0 : 0;
   const fundingAvailable = (client?.availableCash ?? 0) + reservedForOrder;
   const orderIsFunded = Boolean(client) && fundingAvailable >= order.estimatedNet;
+  const holding = client?.holdings.find((item) => item.symbol === order.symbol);
+  const reservedHoldingForOrder = order.side === "sell" ? order.blockedQuantity ?? 0 : 0;
+  const holdingAvailableForOrder = (holding?.available ?? 0) + reservedHoldingForOrder;
+  const orderHasHoldings = Boolean(holding) && holdingAvailableForOrder >= remaining;
+  const otherBlockedCash = Math.max(0, (client?.blockedCash ?? 0) - reservedForOrder);
+  const otherBlockedHolding = Math.max(0, (holding?.blocked ?? 0) - reservedHoldingForOrder);
   return <div className="drawer-content">
     <div className="drawer-title"><span className="eyebrow">ORDER CONTROL</span><h2>{order.id}</h2><div className="title-badges"><StatusBadge status={order.status} /><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></div></div>
     <div className="order-hero"><div><small>CLIENT</small><b>{order.client}</b><span>{order.clientCode} · {order.accountNumber ?? order.accountId.replace("acc_", "TRD-").toUpperCase()}</span></div><strong>{fmt.format(order.quantity)} <small>{order.symbol}</small></strong><p>@ {fmt.format(order.price)} ETB · {order.orderType}{order.triggerPrice ? ` · Trigger ${fmt.format(order.triggerPrice)} ETB` : ""}</p></div>
-    <section className={`order-buying-power${order.side === "buy" ? " order-buying-power-buy" : ""}`}>
-      <header><div><small>{order.side === "buy" ? "CLIENT BUYING POWER" : "CLIENT CASH POSITION"}</small><strong>{client ? etb(client.availableCash) : "Unavailable"}</strong><span>{order.side === "buy" ? "Available to invest now" : "Available cash"}</span></div>{order.side === "buy" && client && <em className={orderIsFunded ? "funded" : "shortfall"}>{orderIsFunded ? "Cash covered" : "Cash shortfall"}</em>}</header>
-      <div><span><small>Available cash</small><b>{client ? etb(client.availableCash) : "Unavailable"}</b></span><span><small>{order.side === "buy" ? "Reserved for this order" : "Total blocked cash"}</small><b>{client ? etb(order.side === "buy" ? reservedForOrder : client.blockedCash) : "Unavailable"}</b></span><span><small>{order.side === "buy" ? "Estimated order cost" : "Total client cash"}</small><b>{client ? etb(order.side === "buy" ? order.estimatedNet : client.totalCash) : "Unavailable"}</b></span></div>
-      <p>{order.side === "buy" ? "Available cash excludes active reservations. This order's reserved amount is shown separately." : "This cash position is shown for context. Sell-order validation is based on available holdings."}</p>
+    <section className={`order-position-card order-position-card-${order.side}`}>
+      {order.side === "buy" ? <>
+        <header><div><small>CLIENT BUYING POWER</small><strong>{client ? etb(client.availableCash) : "Unavailable"}</strong><span>Available to invest now</span></div>{client && <em className={orderIsFunded ? "funded" : "shortfall"}>{orderIsFunded ? "Cash covered" : "Cash shortfall"}</em>}</header>
+        <div><span><small>Estimated order cost</small><b>{client ? etb(order.estimatedNet) : "Unavailable"}</b></span><span><small>Other cash reserved</small><b>{client ? etb(otherBlockedCash) : "Unavailable"}</b></span><span><small>Total cash balance</small><b>{client ? etb(client.totalCash) : "Unavailable"}</b></span></div>
+        <p>Buying power is available cash after all active reservations. Estimated order cost includes fees.</p>
+      </> : <>
+        <header><div><small>AVAILABLE HOLDINGS</small><strong>{holding ? `${fmt.format(holding.available)} ${order.symbol}` : "No position"}</strong><span>Available to sell now</span></div>{holding && <em className={orderHasHoldings ? "funded" : "shortfall"}>{orderHasHoldings ? "Holdings covered" : "Holdings shortfall"}</em>}</header>
+        <div><span><small>Total position</small><b>{holding ? `${fmt.format(holding.total)} ${order.symbol}` : "No position"}</b></span><span><small>Reserved for this order</small><b>{holding ? `${fmt.format(reservedHoldingForOrder)} ${order.symbol}` : "No position"}</b></span><span><small>Other holdings reserved</small><b>{holding ? `${fmt.format(otherBlockedHolding)} ${order.symbol}` : "No position"}</b></span></div>
+        <p>Available holdings exclude units reserved against this and other active sell orders.</p>
+      </>}
     </section>
     <MarketContextCard instrumentId={order.instrumentId} orderLimit={order.price} role={role} />
     <div className="current-action-card"><span><small>NEXT ACTION</small><b>{responsibility.nextAction}</b><em>{ACTIVE_ORDER_STATUSES.has(order.status) ? waitingTime(lastChangedAt) : `Last updated ${new Date(lastChangedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`}</em></span><span><small>RESPONSIBLE</small><strong>{responsibility.actionOwner}</strong><em>{order.trader !== "Unassigned" ? `Assigned trader: ${order.trader}` : "No individual assigned"}</em></span></div>
