@@ -107,6 +107,8 @@ export default function FrankBrokerApp() {
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
   const [orderFocus, setOrderFocus] = useState<OrderFocus | null>(null);
+  // A dashboard metric card can deep-link into the order log at a status tab.
+  const [ordersStatusFocus, setOrdersStatusFocus] = useState<"all" | "review" | "executed" | "exceptions" | null>(null);
   const [orderOutcome, setOrderOutcome] = useState<OrderSubmissionOutcome | null>(null);
   // Set when arriving at Clients from the queue so the directory opens pre-filtered.
   const [clientsFocus, setClientsFocus] = useState<{ status?: string; clientId?: string; tab?: "overview" | "documents" } | null>(null);
@@ -794,10 +796,10 @@ export default function FrankBrokerApp() {
         </header>
 
         <main>
-          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} queue={workItems} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} onOpenWork={(item) => navigateToTarget(item.target)} />}
+          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} queue={workItems} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} onOpenWork={(item) => navigateToTarget(item.target)} onOpenStatus={(status) => { setOrdersStatusFocus(status); setOrderFocus(null); setQuery(""); setView("orders"); setDrawer(null); }} />}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "market" && <MarketWatchPage role={role} orders={orders} onOpenOrder={openDetail} onViewOrders={(focus) => { setOrderFocus(focus); setQuery(""); setView("orders"); setDrawer(null); }} />}
-          {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} focus={orderFocus} onClearFocus={() => setOrderFocus(null)} onOpen={openDetail} onNewOrder={openNewOrder} />}
+          {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} focus={orderFocus} initialStatus={ordersStatusFocus} onInitialStatusConsumed={() => setOrdersStatusFocus(null)} onClearFocus={() => setOrderFocus(null)} onOpen={openDetail} onNewOrder={openNewOrder} />}
           {view === "clients" && <ClientsPage key={`${clientsFocus?.clientId ?? ""}:${clientsFocus?.tab ?? ""}`} clients={clients} selectedId={selectedClientId} onSelect={setSelectedClientId} orders={orders} instruments={instruments} role={role} focus={clientsFocus} onNewClient={openNewClient} onRefresh={refreshOmsData} onOpenOrder={openDetail} onOpenConversation={(threadId) => navigateToTarget({ view: "crm", entityType: "communication_thread", entityId: threadId })} />}
           {view === "crm" && <CrmInboxPage key={crmFocus?.threadId ?? crmFocus?.clientId ?? "inbox"} role={role} focus={crmFocus} clients={clients} onNotify={notify} onNewThread={openNewThread} onOpenRelated={openRelatedRecord} />}
           {view === "crm_tasks" && <MyTasksPage role={role} focusId={taskFocus} onNotify={notify} onOpenClient={(clientId) => navigateToTarget({ view: "clients", entityType: "client", entityId: clientId })} />}

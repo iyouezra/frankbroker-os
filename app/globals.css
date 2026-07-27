@@ -429,6 +429,10 @@ main { padding: 30px 32px 48px; max-width: 1700px; margin: 0 auto; }
 .metric-top i { width: 7px; height: 7px; border-radius: 50%; background: var(--metric, var(--teal)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--metric, var(--teal)) 11%, transparent); }
 .metric strong { display: block; font-size: 25px; letter-spacing: -.7px; margin: 12px 0 5px; }
 .metric small { color: var(--fx-text-3); font-size: 10.5px; }
+/* Clickable metric cards deep-link into the matching filtered queue. */
+button.metric-clickable { width: 100%; text-align: left; font: inherit; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+button.metric-clickable:hover { transform: translateY(-2px); border-color: var(--metric, var(--fx-teal)); box-shadow: 0 8px 22px rgba(8,62,71,.12); }
+button.metric-clickable:focus-visible { outline: 0; border-color: var(--metric, var(--fx-teal)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--metric, var(--fx-teal)) 30%, transparent); }
 .metric-warning { --metric: #d18a27; }.metric-success { --metric: #1c9b74; }.metric-purple { --metric: #7867bd; }.metric-danger { --metric: #d45555; }
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(340px, .85fr); gap: 15px; }
 .queue-panel { grid-row: span 2; }

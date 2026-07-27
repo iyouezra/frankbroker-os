@@ -8,8 +8,8 @@ import { ACTIVE_ORDER_STATUSES, waitingTime } from "../../../lib/order-log";
 import { BROKER_TENANT_ID, EmptyState, SectionHeader, StatusBadge, displayLabel, etb, fmt, hydrateOrders, normalizedOrderType } from "../shared/broker-foundation";
 import type { OrderFocus } from "../market/market-watch-screen";
 
-export function OrdersPage({ orders, query, role, refreshKey, focus, onClearFocus, onOpen, onNewOrder }: { orders: DemoOrder[]; query: string; role: Role; refreshKey: number; focus?: OrderFocus | null; onClearFocus?: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void }) {
-  const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions" | "open" | "history">(focus?.status ?? "all");
+export function OrdersPage({ orders, query, role, refreshKey, focus, initialStatus, onInitialStatusConsumed, onClearFocus, onOpen, onNewOrder }: { orders: DemoOrder[]; query: string; role: Role; refreshKey: number; focus?: OrderFocus | null; initialStatus?: "all" | "review" | "approved" | "executed" | "exceptions" | "open" | "history" | null; onInitialStatusConsumed?: () => void; onClearFocus?: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void }) {
+  const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions" | "open" | "history">(focus?.status ?? initialStatus ?? "all");
   const [sideFilter, setSideFilter] = useState<"all" | "buy" | "sell">(focus?.side ?? "all");
   const [riskFilter, setRiskFilter] = useState<"all" | "flagged">("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState("all");
@@ -19,6 +19,9 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, onClearFocu
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState(orders.slice(0, 25));
   const [loading, setLoading] = useState(false);
+  // A deep-linked status (e.g. from a dashboard metric) seeds the tab once, then
+  // the parent clears it so returning here via the nav defaults back to "All".
+  useEffect(() => { if (initialStatus) onInitialStatusConsumed?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: orders.length, pageCount: Math.max(1, Math.ceil(orders.length / 25)) });
   const [facets, setFacets] = useState<OrderLogResponse["facets"]>({
     statuses: Object.fromEntries([...new Set(orders.map((order) => order.status))].map((status) => [status, orders.filter((order) => order.status === status).length])),

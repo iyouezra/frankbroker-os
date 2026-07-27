@@ -497,8 +497,10 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
 export function SectionHeader({ eyebrow, title, copy, action }: { eyebrow: string; title: string; copy: string; action?: ReactNode }) {
   return <div className="section-header"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{copy}</p></div>{action && <div className="section-actions">{action}</div>}</div>;
 }
-export function Metric({ label, value, note, tone = "brand" }: { label: string; value: string; note: string; tone?: string }) {
-  return <article className={`metric metric-${tone}`}><div className="metric-top"><span>{label}</span><i /></div><strong>{value}</strong><small>{note}</small></article>;
+export function Metric({ label, value, note, tone = "brand", onClick }: { label: string; value: string; note: string; tone?: string; onClick?: () => void }) {
+  const body = <><div className="metric-top"><span>{label}</span><i /></div><strong>{value}</strong><small>{note}</small></>;
+  if (onClick) return <button type="button" className={`metric metric-${tone} metric-clickable`} onClick={onClick}>{body}</button>;
+  return <article className={`metric metric-${tone}`}>{body}</article>;
 }
 export function EmptyState({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-state"><span>✓</span><strong>{title}</strong><p>{copy}</p></div>;
