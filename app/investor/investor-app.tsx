@@ -58,6 +58,7 @@ import {
   submittedOutcome,
   type OrderSubmissionOutcome,
 } from "../../lib/order-submission-ux";
+import { fetchJsonWithTransientRetry } from "../../lib/fetch-json";
 
 type InvestorPhase = "select" | "existing" | "onboarding" | "app";
 type SubmittedApplication = {
@@ -131,9 +132,11 @@ export default function InvestorApp() {
     setSubmittedApplication(null);
   };
   const loadInvestor = async (clientId: string) => {
-    const response = await fetch("/api/investor", { headers: investorHeadersFor(clientId) });
-    if (!response.ok) throw new Error("Unable to open this demo account.");
-    const data = await response.json() as InvestorBootstrap;
+    const data = await fetchJsonWithTransientRetry<InvestorBootstrap>(
+      "/api/investor",
+      { headers: investorHeadersFor(clientId) },
+      { fallbackMessage: "Unable to open this demo account." },
+    );
     setBootstrap({ ...data, activity: data.activity ?? [] });
     if (data.profile?.fullName) setProfileName(data.profile.fullName);
     return data;
@@ -657,7 +660,7 @@ export default function InvestorApp() {
       <AppLogo />
       <span className={styles.licenseBadge}>Platform demo</span>
       <h1>Own a piece of Ethiopia&apos;s growth</h1>
-      <p>{bootstrap?.tenant.welcomeMessage ?? "Buy shares on the Ethiopian Securities Exchange, explore government bonds, and learn which mix may fit your goals."}</p>
+      <p>{bootstrap?.tenant.welcomeMessage ?? "Access Ethiopian shares and government bonds through one simple platform."}</p>
       <Button onClick={() => setPhase("select")}>Demo journey</Button>
       <div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div>
       <small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small>

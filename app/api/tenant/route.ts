@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         licenseNumber: broker.licenseNumber,
         tradingName: broker.settings?.tradingName ?? broker.name,
         primaryColor: broker.settings?.primaryColor ?? "#0C8189",
-        welcomeMessage: broker.settings?.welcomeMessage ?? "Invest in Ethiopia with confidence.",
+        welcomeMessage: broker.settings?.welcomeMessage ?? "Access Ethiopian shares and government bonds through one simple platform.",
         supportEmail: broker.settings?.supportEmail,
         features: broker.settings?.features ?? {},
         controls: {

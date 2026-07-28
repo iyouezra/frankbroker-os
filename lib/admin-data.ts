@@ -139,7 +139,7 @@ export const initialTenants: TenantConfig[] = [
     domain: "invest.abyssinia.et",
     supportEmail: "support@abyssinia.example",
     primaryColor: "#0C8189",
-    welcomeMessage: "Invest in Ethiopia’s growth with clear guidance at every step.",
+    welcomeMessage: "Access Ethiopian shares and government bonds through one simple platform.",
     baseCurrency: "ETB",
     timezone: "Africa/Addis_Ababa",
     businessDate: "2026-07-14",
