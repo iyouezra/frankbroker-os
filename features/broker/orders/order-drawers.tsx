@@ -23,6 +23,39 @@ import {
   type TradeValue,
 } from "../shared/broker-foundation";
 
+type LedgerEntry = NonNullable<DemoOrder["ledgerEntries"]>[number];
+
+function ledgerBucketLabel(ledger: LedgerEntry["ledger"], bucket: "available" | "blocked" | "unsettled") {
+  const balanceType = ledger === "cash" ? "cash" : "holdings";
+  return `${displayLabel(bucket)} ${balanceType}`;
+}
+
+function ledgerEffect(entry: LedgerEntry) {
+  const impacts = [
+    { bucket: "available" as const, value: entry.availableImpact },
+    { bucket: "blocked" as const, value: entry.blockedImpact },
+    { bucket: "unsettled" as const, value: entry.unsettledImpact },
+  ].filter((impact) => impact.value !== 0);
+  const decreases = impacts.filter((impact) => impact.value < 0);
+  const increases = impacts.filter((impact) => impact.value > 0);
+
+  if (
+    decreases.length === 1
+    && increases.length === 1
+    && Math.abs(decreases[0].value) === increases[0].value
+  ) {
+    return `${ledgerBucketLabel(entry.ledger, decreases[0].bucket)} → ${ledgerBucketLabel(entry.ledger, increases[0].bucket)}`;
+  }
+  if (impacts.length === 1) {
+    const impact = impacts[0];
+    return `${ledgerBucketLabel(entry.ledger, impact.bucket)} ${impact.value > 0 ? "increased" : "decreased"}`;
+  }
+  if (impacts.length > 1) {
+    return impacts.map((impact) => `${ledgerBucketLabel(entry.ledger, impact.bucket)} ${impact.value > 0 ? "↑" : "↓"}`).join(" · ");
+  }
+  return "No balance-bucket change";
+}
+
 export function NewOrderForm({ value, setValue, clients, instruments, controls, checks, busy, onInstructionChange, onValidate, onSubmit }: { value: NewOrderValue; setValue: (value: NewOrderValue) => void; clients: BrokerClient[]; instruments: BrokerInstrument[]; controls: TenantControls; checks: { label: string; passed: boolean; message: string }[] | null; busy: boolean; onInstructionChange: () => void; onValidate: () => void; onSubmit: (event: FormEvent) => void }) {
   const client = clients.find((item) => item.accountId === value.accountId) ?? clients[0];
   const instrument = instruments.find((item) => item.id === value.instrumentId) ?? instruments[0];
@@ -120,7 +153,7 @@ export function OrderDetail({ order, client, role, busy, controls, manualTradeCa
     </dl>
     {order.validations?.length ? <div className="workflow-card validation-results"><h3>Pre-trade checks</h3>{order.validations.map((validation) => <div className={validation.passed ? "pass" : "fail"} key={validation.id}><i>{validation.passed ? "✓" : "!"}</i><span><b>{validation.label}</b><small>{validation.message ?? (validation.passed ? "Check passed" : "Check needs attention")}</small></span></div>)}</div> : null}
     <div className="workflow-card oms-records"><h3>Executions</h3><p className="section-helper">An order may be completed through one or more executions.</p>{order.trades?.length ? <div className="table-scroll"><table><thead><tr><th>Execution / reference</th><th className="num">Quantity</th><th className="num">Price</th><th className="num">Gross</th><th className="num">Fees</th><th className="num">Net</th><th>Trade / settlement</th><th>Captured</th></tr></thead><tbody>{order.trades.map((trade) => <tr key={trade.id}><td><b>{trade.id}</b><small>{trade.captureReference ?? "Reference not recorded"}</small></td><td className="num">{fmt.format(trade.quantity)}</td><td className="num">{fmt.format(trade.executionPrice)}</td><td className="num">{etb(trade.gross)}</td><td className="num">{etb(trade.fees)}</td><td className="num">{etb(trade.net)}</td><td><b>{trade.tradeDate}</b><small>{trade.settlementDate} · {displayLabel(trade.settlementStatus)}</small></td><td><b>{trade.capturedBy}</b><small>{new Date(trade.capturedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small></td></tr>)}</tbody></table></div> : <p>No executions yet. This order has not been filled.</p>}</div>
-    <details className="workflow-card technical-details"><summary><span><b>Technical details</b><small>Cash and holdings movements</small></span><i>⌄</i></summary><div className="oms-records">{order.ledgerEntries?.length ? <div className="table-scroll"><table><thead><tr><th>Movement</th><th className="num">Amount / quantity</th><th className="num">Available</th><th className="num">Blocked</th><th className="num">Unsettled</th><th className="num">Running balance</th><th>Recorded</th></tr></thead><tbody>{order.ledgerEntries.map((entry) => <tr key={entry.id}><td><b>{movementDescription(entry.ledger, entry.entryType)}</b><small>{entry.reason ?? entry.description}</small></td><td className="num">{entry.ledger === "cash" ? etb(entry.amount ?? 0) : `${fmt.format(entry.quantity ?? 0)} ${entry.symbol ?? order.symbol}`}</td><td className="num">{fmt.format(entry.availableImpact)}</td><td className="num">{fmt.format(entry.blockedImpact)}</td><td className="num">{fmt.format(entry.unsettledImpact)}</td><td className="num">{fmt.format(entry.runningBalance ?? entry.runningQuantity ?? 0)}</td><td><b>{new Date(entry.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</b><small>{entry.tradeId ? `Execution ${entry.tradeId}` : "Order movement"}</small></td></tr>)}</tbody></table></div> : <p>No cash or holdings movements have been recorded for this order.</p>}</div></details>
+    <details className="workflow-card technical-details"><summary><span><b>Technical details</b><small>Cash and holdings movements</small></span><i>⌄</i></summary><div className="oms-records">{order.ledgerEntries?.length ? <div className="table-scroll"><table><thead><tr><th>Movement</th><th className="num">Amount / quantity</th><th>Balance effect</th><th className="num">Balance after</th><th>Recorded</th></tr></thead><tbody>{order.ledgerEntries.map((entry) => <tr key={entry.id}><td><b>{movementDescription(entry.ledger, entry.entryType)}</b><small>{entry.reason ?? entry.description}</small></td><td className="num">{entry.ledger === "cash" ? etb(entry.amount ?? 0) : `${fmt.format(entry.quantity ?? 0)} ${entry.symbol ?? order.symbol}`}</td><td><b>{ledgerEffect(entry)}</b></td><td className="num">{entry.ledger === "cash" ? etb(entry.runningBalance ?? 0) : `${fmt.format(entry.runningQuantity ?? 0)} ${entry.symbol ?? order.symbol}`}</td><td><b>{new Date(entry.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</b><small>{entry.tradeId ? `Execution ${entry.tradeId}` : "Order movement"}</small></td></tr>)}</tbody></table></div> : <p>No cash or holdings movements have been recorded for this order.</p>}</div></details>
     <div className="workflow-card"><h3>Workflow history</h3><ol>{events.map((event, index) => <li className={index === events.length - 1 ? "current" : "done"} key={event.id}><i>{index === events.length - 1 ? index + 1 : "✓"}</i><div><b>{statusLabels[event.toStatus as OrderStatus] ?? event.toStatus.replaceAll("_", " ")}</b><small>{new Date(event.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {event.actor}{event.reason ? ` · ${event.reason}` : ""}</small></div></li>)}</ol></div>
     <div className="workflow-card"><h3>Audit trail</h3>{order.auditTrail?.length ? <ol>{order.auditTrail.map((entry, index) => <li className={index === order.auditTrail!.length - 1 ? "current" : "done"} key={entry.id}><i>{index === order.auditTrail!.length - 1 ? index + 1 : "✓"}</i><div><b>{displayLabel(entry.action)}</b><small>{new Date(entry.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {entry.actor} · {entry.summary}{entry.reason ? ` · ${entry.reason}` : ""}</small></div></li>)}</ol> : <p>No persisted audit records are available in demo fallback mode.</p>}</div>
     {role === "management" && <div className="permission-note">Read-only management mode: workflow actions are disabled.</div>}
