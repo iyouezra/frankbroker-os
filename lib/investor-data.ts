@@ -369,12 +369,5 @@ export const investorHoldings = [
   { ticker: "GDAB", quantity: 15, averageCost: 1105 },
 ] as const;
 
-export const coachTips = [
-  { title: "You lean heavily on banks", body: "About 62% of your stocks are in one sector. TELE or a government bond could spread the risk." },
-  { title: "Dividend season is coming", body: "TELE has historically paid in September. Dividends arrive as cash you can reinvest." },
-  { title: "Red days are normal", body: "The ESX is young and prices move. A mix of stocks and bonds can soften some of the bumps." },
-  { title: "Start with what you understand", body: "Read how a company makes money and what could affect it before you invest." },
-] as const;
-
 export const formatEtb = (value: number) =>
   `ETB ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

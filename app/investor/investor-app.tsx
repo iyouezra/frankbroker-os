@@ -213,6 +213,25 @@ export default function InvestorApp() {
       .catch(() => undefined);
     return () => controller.abort();
   }, [investorHeaders]);
+  useEffect(() => {
+    if (phase !== "app") return;
+    const controller = new AbortController();
+    const refreshVisibleInvestor = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetch("/api/investor", { headers: investorHeaders, signal: controller.signal })
+        .then((response) => response.ok ? response.json() : Promise.reject())
+        .then((data: InvestorBootstrap) => {
+          setBootstrap({ ...data, activity: data.activity ?? [] });
+          if (data.profile?.fullName) setProfileName(data.profile.fullName);
+        })
+        .catch(() => undefined);
+    };
+    const interval = window.setInterval(refreshVisibleInvestor, 30_000);
+    return () => {
+      window.clearInterval(interval);
+      controller.abort();
+    };
+  }, [investorHeaders, phase]);
   const refreshInvestor = async (clientId = activeClientId) => {
     const data = await loadInvestor(clientId);
     if (clientId !== activeClientId) setActiveClientId(clientId);

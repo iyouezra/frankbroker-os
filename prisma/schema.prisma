@@ -253,6 +253,7 @@ model Instrument {
   symbol                  String                  @unique
   name                    String
   assetClass              String                  @map("asset_class")
+  sector                  String?
   marketSegment           String                  @default("main") @map("market_segment")
   issuer                  String
   tradingStatus           String                  @default("tradable") @map("trading_status")

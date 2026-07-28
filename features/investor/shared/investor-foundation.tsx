@@ -57,6 +57,7 @@ export type InvestorInstrument = {
   ticker: string;
   name: string;
   assetClass: string;
+  sector?: string | null;
   issuer?: string | null;
   price: number;
   status: string;
@@ -68,10 +69,24 @@ export type InvestorInstrument = {
   couponRate?: number | null;
   couponFrequency?: string | null;
 };
+export type InvestorHolding = {
+  ticker: string;
+  name: string;
+  assetClass: string;
+  sector: string | null;
+  quantity: number;
+  averageCost: number;
+  price: number;
+  marketValue: number;
+  faceValue: number | null;
+  maturityDate: string | null;
+  couponRate: number | null;
+  couponFrequency: string | null;
+};
 export type InvestorBootstrap = {
   tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
   profile: { fullName: string; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
-  account: { id: string; accountNumber: string; status?: string; restrictionReason?: string | null; restrictedAt?: string | null; totalCash: number; availableCash: number; blockedCash: number; holdings: Array<{ ticker: string; quantity: number; averageCost: number; price: number }>; orders: Array<{ id: string }> } | null;
+  account: { id: string; accountNumber: string; status?: string; restrictionReason?: string | null; restrictedAt?: string | null; totalCash: number; availableCash: number; blockedCash: number; holdings: InvestorHolding[]; orders: Array<{ id: string }> } | null;
   access: {
     restricted: boolean;
     canTrade: boolean;

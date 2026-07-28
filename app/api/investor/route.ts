@@ -25,6 +25,7 @@ import {
   serializeClientDocument,
   serializeLinkedBank,
 } from "../../../lib/onboarding-evidence";
+import { getFrankCoachHoldingValue } from "../../../lib/frank-coach";
 
 export const runtime = "nodejs";
 
@@ -224,11 +225,27 @@ export async function GET(request: Request) {
         availableCash: toNum(account.availableCash), blockedCash: toNum(account.blockedCash), status: account.status,
         restrictionReason: account.restrictionReason,
         restrictedAt: account.restrictedAt?.toISOString() ?? null,
-        holdings: account.holdings.map((holding) => ({
-          instrumentId: holding.instrumentId, ticker: holding.instrument.symbol, name: holding.instrument.name,
-          quantity: toNum(holding.totalQuantity), availableQuantity: toNum(holding.availableQuantity),
-          averageCost: toNum(holding.averageCost), price: toNum(holding.instrument.lastPrice),
-        })),
+        holdings: account.holdings.map((holding) => {
+          const quantity = toNum(holding.totalQuantity);
+          const marketPrice = toNum(holding.instrument.lastPrice);
+          const faceValue = holding.instrument.faceValue ? toNum(holding.instrument.faceValue) : null;
+          return {
+            instrumentId: holding.instrumentId, ticker: holding.instrument.symbol, name: holding.instrument.name,
+            assetClass: holding.instrument.assetClass, sector: holding.instrument.sector,
+            quantity, availableQuantity: toNum(holding.availableQuantity),
+            averageCost: toNum(holding.averageCost), price: marketPrice,
+            marketValue: getFrankCoachHoldingValue({
+              assetClass: holding.instrument.assetClass,
+              quantity,
+              marketPrice,
+              faceValue,
+            }),
+            faceValue,
+            maturityDate: holding.instrument.maturityDate?.toISOString().slice(0, 10) ?? null,
+            couponRate: holding.instrument.couponRate ? toNum(holding.instrument.couponRate) : null,
+            couponFrequency: holding.instrument.couponFrequency,
+          };
+        }),
         orders: account.orders.map((order) => ({
           id: order.id, ticker: order.instrument.symbol, side: order.side, quantity: toNum(order.quantity),
           price: toNum(order.price), triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
@@ -268,6 +285,7 @@ export async function GET(request: Request) {
       activity,
       instruments: broker.instrumentAccess.map(({ instrument }) => ({
         id: instrument.id, ticker: instrument.symbol, name: instrument.name, assetClass: instrument.assetClass,
+        sector: instrument.sector,
         issuer: instrument.issuer,
         price: toNum(instrument.lastPrice),
         status: instrument.tradingStatus,
