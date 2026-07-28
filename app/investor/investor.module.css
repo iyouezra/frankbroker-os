@@ -182,6 +182,15 @@
 .recentActivityCard .activityEmpty { padding: 20px 12px 24px; }
 .activityEmpty b { margin-top: 8px; color: var(--investor-ink-700); font-size: 12px; }
 .activityEmpty p { margin: 4px 0 0; font-size: 10px; }
+/* First-investment moment: replaces "Companies you own" until the first holding. */
+.firstInvestCard { display: flex; flex-direction: column; gap: 14px; border-color: transparent; background: linear-gradient(162deg, var(--investor-aqua-100), rgba(255,255,255,.55)); }
+.firstInvestIntro { display: flex; gap: 12px; align-items: flex-start; }
+.firstInvestIntro > div { min-width: 0; }
+.firstInvestIcon { width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; background: var(--investor-teal-700); color: white; }
+.firstInvestIntro h2 { margin: 2px 0 5px; font-size: 17px; }
+.firstInvestIntro p { margin: 0; color: var(--investor-ink-700); font-size: 12.5px; line-height: 1.5; }
+.firstInvestPicks { display: flex; flex-direction: column; gap: 2px; padding: 4px 10px 8px; border-radius: 14px; background: white; box-shadow: 0 1px 2px rgba(8,62,71,.05); }
+.firstInvestPicks > small { padding: 8px 4px 3px; color: var(--investor-teal-700); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
 .activityDetailHero { display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: start; gap: 11px; }
 .activityDetailHero .activityIcon { width: 42px; height: 42px; }
 .activityDetailHero > div { min-width: 0; }
