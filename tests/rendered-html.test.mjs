@@ -169,6 +169,9 @@ test("ships versioned terms, itemized fees, and controlled client requests", asy
   assert.match(adminApp, /Legal & consent/);
   assert.match(brokerApp, /Requests and discrepancies/);
   assert.match(brokerApp, /TRADING READINESS/);
+  assert.match(brokerApp, /Total estimated fees/);
+  assert.match(brokerApp, /Total order cost/);
+  assert.match(brokerApp, /Estimated net proceeds/);
   assert.match(investorApi, /disclosureAccepted/);
   assert.match(investorApi, /Complete the politically exposed person declaration/);
   assert.match(investorApi, /clientConsent\.create/);
