@@ -53,6 +53,9 @@ export function serializeCase(row: CaseRow) {
     overdue: isCaseOverdue({ status: row.status, targetResolutionAt: row.targetResolutionAt }),
     internalFindings: row.internalFindings,
     resolutionSummary: row.resolutionSummary,
+    regulatoryStatus: row.regulatoryStatus,
+    regulatoryStatusAt: row.regulatoryStatusAt ? row.regulatoryStatusAt.toISOString() : null,
+    regulatoryComment: row.regulatoryComment,
     resolvedAt: row.resolvedAt ? row.resolvedAt.toISOString() : null,
     closedAt: row.closedAt ? row.closedAt.toISOString() : null,
   };
@@ -262,6 +265,32 @@ export async function recordCaseFindings(actor: Actor, caseId: string, findings:
       previousValue: { hadFindings: Boolean(row.internalFindings) },
     });
     return { ok: true };
+  }, transactionOptions);
+}
+
+export async function recordCaseRegulatoryStatus(actor: Actor, caseId: string, status: unknown, comment: unknown) {
+  const next = String(status ?? "");
+  if (!["pending", "referred_sro", "referred_ecma"].includes(next)) {
+    throw new Response("Select a supported regulatory complaint status.", { status: 400 });
+  }
+  const note = String(comment ?? "").trim();
+  if (next !== "pending" && note.length < 5) throw new Response("Record why and how the complaint was referred.", { status: 400 });
+  if (note.length > 1_000) throw new Response("The regulatory comment must be 1,000 characters or fewer.", { status: 400 });
+  return prisma.$transaction(async (tx) => {
+    const row = await loadCase(tx, actor, caseId);
+    const regulatoryStatusAt = next === "pending" ? null : new Date();
+    await tx.serviceCase.update({ where: { id: caseId }, data: { regulatoryStatus: next, regulatoryStatusAt, regulatoryComment: note || null, version: { increment: 1 } } });
+    await writeAudit(tx, {
+      brokerId: actor.brokerId,
+      actorId: actor.id,
+      action: "CRM_CASE_REGULATORY_STATUS_RECORDED",
+      entityType: "service_case",
+      entityId: caseId,
+      summary: `Regulatory complaint status recorded for ${caseId}`,
+      previousValue: { regulatoryStatus: row.regulatoryStatus },
+      newValue: { regulatoryStatus: next, regulatoryStatusAt, regulatoryComment: note || null },
+    });
+    return { regulatoryStatus: next, regulatoryStatusAt: regulatoryStatusAt?.toISOString() ?? null };
   }, transactionOptions);
 }
 

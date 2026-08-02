@@ -19,6 +19,9 @@ const serializeBatch = (batch: {
   matchedRecords: number;
   exceptionRecords: number;
   status: string;
+  reviewedAt: Date | null;
+  evidenceReference: string | null;
+  reviewedByUser?: { fullName: string } | null;
   exceptions: Array<{
     id: string;
     reference: string;
@@ -36,6 +39,9 @@ const serializeBatch = (batch: {
   matchedRecords: batch.matchedRecords,
   exceptionRecords: batch.exceptionRecords,
   status: batch.status,
+  reviewedAt: batch.reviewedAt?.toISOString() ?? null,
+  reviewedBy: batch.reviewedByUser?.fullName ?? null,
+  evidenceReference: batch.evidenceReference,
   exceptions: batch.exceptions,
 });
 
@@ -44,7 +50,7 @@ export async function GET(request: Request) {
     const actor = resolveActor(request);
     const batches = await prisma.reconciliationBatch.findMany({
       where: { brokerId: actor.brokerId },
-      include: { exceptions: { orderBy: { createdAt: "asc" } } },
+      include: { reviewedByUser: { select: { fullName: true } }, exceptions: { orderBy: { createdAt: "asc" } } },
       orderBy: { createdAt: "desc" },
       take: 10,
     });
@@ -122,7 +128,7 @@ export async function POST(request: Request) {
           uploadedBy: actor.id,
           exceptions: { create: exceptions },
         },
-        include: { exceptions: true },
+        include: { reviewedByUser: { select: { fullName: true } }, exceptions: true },
       });
       await tx.auditLog.create({
         data: {

@@ -35,6 +35,9 @@ model Broker {
   crmTasks               CrmTask[]
   serviceCases           ServiceCase[]
   investorAssignments    InvestorAssignment[]
+  complianceReports      ComplianceReport[]
+  complianceEscalations  ComplianceEscalation[]
+  clientScreenings       ClientScreening[]
 
   @@map("brokers")
 }
@@ -91,6 +94,13 @@ model User {
   primaryAssignments            InvestorAssignment[]      @relation("AssignmentPrimary")
   backupAssignments             InvestorAssignment[]      @relation("AssignmentBackup")
   recordedAssignments           InvestorAssignment[]      @relation("AssignmentRecorder")
+  preparedComplianceReports     ComplianceReport[]        @relation("ComplianceReportPreparer")
+  reviewedComplianceReports     ComplianceReport[]        @relation("ComplianceReportReviewer")
+  submittedComplianceReports    ComplianceReport[]        @relation("ComplianceReportSubmitter")
+  createdComplianceEscalations  ComplianceEscalation[]    @relation("ComplianceEscalationCreator")
+  reviewedComplianceEscalations ComplianceEscalation[]    @relation("ComplianceEscalationReviewer")
+  recordedClientScreenings      ClientScreening[]         @relation("ClientScreeningRecorder")
+  signedReconciliationBatches   ReconciliationBatch[]     @relation("ReconciliationReviewer")
 
   @@unique([brokerId, employeeId])
   @@index([brokerId, status])
@@ -161,6 +171,8 @@ model Client {
   crmTasks                     CrmTask[]
   serviceCases                 ServiceCase[]
   investorAssignments          InvestorAssignment[]
+  complianceReports            ComplianceReport[]
+  screenings                   ClientScreening[]
 
   @@unique([brokerId, identityReference])
   @@index([brokerId])
@@ -912,21 +924,25 @@ model SecuritiesLedgerEntry {
 }
 
 model ReconciliationBatch {
-  id               String                    @id
-  brokerId         String                    @map("broker_id")
-  batchDate        DateTime                  @map("batch_date") @db.Date
-  fileName         String?                   @map("file_name")
-  source           String                    @default("manual_upload")
-  totalRecords     Int                       @default(0) @map("total_records")
-  matchedRecords   Int                       @default(0) @map("matched_records")
-  exceptionRecords Int                       @default(0) @map("exception_records")
-  status           String                    @default("processing")
-  uploadedBy       String                    @map("uploaded_by")
-  createdAt        DateTime                  @default(now()) @map("created_at")
-  updatedAt        DateTime                  @updatedAt @map("updated_at")
-  broker           Broker                    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  uploadedByUser   User                      @relation("BatchUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
-  exceptions       ReconciliationException[]
+  id                String                    @id
+  brokerId          String                    @map("broker_id")
+  batchDate         DateTime                  @map("batch_date") @db.Date
+  fileName          String?                   @map("file_name")
+  source            String                    @default("manual_upload")
+  totalRecords      Int                       @default(0) @map("total_records")
+  matchedRecords    Int                       @default(0) @map("matched_records")
+  exceptionRecords  Int                       @default(0) @map("exception_records")
+  status            String                    @default("processing")
+  uploadedBy        String                    @map("uploaded_by")
+  reviewedBy        String?                   @map("reviewed_by")
+  reviewedAt        DateTime?                 @map("reviewed_at")
+  evidenceReference String?                   @map("evidence_reference")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  broker            Broker                    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  uploadedByUser    User                      @relation("BatchUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  reviewedByUser    User?                     @relation("ReconciliationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  exceptions        ReconciliationException[]
 
   @@index([brokerId, batchDate])
   @@map("reconciliation_batches")
@@ -1143,6 +1159,9 @@ model ServiceCase {
   targetResolutionAt DateTime?            @map("target_resolution_at")
   internalFindings   String?              @map("internal_findings")
   resolutionSummary  String?              @map("resolution_summary")
+  regulatoryStatus   String               @default("pending") @map("regulatory_status")
+  regulatoryStatusAt DateTime?            @map("regulatory_status_at")
+  regulatoryComment  String?              @map("regulatory_comment")
   resolvedAt         DateTime?            @map("resolved_at")
   closedAt           DateTime?            @map("closed_at")
   version            Int                  @default(0)
@@ -1157,6 +1176,92 @@ model ServiceCase {
   @@index([brokerId, status, openedAt])
   @@index([clientId, openedAt])
   @@map("service_cases")
+}
+
+/// A point-in-time report produced from brokerage records held by Frank. The
+/// snapshot allows the downloaded report to be reproduced after the book changes.
+model ComplianceReport {
+  id                  String    @id
+  brokerId            String    @map("broker_id")
+  clientId            String?   @map("client_id")
+  reportType          String    @map("report_type")
+  periodStart         DateTime  @map("period_start") @db.Date
+  periodEnd           DateTime  @map("period_end") @db.Date
+  status              String    @default("prepared")
+  snapshot            Json
+  validation          Json
+  preparedBy          String    @map("prepared_by")
+  reviewedBy          String?   @map("reviewed_by")
+  reviewedAt          DateTime? @map("reviewed_at")
+  submittedBy         String?   @map("submitted_by")
+  submittedAt         DateTime? @map("submitted_at")
+  submissionReference String?   @map("submission_reference")
+  submissionNote      String?   @map("submission_note")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  broker              Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client              Client?   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  preparer            User      @relation("ComplianceReportPreparer", fields: [preparedBy], references: [id], onDelete: Restrict)
+  reviewer            User?     @relation("ComplianceReportReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  submitter           User?     @relation("ComplianceReportSubmitter", fields: [submittedBy], references: [id], onDelete: SetNull)
+
+  @@index([brokerId, reportType, periodEnd])
+  @@index([brokerId, status, createdAt])
+  @@index([clientId, createdAt])
+  @@map("compliance_reports")
+}
+
+/// A broker-controlled 24-hour escalation. Frank records the clock, evidence,
+/// decision and receipt but does not make the regulatory determination.
+model ComplianceEscalation {
+  id                  String    @id
+  brokerId            String    @map("broker_id")
+  eventType           String    @map("event_type")
+  subject             String
+  summary             String
+  linkedEntityType    String?   @map("linked_entity_type")
+  linkedEntityId      String?   @map("linked_entity_id")
+  awarenessAt         DateTime  @map("awareness_at")
+  dueAt               DateTime  @map("due_at")
+  status              String    @default("open")
+  decision            String?
+  submissionReference String?   @map("submission_reference")
+  submittedAt         DateTime? @map("submitted_at")
+  createdBy           String    @map("created_by")
+  reviewedBy          String?   @map("reviewed_by")
+  reviewedAt          DateTime? @map("reviewed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  broker              Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  creator             User      @relation("ComplianceEscalationCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  reviewer            User?     @relation("ComplianceEscalationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([brokerId, status, dueAt])
+  @@index([brokerId, eventType, awarenessAt])
+  @@map("compliance_escalations")
+}
+
+/// Evidence that a client and their ownership or control parties were screened
+/// by the broker or an external provider. Frank does not maintain a watchlist.
+model ClientScreening {
+  id            String   @id
+  brokerId      String   @map("broker_id")
+  clientId      String   @map("client_id")
+  screeningType String   @default("sanctions_pep") @map("screening_type")
+  provider      String
+  result        String
+  reference     String?
+  notes         String?
+  screenedAt    DateTime @map("screened_at")
+  recordedBy    String   @map("recorded_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  broker        Broker   @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  recorder      User     @relation("ClientScreeningRecorder", fields: [recordedBy], references: [id], onDelete: Restrict)
+
+  @@index([brokerId, clientId, screenedAt])
+  @@index([brokerId, result, screenedAt])
+  @@map("client_screenings")
 }
 
 /// Who owns the relationship with an investor. History is preserved by ending a

@@ -10,6 +10,7 @@ export type ValidationCheck = {
 export type PreTradeValidationInput = {
   tenantMatches: boolean;
   kycApproved: boolean;
+  screeningClear: boolean;
   accountActive: boolean;
   clientActive: boolean;
   instrumentTradable: boolean;
@@ -34,6 +35,7 @@ export function validatePreTrade(input: PreTradeValidationInput): ValidationChec
   return [
     { code: "TENANT_OWNERSHIP", label: "Tenant ownership", passed: input.tenantMatches, message: input.tenantMatches ? "Account belongs to this broker" : "Account belongs to another broker" },
     { code: "KYC_APPROVED", label: "KYC approved", passed: input.kycApproved, message: input.kycApproved ? "KYC is current" : "KYC approval is required" },
+    { code: "SCREENING_CLEAR", label: "Sanctions and PEP screening", passed: input.screeningClear, message: input.screeningClear ? "A clear screening result is recorded" : "A clear sanctions and PEP screening result is required" },
     { code: "ACCOUNT_ACTIVE", label: "Account active", passed: input.accountActive && input.clientActive, message: input.accountActive && input.clientActive ? "Client and account are active" : "Client or account is not active" },
     { code: "INSTRUMENT_TRADABLE", label: "Instrument tradable", passed: input.instrumentTradable && input.instrumentEnabled, message: input.instrumentTradable && input.instrumentEnabled ? "Instrument is enabled for this tenant" : "Instrument is not tradable for this tenant" },
     { code: "ORDER_TYPE_ALLOWED", label: "Order type enabled", passed: input.orderTypeAllowed, message: input.orderTypeAllowed ? "Order type is enabled" : "Order type is disabled by tenant policy" },

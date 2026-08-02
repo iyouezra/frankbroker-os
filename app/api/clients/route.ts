@@ -17,6 +17,7 @@ export async function GET(request: Request) {
           creator: true,
           approver: true,
           consents: { orderBy: { acceptedAt: "desc" } },
+          screenings: { orderBy: { screenedAt: "desc" }, take: 1 },
           serviceRequests: { orderBy: { submittedAt: "desc" }, take: 20 },
           accounts: {
             include: {
@@ -41,6 +42,7 @@ export async function GET(request: Request) {
         const acceptedTerms = client.consents.find((consent) => consent.consentType === "brokerage_terms" && consent.accepted && !consent.withdrawnAt);
         const tradeEligible = client.status === "active"
           && client.kycStatus === "approved"
+          && client.screenings[0]?.result === "clear"
           && account?.status === "active"
           && !account.restrictionReason
           && (!currentLegal || acceptedTerms?.legalDocumentId === currentLegal.id);
@@ -53,6 +55,7 @@ export async function GET(request: Request) {
           status: client.status,
           accountStatus: account?.status ?? "missing",
           tradeEligible,
+          screeningStatus: client.screenings[0]?.result ?? null,
           risk: client.riskRating,
           totalCash: toNum(account?.totalCash),
           availableCash: toNum(account?.availableCash),

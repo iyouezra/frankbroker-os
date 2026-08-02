@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { BrokerClient, DemoOrder } from "../../../lib/demo-data";
-import { hasPermission, type Role } from "../../../lib/frank";
+import { COMPLIANCE_PERMISSIONS, hasPermission, type Role } from "../../../lib/frank";
 import { ClientConversationsTab } from "../crm/client-conversations-tab";
 import { ActivityTimeline } from "../crm/activity-timeline";
 import { BrandSelect } from "../../shared/brand-select";
@@ -24,6 +24,14 @@ import {
   type Client360Tab,
   type ClientDirectoryResponse,
 } from "../shared/broker-foundation";
+
+function currentQuarterDates() {
+  const now = new Date();
+  const startMonth = Math.floor(now.getUTCMonth() / 3) * 3;
+  const from = new Date(Date.UTC(now.getUTCFullYear(), startMonth, 1)).toISOString().slice(0, 10);
+  const to = new Date(Date.UTC(now.getUTCFullYear(), startMonth + 3, 0)).toISOString().slice(0, 10);
+  return { from, to };
+}
 
 export function ClientsPage({ clients, selectedId, onSelect, orders, instruments, role, focus, onNewClient, onRefresh, onOpenOrder, onOpenConversation }: { clients: BrokerClient[]; selectedId: string; onSelect: (id: string) => void; orders: DemoOrder[]; instruments: BrokerInstrument[]; role: Role; focus: { status?: string; clientId?: string; tab?: "overview" | "documents" } | null; onNewClient: () => void; onRefresh: () => Promise<void>; onOpenOrder: (order: DemoOrder) => void; onOpenConversation?: (threadId: string) => void }) {
   const [directoryRows, setDirectoryRows] = useState<BrokerClient[]>(clients);
@@ -67,6 +75,12 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
   const [restrictionNote, setRestrictionNote] = useState("");
   const [termsEvidenceOpen, setTermsEvidenceOpen] = useState(false);
   const [termsEvidence, setTermsEvidence] = useState("");
+  const [screeningResult, setScreeningResult] = useState("clear");
+  const [screeningProvider, setScreeningProvider] = useState("");
+  const [screeningReference, setScreeningReference] = useState("");
+  const [screeningNotes, setScreeningNotes] = useState("");
+  const [statementFrom, setStatementFrom] = useState(() => currentQuarterDates().from);
+  const [statementTo, setStatementTo] = useState(() => currentQuarterDates().to);
   const selected = directoryRows.find((client) => client.id === selectedId)
     ?? clients.find((client) => client.id === selectedId)
     ?? (directorySelection?.id === selectedId ? directorySelection : null)
@@ -234,6 +248,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     legal: { required: true, accepted: Boolean(selected.termsAcceptedVersion), latestRequiredVersion: "1.0", latestAcceptedVersion: selected.termsAcceptedVersion ?? null, lastAcceptedAt: null, missingDocuments: selected.termsAcceptedVersion ? [] : ["Brokerage account terms"] },
     restrictions: { restricted: Boolean(selected.restrictionReason || selected.status !== "active"), reason: selected.restrictionReason ?? null, restrictedAt: null, flags: selected.kyc !== "approved" ? ["Missing or incomplete KYC"] : selected.termsAcceptedVersion ? [] : ["Missing current legal consent"] },
     documents: { expected: selected.type === "individual" ? ["proof_of_address"] : ["business_license", "tin_certificate", "certificate_of_incorporation", "article_of_association"], kyc: [], legal: [], contractNotes: fallbackOrders.filter((order) => order.trades?.length).map((order) => ({ orderId: order.id, number: order.contractNoteNumber ?? null, generatedAt: order.contractNoteGeneratedAt ?? null, status: order.contractNoteNumber ? "available" : "not_generated" })), statements: [{ type: "Account statement", status: "not_implemented" }, { type: "Cash statement", status: "not_implemented" }, { type: "Holdings statement", status: "not_implemented" }] },
+    screenings: [],
     linkedBanks: [],
     requests: selected.serviceRequests ?? [],
     notes: [],
@@ -378,6 +393,51 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
       setMessage(`${displayLabel(documentType)} uploaded on the client's behalf and added to the audit trail.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Document upload failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const recordScreening = async () => {
+    setBusy("screening");
+    try {
+      const response = await fetch(`/api/clients/${encodeURIComponent(selected.id)}/screenings`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role },
+        body: JSON.stringify({ result: screeningResult, provider: screeningProvider, reference: screeningReference, notes: screeningNotes }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Screening evidence could not be recorded.");
+      setScreeningProvider("");
+      setScreeningReference("");
+      setScreeningNotes("");
+      setMessage("Screening evidence recorded in the client audit trail.");
+      setRefreshKey((key) => key + 1);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Screening evidence could not be recorded.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const downloadStatement = async () => {
+    setBusy("statement");
+    try {
+      const params = new URLSearchParams({ from: statementFrom, to: statementTo });
+      const response = await fetch(`/api/clients/${encodeURIComponent(selected.id)}/statement?${params.toString()}`, { headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(result.error || "Statement could not be generated.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `client-statement-${selected.code}-${statementFrom}-${statementTo}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage("Client statement generated and audit logged.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Statement could not be generated.");
     } finally {
       setBusy(null);
     }
@@ -554,6 +614,11 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     {tab === "settlements" && <section className="panel client-360-table"><div className="panel-head"><div><span className="eyebrow">POST-TRADE CONTROL</span><h2>Settlement items</h2></div></div>{model.settlements.length ? <div className="table-scroll"><table><thead><tr><th>Trade / order</th><th>Instrument</th><th>Trade date</th><th>Settlement date</th><th>Cash</th><th>Securities</th><th>Overall</th><th>Exception / notes</th><th /></tr></thead><tbody>{model.settlements.map((item) => <tr key={item.id} onClick={() => openOrder(item.orderId)}><td><b>{item.tradeId}</b><small>{item.orderId}</small></td><td><b>{item.symbol}</b></td><td>{item.tradeDate}</td><td><b>{item.settlementDate}</b></td><td><span className={`leg ${item.cashStatus === "settled" ? "done" : "pending"}`}>{displayLabel(item.cashStatus)}</span></td><td><span className={`leg ${item.securitiesStatus === "settled" ? "done" : "pending"}`}>{displayLabel(item.securitiesStatus)}</span></td><td>{displayLabel(item.status)}</td><td>{item.exception ? <span className="negative">{item.notes ?? "Exception requires review"}</span> : "None"}</td><td><button className="btn secondary small" onClick={(event) => { event.stopPropagation(); openOrder(item.orderId); }}>View settlement</button></td></tr>)}</tbody></table></div> : <EmptyState title="No settlement items" copy="Settlement records will appear after an execution is captured." />}</section>}
 
     {tab === "documents" && <div className="documents-grid">
+      <section className="panel document-card compliance-evidence-card"><div className="panel-head"><div><span className="eyebrow">SCREENING EVIDENCE</span><h2>Sanctions and PEP check</h2></div>{model.screenings[0] && <span className={`status ${model.screenings[0].result === "clear" ? "status-success" : "status-danger"}`}><i />{displayLabel(model.screenings[0].result)}</span>}</div>
+        {model.screenings[0] ? <div className="screening-latest"><span><small>LATEST CHECK</small><b>{model.screenings[0].provider}</b><em>{new Date(model.screenings[0].screenedAt).toLocaleString("en-GB")} · {model.screenings[0].recordedBy}</em></span><span><small>REFERENCE</small><b>{model.screenings[0].reference ?? "Not supplied"}</b><em>{model.screenings[0].notes ?? "No additional note"}</em></span></div> : <EmptyState title="No screening evidence" copy="Record the result produced by the broker's screening provider or documented manual process." />}
+        {hasPermission(role, COMPLIANCE_PERMISSIONS.screeningRecord) && <div className="screening-form"><label>Result<BrandSelect value={screeningResult} onChange={setScreeningResult} ariaLabel="Screening result" options={[{ value: "clear", label: "Clear" }, { value: "potential_match", label: "Potential match" }, { value: "confirmed_match", label: "Confirmed match" }]} /></label><label>Provider or process<input value={screeningProvider} onChange={(event) => setScreeningProvider(event.target.value)} maxLength={120} placeholder="Provider or manual screening process" /></label><label>Reference<input value={screeningReference} onChange={(event) => setScreeningReference(event.target.value)} maxLength={160} placeholder="Case or search reference" /></label><label>Note<input value={screeningNotes} onChange={(event) => setScreeningNotes(event.target.value)} maxLength={1000} placeholder="Optional match rationale" /></label><button className="btn primary small" disabled={busy === "screening" || screeningProvider.trim().length < 2} onClick={() => void recordScreening()}>{busy === "screening" ? "Recording…" : "Record screening"}</button></div>}
+      </section>
+      <section className="panel document-card statement-card"><div className="panel-head"><div><span className="eyebrow">CLIENT REPORTING</span><h2>Account statement</h2></div><span className="account-number">XLSX</span></div><p>Generate a point-in-time statement containing cash movements, trades and holdings recorded in Frank.</p>{hasPermission(role, COMPLIANCE_PERMISSIONS.statementExport) ? <div className="statement-period"><label>From<input type="date" value={statementFrom} onChange={(event) => setStatementFrom(event.target.value)} /></label><label>To<input type="date" value={statementTo} onChange={(event) => setStatementTo(event.target.value)} /></label><button className="btn secondary" disabled={busy === "statement" || !statementFrom || !statementTo || statementTo < statementFrom} onClick={() => void downloadStatement()}>{busy === "statement" ? "Generating…" : "Download statement"}</button></div> : <div className="settings-note">Your role cannot generate client statements.</div>}</section>
       <section className="panel document-card onboarding-documents"><div className="panel-head"><div><span className="eyebrow">ONBOARDING DOCUMENTS</span><h2>Identity and authority</h2></div><span className="account-number">{model.documents.kyc.length} received</span></div>
         {(model.documents.expected ?? []).map((type) => {
           const document = model.documents.kyc.find((item) => item.type === type);

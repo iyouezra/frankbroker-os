@@ -57,7 +57,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const [account, instrument, entitlement, settings, fallbackLedgerActor, existingOrder] = await Promise.all([
     prisma.account.findUnique({
       where: { id: input.accountId },
-      include: { client: true, holdings: { where: { instrumentId: input.instrumentId } } },
+      include: { client: { include: { screenings: { orderBy: { screenedAt: "desc" }, take: 1 } } }, holdings: { where: { instrumentId: input.instrumentId } } },
     }),
     prisma.instrument.findUnique({ where: { id: input.instrumentId } }),
     prisma.brokerInstrument.findUnique({
@@ -141,6 +141,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const checks = validatePreTrade({
     tenantMatches: account.client.brokerId === actor.brokerId,
     kycApproved: account.client.kycStatus === "approved",
+    screeningClear: account.client.screenings[0]?.result === "clear",
     accountActive: account.status === "active",
     clientActive: account.client.status === "active",
     instrumentTradable: instrument.tradingStatus === "tradable",
@@ -428,7 +429,7 @@ async function loadApprovalContext(tx: Prisma.TransactionClient, orderId: string
   const order = await tx.order.findUnique({
     where: { id: orderId },
     include: {
-      account: { include: { client: true } },
+      account: { include: { client: { include: { screenings: { orderBy: { screenedAt: "desc" }, take: 1 } } } } },
       instrument: true,
       events: { orderBy: { createdAt: "asc" } },
     },
@@ -460,17 +461,19 @@ export async function approveOrder(actor: Actor, orderId: string) {
       ? "The account no longer belongs to this tenant."
       : order.account.client.kycStatus !== "approved"
         ? "Client KYC is no longer approved."
-        : order.account.status !== "active" || order.account.client.status !== "active"
-          ? "The client or trading account is no longer active."
-          : order.instrument.tradingStatus !== "tradable" || entitlement?.enabled !== true
-            ? "The instrument is no longer tradable for this tenant."
-            : !allowedOrderTypes.some((item) => normalizeOrderType(item) === normalizeOrderType(order.orderType))
-              ? "The order type is no longer enabled for this tenant."
-              : !["buy", "sell"].includes(order.side) || order.quantity.lte(0) || order.price.lte(0)
-                ? "The stored order direction, quantity, or price is invalid."
-                : !order.quantity.mod(order.instrument.lotSize).isZero() || !order.price.div(order.instrument.tickSize).isInteger()
-                  ? "The order no longer meets the instrument lot or tick-size rules."
-                  : null;
+        : order.account.client.screenings[0]?.result !== "clear"
+          ? "A clear sanctions and PEP screening result is required."
+          : order.account.status !== "active" || order.account.client.status !== "active"
+            ? "The client or trading account is no longer active."
+            : order.instrument.tradingStatus !== "tradable" || entitlement?.enabled !== true
+              ? "The instrument is no longer tradable for this tenant."
+              : !allowedOrderTypes.some((item) => normalizeOrderType(item) === normalizeOrderType(order.orderType))
+                ? "The order type is no longer enabled for this tenant."
+                : !["buy", "sell"].includes(order.side) || order.quantity.lte(0) || order.price.lte(0)
+                  ? "The stored order direction, quantity, or price is invalid."
+                  : !order.quantity.mod(order.instrument.lotSize).isZero() || !order.price.div(order.instrument.tickSize).isInteger()
+                    ? "The order no longer meets the instrument lot or tick-size rules."
+                    : null;
     if (controlFailure) throw new Response(`${controlFailure} Run validation again before approval.`, { status: 409 });
 
     if (order.side === "buy") {

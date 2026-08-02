@@ -17,15 +17,18 @@ import {
 import { BrandSelect } from "../../shared/brand-select";
 
 /** A complaint is visually distinct from an ordinary enquiry: severity, target date, overdue flag. */
-export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings, onOpenThread }: {
+export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings, onRegulatoryStatus, onOpenThread }: {
   serviceCase: CrmCaseView;
   role: Role;
   busy: boolean;
   onStatus: (item: CrmCaseView, next: string) => void;
   onFindings: (item: CrmCaseView, findings: string) => void;
+  onRegulatoryStatus: (item: CrmCaseView, status: string, comment: string) => void;
   onOpenThread?: (threadId: string) => void;
 }) {
   const [findings, setFindings] = useState(serviceCase.internalFindings ?? "");
+  const [regulatoryStatus, setRegulatoryStatus] = useState(serviceCase.regulatoryStatus ?? "pending");
+  const [regulatoryComment, setRegulatoryComment] = useState(serviceCase.regulatoryComment ?? "");
   const canManage = hasPermission(role, CRM_PERMISSIONS.caseManage);
 
   return <section id={`case-${serviceCase.id}`} className={`panel crm-case${serviceCase.overdue ? " overdue" : ""}`}>
@@ -69,6 +72,19 @@ export function ServiceCasePanel({ serviceCase, role, busy, onStatus, onFindings
             <BrandSelect className="bselect-inline" value="" disabled={busy || !availableCaseStatuses(serviceCase.status).length} placeholder="Move to…" ariaLabel={`Update ${serviceCase.id}`}
               onChange={(next) => { if (next) onStatus(serviceCase, next); }}
               options={availableCaseStatuses(serviceCase.status).map((status) => ({ value: status, label: CASE_STATUS_LABELS[status as CaseStatus] }))} />
+          </div>
+          <div className="crm-regulatory-control">
+            <label>ECMA report status
+              <BrandSelect value={regulatoryStatus} disabled={busy} ariaLabel={`Regulatory status for ${serviceCase.id}`} onChange={setRegulatoryStatus} options={[
+                { value: "pending", label: "Pending" },
+                { value: "referred_sro", label: "Referred to SRO" },
+                { value: "referred_ecma", label: "Referred to ECMA" },
+              ]} />
+            </label>
+            <label>Referral note
+              <input value={regulatoryComment} onChange={(event) => setRegulatoryComment(event.target.value)} maxLength={1000} placeholder="Reference or reason, when referred" />
+            </label>
+            <button className="btn secondary small" disabled={busy || (regulatoryStatus === serviceCase.regulatoryStatus && regulatoryComment === (serviceCase.regulatoryComment ?? ""))} onClick={() => onRegulatoryStatus(serviceCase, regulatoryStatus, regulatoryComment)}>Save ECMA status</button>
           </div>
         </div>
       ) : (
@@ -166,7 +182,7 @@ export function ComplaintsPage({ role, focusId, onNotify, onOpenThread }: { role
     {loading ? <div className="crm-loading" role="status">Loading cases…</div>
       : cases.length === 0 ? <section className="panel"><EmptyState title="No complaints open" copy="Complaints are raised from a conversation. Open one from the Conversations inbox when an investor escalates." /></section>
       : cases.map((item) => (
-        <ServiceCasePanel key={item.id} serviceCase={item} role={role} busy={busy} onStatus={changeStatus} onFindings={(target, findings) => void act(target.id, { action: "findings", findings }, "Internal findings saved.")} onOpenThread={onOpenThread} />
+        <ServiceCasePanel key={item.id} serviceCase={item} role={role} busy={busy} onStatus={changeStatus} onFindings={(target, findings) => void act(target.id, { action: "findings", findings }, "Internal findings saved.")} onRegulatoryStatus={(target, next, comment) => void act(target.id, { action: "regulatory_status", status: next, comment }, "ECMA complaint status saved.")} onOpenThread={onOpenThread} />
       ))}
 
     {resolving && (

@@ -1,7 +1,7 @@
 import { apiError } from "../../../../../../lib/api";
 import { requirePermission } from "../../../../../../lib/server-auth";
 import { CRM_PERMISSIONS } from "../../../../../../lib/frank";
-import { assignCase, changeCaseStatus, recordCaseFindings } from "../../../../../../lib/crm/case-service";
+import { assignCase, changeCaseStatus, recordCaseFindings, recordCaseRegulatoryStatus } from "../../../../../../lib/crm/case-service";
 
 export const runtime = "nodejs";
 
@@ -22,6 +22,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (action === "findings") {
       const actor = requirePermission(request, CRM_PERMISSIONS.caseManage);
       return Response.json(await recordCaseFindings(actor, id, payload.findings));
+    }
+    if (action === "regulatory_status") {
+      const actor = requirePermission(request, CRM_PERMISSIONS.caseManage);
+      return Response.json({ ok: true, ...(await recordCaseRegulatoryStatus(actor, id, payload.status, payload.comment)) });
     }
 
     return Response.json({ error: "Unsupported case action." }, { status: 400 });

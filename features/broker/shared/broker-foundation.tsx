@@ -53,7 +53,7 @@ export type ClientDirectoryResponse = {
 };
 export type TradeValue = { quantity: string; price: string; tradeDate: string; captureReference: string };
 export type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
-export type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; exceptions: ReconException[] };
+export type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; reviewedAt?: string | null; reviewedBy?: string | null; evidenceReference?: string | null; exceptions: ReconException[] };
 export type AuditEntry = { id?: string; time: string; actor: string; action: string; detail: string; entity: string };
 export type BrokerInstrument = { id: string; symbol: string; name: string; asset: string; issuer: string; status: string; currency: string; lot: number; tick: number; cycle: string; price: number; coupon?: string; maturity?: string };
 export type TenantFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
@@ -170,6 +170,9 @@ export type CrmCaseView = {
   overdue: boolean;
   internalFindings: string | null;
   resolutionSummary: string | null;
+  regulatoryStatus: string;
+  regulatoryStatusAt: string | null;
+  regulatoryComment: string | null;
   resolvedAt: string | null;
   closedAt: string | null;
 };
@@ -204,8 +207,8 @@ export const fallbackCrmTasks: CrmTaskView[] = [
 ];
 
 export const fallbackCrmCases: CrmCaseView[] = [
-  { id: "CASE-DEMO01", subject: "Contract note shows the wrong fee", category: "complaint", severity: "high", status: "under_review", statusLabel: "Under review", client: { id: "cli_wegagen", code: "CL-10008", name: "Wegagen Pension Fund" }, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu", threadId: "THR-DEMO0005", threadSubject: "Contract note shows the wrong fee", openedAt: "2026-07-24T07:35:00Z", targetResolutionAt: "2026-07-29T07:35:00Z", overdue: false, internalFindings: "Fee schedule v1.0 applied; agreed rate was v1.1. Checking effective dates.", resolutionSummary: null, resolvedAt: null, closedAt: null },
-  { id: "CASE-DEMO02", subject: "Withdrawal delayed beyond agreed window", category: "service_failure", severity: "medium", status: "resolved", statusLabel: "Resolved", client: { id: "cli_meron", code: "CL-10041", name: "Meron Bekele" }, assignedToUserId: "usr_service", assignedToName: "Bethel Tesfaye", threadId: null, threadSubject: null, openedAt: "2026-07-15T10:00:00Z", targetResolutionAt: "2026-07-25T10:00:00Z", overdue: false, internalFindings: "Bank cut-off missed on the first attempt.", resolutionSummary: "Payment released the next business day and the investor was told what happened.", resolvedAt: "2026-07-17T09:30:00Z", closedAt: null },
+  { id: "CASE-DEMO01", subject: "Contract note shows the wrong fee", category: "complaint", severity: "high", status: "under_review", statusLabel: "Under review", client: { id: "cli_wegagen", code: "CL-10008", name: "Wegagen Pension Fund" }, assignedToUserId: "usr_relationship", assignedToName: "Kalkidan Alemu", threadId: "THR-DEMO0005", threadSubject: "Contract note shows the wrong fee", openedAt: "2026-07-24T07:35:00Z", targetResolutionAt: "2026-07-29T07:35:00Z", overdue: false, internalFindings: "Fee schedule v1.0 applied; agreed rate was v1.1. Checking effective dates.", resolutionSummary: null, regulatoryStatus: "pending", regulatoryStatusAt: null, regulatoryComment: null, resolvedAt: null, closedAt: null },
+  { id: "CASE-DEMO02", subject: "Withdrawal delayed beyond agreed window", category: "service_failure", severity: "medium", status: "resolved", statusLabel: "Resolved", client: { id: "cli_meron", code: "CL-10041", name: "Meron Bekele" }, assignedToUserId: "usr_service", assignedToName: "Bethel Tesfaye", threadId: null, threadSubject: null, openedAt: "2026-07-15T10:00:00Z", targetResolutionAt: "2026-07-25T10:00:00Z", overdue: false, internalFindings: "Bank cut-off missed on the first attempt.", resolutionSummary: "Payment released the next business day and the investor was told what happened.", regulatoryStatus: "pending", regulatoryStatusAt: null, regulatoryComment: null, resolvedAt: "2026-07-17T09:30:00Z", closedAt: null },
 ];
 
 /** Offline demonstration conversations so the inbox renders without a database. */
@@ -263,6 +266,7 @@ export type Client360Detail = {
     contractNotes: Array<{ orderId: string; number: string | null; generatedAt: string | null; status: string }>;
     statements: Array<{ type: string; status: string }>;
   };
+  screenings: Array<{ id: string; provider: string; result: string; reference: string | null; notes: string | null; screenedAt: string; recordedBy: string }>;
   linkedBanks?: Array<{ id: string; bankName: string; accountNumberMasked: string; accountHolderName: string; source: string; status: string; createdAt: string; reviewedAt: string | null; rejectionReason: string | null }>;
   requests: NonNullable<BrokerClient["serviceRequests"]>;
   notes: Array<{ id: string; text: string; category: string; visibility: string; createdBy: string; createdAt: string }>;
@@ -372,7 +376,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
   { label: "Trading", items: [
     { id: "orders", label: "Order log", icon: "orders" },
     { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
-    { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations"] },
+    { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations", "compliance"] },
   ] },
   { label: "Oversight", items: [
     { id: "performance", label: "Performance", icon: "performance", roles: ["broker_admin"] },

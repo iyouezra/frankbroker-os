@@ -62,6 +62,13 @@ test("ready clients can buy and sell when cash and holdings are available", () =
   assert.equal(result.items.find((item) => item.key === "cash")?.state, "pass");
 });
 
+test("missing sanctions and PEP screening evidence blocks trading", () => {
+  const result = evaluateClientReadiness({ ...readyClient, screeningStatus: null });
+  assert.equal(result.canTrade, false);
+  assert.match(result.blockingReasons.join(" "), /screening evidence is required/i);
+  assert.equal(result.items.find((item) => item.key === "screening")?.state, "fail");
+});
+
 test("read-only management cannot create notes or change restrictions", () => {
   assert.equal(hasPermission("management", "report"), true);
   assert.equal(hasPermission("management", "adjust"), false);

@@ -743,6 +743,25 @@ export default function FrankBrokerApp() {
     }
   };
 
+  const signOffReconciliation = async (evidenceReference: string) => {
+    setBusyAction("signoff");
+    try {
+      const response = await fetch(`/api/reconciliation/${encodeURIComponent(reconBatch.id)}/sign-off`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role },
+        body: JSON.stringify({ evidenceReference }),
+      });
+      const result = await response.json() as { error?: string; reviewedAt?: string };
+      if (!response.ok) throw new Error(result.error || "Reconciliation sign-off failed.");
+      setReconBatch((current) => ({ ...current, status: "signed_off", reviewedAt: result.reviewedAt ?? new Date().toISOString(), reviewedBy: roleNames[role], evidenceReference }));
+      notify("Reconciliation independently signed off and audit logged.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Reconciliation sign-off failed.", "error");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   return (
     <div className="app-shell">
       <aside className={`sidebar${collapsed ? " collapsed" : ""}`}>
@@ -807,8 +826,8 @@ export default function FrankBrokerApp() {
           {view === "crm_cases" && <ComplaintsPage role={role} focusId={caseFocus} onNotify={notify} onOpenThread={(threadId) => navigateToTarget({ view: "crm", entityType: "communication_thread", entityId: threadId })} />}
           {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} focusId={cashFocus} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
-          {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} focusId={reconciliationFocus} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
-          {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} onDownloaded={(name) => notify(`${name} exported as CSV.`)} />}
+          {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} role={role} focusId={reconciliationFocus} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} onSignOff={signOffReconciliation} resolvingId={busyAction} />}
+          {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} role={role} onDownloaded={(name) => notify(`${name} exported.`)} onNotify={notify} />}
           {view === "audit" && <AuditPage events={auditEntries} />}
           {view === "users" && <UsersPage role={role} />}
           {view === "settings" && <SettingsPage />}

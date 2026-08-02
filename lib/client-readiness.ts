@@ -13,10 +13,12 @@ export type ClientReadinessInput = {
   availableCash: number;
   availableHoldings: number;
   restrictionReason: string | null;
+  screeningStatus?: string | null;
 };
 
 export function evaluateClientReadiness(input: ClientReadinessInput) {
   const kycReady = input.kycStatus === "approved";
+  const screeningReady = input.screeningStatus === undefined || input.screeningStatus === "clear";
   const documentsReady = input.proofOfAddressStatus === "received"
     && (!input.institutional || Boolean(
       input.businessRegistrationNumber
@@ -26,11 +28,12 @@ export function evaluateClientReadiness(input: ClientReadinessInput) {
   const consentReady = !input.currentLegalVersion || input.acceptedLegalVersion === input.currentLegalVersion;
   const accountActive = input.accountStatus === "active" && input.clientStatus === "active";
   const unrestricted = !input.restrictionReason && input.clientStatus !== "restricted";
-  const baseReady = kycReady && consentReady && accountActive && unrestricted;
+  const baseReady = kycReady && screeningReady && consentReady && accountActive && unrestricted;
   const canBuy = baseReady && input.availableCash > 0;
   const canSell = baseReady && input.availableHoldings > 0;
   const blockingReasons = [
     !kycReady ? "KYC is not approved" : null,
+    !screeningReady ? "Current sanctions and PEP screening evidence is required" : null,
     !consentReady ? "Current brokerage terms are not accepted" : null,
     !accountActive ? "Client or account is not active" : null,
     !unrestricted ? input.restrictionReason ?? "Account restriction is active" : null,
@@ -49,6 +52,7 @@ export function evaluateClientReadiness(input: ClientReadinessInput) {
     blockingReasons,
     items: [
       { key: "kyc", label: "KYC approved", state: kycReady ? "pass" : "fail", detail: kycReady ? "Approved and current" : `Status: ${input.kycStatus}` },
+      { key: "screening", label: "Sanctions and PEP screening", state: screeningReady ? "pass" : "fail", detail: screeningReady ? "Clear result recorded" : input.screeningStatus ? `Result: ${input.screeningStatus}` : "No screening evidence recorded" },
       { key: "documents", label: "Onboarding documents", state: documentsReady ? "pass" : "warning", detail: documentsReady ? "Evidence recorded" : "Some evidence has not been received" },
       { key: "consent", label: "Required legal documents accepted", state: consentReady ? "pass" : "fail", detail: consentReady ? `Accepted ${input.acceptedLegalVersion ?? "available version"}` : `Accept ${input.currentLegalVersion ?? "current version"}` },
       { key: "account", label: "Account active", state: accountActive ? "pass" : "fail", detail: input.accountStatus ?? "No account" },

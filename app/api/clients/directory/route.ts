@@ -70,6 +70,11 @@ export async function GET(request: Request) {
             orderBy: { acceptedAt: "desc" },
             select: { legalDocumentId: true, version: true },
           },
+          screenings: {
+            orderBy: { screenedAt: "desc" },
+            take: 1,
+            select: { result: true },
+          },
           accounts: {
             orderBy: { createdAt: "asc" },
             take: 1,
@@ -123,6 +128,7 @@ export async function GET(request: Request) {
           : client.consents[0];
         const tradeEligible = client.status === "active"
           && client.kycStatus === "approved"
+          && client.screenings[0]?.result === "clear"
           && account?.status === "active"
           && !account.restrictionReason
           && (!currentLegal || acceptedTerms?.legalDocumentId === currentLegal.id);
@@ -135,6 +141,7 @@ export async function GET(request: Request) {
           status: client.status,
           accountStatus: account?.status ?? "missing",
           tradeEligible,
+          screeningStatus: client.screenings[0]?.result ?? null,
           risk: client.riskRating,
           totalCash: toNum(account?.totalCash),
           availableCash: toNum(account?.availableCash),

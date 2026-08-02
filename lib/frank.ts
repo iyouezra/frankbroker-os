@@ -75,6 +75,18 @@ export const MARKET_PERMISSIONS = {
   feedStatusView: "market.feed_status.view",
 } as const;
 
+export const COMPLIANCE_PERMISSIONS = {
+  view: "compliance.view",
+  reportPrepare: "compliance.report.prepare",
+  reportReview: "compliance.report.review",
+  reportSubmit: "compliance.report.submit",
+  escalationCreate: "compliance.escalation.create",
+  escalationManage: "compliance.escalation.manage",
+  screeningRecord: "compliance.screening.record",
+  reconciliationSignoff: "compliance.reconciliation.signoff",
+  statementExport: "compliance.statement.export",
+} as const;
+
 const CRM_ALL = Object.values(CRM_PERMISSIONS);
 const MARKET_VIEW = [MARKET_PERMISSIONS.view, MARKET_PERMISSIONS.feedStatusView];
 const MARKET_FULL = [...MARKET_VIEW, MARKET_PERMISSIONS.orderBookView, MARKET_PERMISSIONS.recentTradesView, MARKET_PERMISSIONS.orderLink];
@@ -82,14 +94,15 @@ const MARKET_FULL = [...MARKET_VIEW, MARKET_PERMISSIONS.orderBookView, MARKET_PE
 const CRM_READ_AND_NOTE = [CRM_PERMISSIONS.view, CRM_PERMISSIONS.note, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView];
 // Servicing staff own follow-ups end to end.
 const CRM_TASK_FULL = [CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.taskAssign, CRM_PERMISSIONS.taskComplete];
+const COMPLIANCE_ALL = Object.values(COMPLIANCE_PERMISSIONS);
 
 export const workflowPermissions: Record<Role, string[]> = {
   access_admin: ["access.manage"],
-  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL],
-  trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE, ...MARKET_FULL],
-  operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL, ...MARKET_VIEW],
-  compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage, ...MARKET_VIEW],
-  settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE, ...MARKET_VIEW],
+  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...COMPLIANCE_ALL],
+  trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE, ...MARKET_FULL, COMPLIANCE_PERMISSIONS.escalationCreate],
+  operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, COMPLIANCE_PERMISSIONS.reportPrepare, COMPLIANCE_PERMISSIONS.escalationCreate, COMPLIANCE_PERMISSIONS.statementExport],
+  compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage, ...MARKET_VIEW, ...COMPLIANCE_ALL],
+  settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.escalationCreate],
   relationship_officer: [
     "report",
     CRM_PERMISSIONS.view,
@@ -101,9 +114,10 @@ export const workflowPermissions: Record<Role, string[]> = {
     ...CRM_TASK_FULL,
     CRM_PERMISSIONS.caseView,
     ...MARKET_VIEW,
+    COMPLIANCE_PERMISSIONS.statementExport,
   ],
-  service_officer: ["create", "report", ...CRM_ALL, ...MARKET_VIEW],
-  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW],
+  service_officer: ["create", "report", ...CRM_ALL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.statementExport, COMPLIANCE_PERMISSIONS.escalationCreate],
+  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view],
   super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL],
 };
 

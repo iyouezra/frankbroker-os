@@ -109,12 +109,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (payload.action === "complete_kyc_review") {
       const client = await prisma.client.findFirst({
         where: { id, brokerId: actor.brokerId },
-        include: { documents: true, broker: { include: { settings: true } } },
+        include: { documents: true, screenings: { orderBy: { screenedAt: "desc" }, take: 1 }, broker: { include: { settings: true } } },
       });
       if (!client) return Response.json({ error: "Client not found for this tenant." }, { status: 404 });
       const expected = expectedDocumentTypes(client.clientType);
       const incomplete = expected.filter((type) => !client.documents.some((document) => document.documentType === type && document.status === "approved"));
       if (incomplete.length) return Response.json({ error: `Approve all required KYC documents first: ${incomplete.join(", ")}.` }, { status: 409 });
+      if (client.screenings[0]?.result !== "clear") return Response.json({ error: "Record a clear sanctions and PEP screening result first." }, { status: 409 });
       const reviewedAt = new Date();
       const dueAt = new Date(reviewedAt);
       dueAt.setUTCMonth(dueAt.getUTCMonth() + (client.broker.settings?.kycReviewMonths ?? 12));

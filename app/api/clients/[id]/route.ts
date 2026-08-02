@@ -46,6 +46,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         cashMovements: { include: { pooledBankAccount: true }, orderBy: { submittedAt: "desc" } },
         documents: { include: { content: { select: { documentId: true } } }, orderBy: { uploadedAt: "desc" } },
         linkedBankAccounts: { orderBy: { createdAt: "asc" } },
+        screenings: { include: { recorder: { select: { fullName: true } } }, orderBy: { screenedAt: "desc" } },
         notes: { include: { author: true }, orderBy: { createdAt: "desc" } },
         accounts: {
           orderBy: { createdAt: "asc" },
@@ -95,6 +96,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       availableCash,
       availableHoldings: sellableQuantity,
       restrictionReason: account?.restrictionReason ?? null,
+      screeningStatus: client.screenings[0]?.result ?? null,
     });
 
     const entityIds = [
@@ -108,6 +110,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ...client.documents.map((document) => document.id),
       ...client.consents.map((consent) => consent.id),
       ...client.linkedBankAccounts.map((bank) => bank.id),
+      ...client.screenings.map((screening) => screening.id),
     ];
     const auditRows = await prisma.auditLog.findMany({
       where: { brokerId: actor.brokerId, entityId: { in: entityIds } },
@@ -339,11 +342,20 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           status: order.contractNoteNumber ? "available" : "not_generated",
         })),
         statements: [
-          { type: "Account statement", status: "not_implemented" },
-          { type: "Cash statement", status: "not_implemented" },
-          { type: "Holdings statement", status: "not_implemented" },
+          { type: "Account statement", status: "available" },
+          { type: "Cash statement", status: "included" },
+          { type: "Holdings statement", status: "included" },
         ],
       },
+      screenings: client.screenings.map((screening) => ({
+        id: screening.id,
+        provider: screening.provider,
+        result: screening.result,
+        reference: screening.reference,
+        notes: screening.notes,
+        screenedAt: screening.screenedAt.toISOString(),
+        recordedBy: screening.recorder.fullName,
+      })),
       linkedBanks: client.linkedBankAccounts.map(serializeLinkedBank),
       requests: client.serviceRequests.map((item) => ({
         id: item.id,

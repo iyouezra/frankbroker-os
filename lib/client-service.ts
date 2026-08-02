@@ -4,6 +4,7 @@ import { clientIdentityReference } from "./client-identity";
 import type { Actor } from "./server-auth";
 import { writeNotification, COMPLIANCE } from "./oms/notification-service";
 import {
+  expectedDocumentTypes,
   saveOnboardingEvidence,
   type LinkedBankInput,
   type OnboardingSource,
@@ -241,6 +242,8 @@ export async function approveClient(actor: Actor, clientId: string) {
       include: {
         accounts: true,
         consents: { orderBy: { acceptedAt: "desc" } },
+        documents: true,
+        screenings: { orderBy: { screenedAt: "desc" }, take: 1 },
       },
     });
     if (!client) throw new Response("Client not found for this tenant.", { status: 404 });
@@ -261,6 +264,10 @@ export async function approveClient(actor: Actor, clientId: string) {
     const identityReady = Boolean(client.identityReference && client.faydaLast7 && client.taxIdLast4)
       && (!institutional || Boolean(client.address && client.businessRegistrationNumber && client.authorizedRepresentativeName && client.signatoryAuthorityConfirmed && client.beneficialOwners));
     if (!identityReady) throw new Response("Required identity, ownership, or authority details are incomplete.", { status: 409 });
+    const expectedDocuments = expectedDocumentTypes(client.clientType);
+    const incompleteDocuments = expectedDocuments.filter((type) => !client.documents.some((document) => document.documentType === type && document.status === "approved"));
+    if (incompleteDocuments.length) throw new Response(`Approve all required KYC documents first: ${incompleteDocuments.join(", ")}.`, { status: 409 });
+    if (client.screenings[0]?.result !== "clear") throw new Response("Record a clear sanctions and PEP screening result before activating the client.", { status: 409 });
     const acceptedCurrentTerms = !legalDocument || client.consents.some((consent) => consent.legalDocumentId === legalDocument.id && consent.accepted && !consent.withdrawnAt);
     if ((settings?.requireTermsAcceptance ?? true) && !acceptedCurrentTerms) {
       throw new Response("The current brokerage agreement has not been accepted.", { status: 409 });

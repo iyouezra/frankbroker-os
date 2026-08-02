@@ -88,6 +88,7 @@ test("buy order with insufficient cash fails validation and cannot block", () =>
   const checks = validatePreTrade({
     tenantMatches: true,
     kycApproved: true,
+    screeningClear: true,
     accountActive: true,
     clientActive: true,
     instrumentTradable: true,
@@ -166,6 +167,7 @@ test("sell order with insufficient holdings fails validation and cannot oversell
   const checks = validatePreTrade({
     tenantMatches: true,
     kycApproved: true,
+    screeningClear: true,
     accountActive: true,
     clientActive: true,
     instrumentTradable: true,
