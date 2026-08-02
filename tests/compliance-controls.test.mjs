@@ -122,9 +122,11 @@ test("broker compliance roles own regulatory controls, not the Frank platform ad
 
 test("the compliance persistence layer records evidence, approvals, and independent sign-off", async () => {
   const root = new URL("../", import.meta.url);
-  const [schema, migration, reportsUi, clientsUi] = await Promise.all([
+  const [schema, migration, demoScreeningMigration, seed, reportsUi, clientsUi] = await Promise.all([
     readFile(new URL("prisma/schema.prisma", root), "utf8"),
     readFile(new URL("prisma/migrations/20260802180000_compliance_reporting_controls/migration.sql", root), "utf8"),
+    readFile(new URL("prisma/migrations/20260802183000_backfill_demo_screening_evidence/migration.sql", root), "utf8"),
+    readFile(new URL("prisma/seed.ts", root), "utf8"),
     readFile(new URL("features/broker/oversight/reporting-screens.tsx", root), "utf8"),
     readFile(new URL("features/broker/clients/client-directory-screen.tsx", root), "utf8"),
   ]);
@@ -133,6 +135,11 @@ test("the compliance persistence layer records evidence, approvals, and independ
   assert.match(schema, /model ClientScreening/);
   assert.match(migration, /compliance_reports/);
   assert.match(migration, /reviewed_by/);
+  assert.match(demoScreeningMigration, /client\."broker_id" = 'brk_abyssinia'/);
+  assert.match(demoScreeningMigration, /Frank demo screening fixture/);
+  assert.match(demoScreeningMigration, /NOT EXISTS/);
+  assert.match(seed, /SCR-DEMO-BACKFILL-cli_pending_ready/);
+  assert.match(seed, /Demonstration evidence only/);
   assert.match(reportsUi, /Regulatory returns/);
   assert.match(reportsUi, /24-hour escalations/);
   assert.match(clientsUi, /Sanctions and PEP check/);

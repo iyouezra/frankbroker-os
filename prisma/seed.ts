@@ -59,6 +59,18 @@ async function main() {
     skipDuplicates: true,
   });
 
+  await prisma.clientScreening.createMany({
+    data: [
+      { id: "SCR-DEMO-BACKFILL-cli_meron", brokerId: "brk_abyssinia", clientId: "cli_meron", screeningType: "sanctions_pep", provider: "Frank demo screening fixture", result: "clear", reference: "DEMO-SCR-CL-10041", notes: "Demonstration evidence only. Not produced by an external screening provider.", screenedAt: new Date("2026-07-14T08:30:00Z"), recordedBy: "usr_compliance" },
+      { id: "SCR-DEMO-BACKFILL-cli_wegagen", brokerId: "brk_abyssinia", clientId: "cli_wegagen", screeningType: "sanctions_pep", provider: "Frank demo screening fixture", result: "clear", reference: "DEMO-SCR-CL-10008", notes: "Demonstration evidence only. Not produced by an external screening provider.", screenedAt: new Date("2026-07-14T08:32:00Z"), recordedBy: "usr_compliance" },
+      { id: "SCR-DEMO-BACKFILL-cli_blue", brokerId: "brk_abyssinia", clientId: "cli_blue", screeningType: "sanctions_pep", provider: "Frank demo screening fixture", result: "clear", reference: "DEMO-SCR-CL-10017", notes: "Demonstration evidence only. Not produced by an external screening provider.", screenedAt: new Date("2026-07-14T08:34:00Z"), recordedBy: "usr_compliance" },
+      { id: "SCR-DEMO-BACKFILL-cli_investor_demo", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", screeningType: "sanctions_pep", provider: "Frank demo screening fixture", result: "clear", reference: "DEMO-SCR-CL-INV-001", notes: "Demonstration evidence only. Not produced by an external screening provider.", screenedAt: new Date("2026-07-14T08:36:00Z"), recordedBy: "usr_compliance" },
+      { id: "SCR-DEMO-BACKFILL-cli_pending_ready", brokerId: "brk_abyssinia", clientId: "cli_pending_ready", screeningType: "sanctions_pep", provider: "Frank demo screening fixture", result: "clear", reference: "DEMO-SCR-CL-2026-P002", notes: "Demonstration evidence only. Not produced by an external screening provider.", screenedAt: new Date("2026-07-16T09:15:00Z"), recordedBy: "usr_compliance" },
+      { id: "SCR-DEMO-BACKFILL-cli_recent_approved", brokerId: "brk_abyssinia", clientId: "cli_recent_approved", screeningType: "sanctions_pep", provider: "Frank demo screening fixture", result: "clear", reference: "DEMO-SCR-CL-2026-A001", notes: "Demonstration evidence only. Not produced by an external screening provider.", screenedAt: new Date("2026-07-19T08:30:00Z"), recordedBy: "usr_compliance" },
+    ],
+    skipDuplicates: true,
+  });
+
   const seededDocument = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF");
   const seededDocuments = [
     { id: "DOC-INVESTOR-POA", clientId: "cli_investor_demo", documentType: "proof_of_address", originalName: "selam-drivers-license.pdf", source: "investor_portal", status: "approved", reviewedBy: "usr_compliance", reviewedAt: new Date("2026-07-14T09:00:00Z"), uploadedAt: new Date("2026-07-14T08:00:00Z"), rejectionReason: null },
