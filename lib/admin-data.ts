@@ -129,12 +129,16 @@ export type AdminInstrument = {
 export type AdminUser = {
   id: string;
   tenantId: string;
+  employeeId: string;
   name: string;
   email: string;
-  role: "Broker admin" | "Trader" | "Compliance" | "Settlement" | "Read only";
+  jobTitle: string;
+  department: string;
+  role: "Access admin" | "Broker admin" | "Trader" | "Operations" | "Compliance" | "Settlement" | "Relationship" | "Client service" | "Read only";
   status: "Active" | "Invited" | "Suspended";
   mfa: boolean;
   lastActive: string;
+  authorizationReference?: string;
 };
 
 export type TenantIntegration = {
@@ -235,12 +239,17 @@ export const initialAdminInstruments: AdminInstrument[] = [
 ];
 
 export const initialAdminUsers: AdminUser[] = [
-  { id: "usr_demo_admin", tenantId: "brk_abyssinia", name: "Mekdes Tadesse", email: "demo.admin@frankbroker.et", role: "Broker admin", status: "Active", mfa: true, lastActive: "2 min ago" },
-  { id: "usr_trader", tenantId: "brk_abyssinia", name: "Dawit Alemu", email: "dawit@frankbroker.et", role: "Trader", status: "Active", mfa: true, lastActive: "14 min ago" },
-  { id: "usr_compliance", tenantId: "brk_abyssinia", name: "Liya Girma", email: "liya@frankbroker.et", role: "Compliance", status: "Active", mfa: true, lastActive: "1 hr ago" },
-  { id: "usr_settlement", tenantId: "brk_abyssinia", name: "Rahel Getachew", email: "rahel@frankbroker.et", role: "Settlement", status: "Active", mfa: false, lastActive: "Yesterday" },
-  { id: "usr_blue_admin", tenantId: "brk_blue_nile", name: "Samuel Kebede", email: "samuel@bluenile.example", role: "Broker admin", status: "Active", mfa: true, lastActive: "18 min ago" },
-  { id: "usr_sheba_admin", tenantId: "brk_sheba", name: "Abel Yohannes", email: "abel@sheba.example", role: "Broker admin", status: "Suspended", mfa: true, lastActive: "9 days ago" },
+  { id: "usr_access_admin", tenantId: "brk_abyssinia", employeeId: "ABS-0012", name: "Sara Alemayehu", email: "access.admin@frankbroker.et", jobTitle: "People Operations Lead", department: "People & Operations", role: "Access admin", status: "Active", mfa: true, lastActive: "1 day ago" },
+  { id: "usr_access_admin_backup", tenantId: "brk_abyssinia", employeeId: "ABS-0031", name: "Nahom Bekele", email: "access.backup@frankbroker.et", jobTitle: "Information Security Lead", department: "Technology", role: "Access admin", status: "Active", mfa: true, lastActive: "2 days ago" },
+  { id: "usr_demo_admin", tenantId: "brk_abyssinia", employeeId: "ABS-0004", name: "Mekdes Tadesse", email: "demo.admin@frankbroker.et", jobTitle: "Brokerage Operations Director", department: "Operations", role: "Broker admin", status: "Active", mfa: true, lastActive: "2 min ago" },
+  { id: "usr_trader", tenantId: "brk_abyssinia", employeeId: "ABS-0107", name: "Dawit Alemu", email: "dawit@frankbroker.et", jobTitle: "Senior Trader", department: "Trading", role: "Trader", status: "Active", mfa: true, lastActive: "14 min ago" },
+  { id: "usr_operations", tenantId: "brk_abyssinia", employeeId: "ABS-0142", name: "Hana Kebede", email: "hana@frankbroker.et", jobTitle: "Operations Officer", department: "Operations", role: "Operations", status: "Active", mfa: false, lastActive: "Yesterday" },
+  { id: "usr_compliance", tenantId: "brk_abyssinia", employeeId: "ABS-0063", name: "Liya Girma", email: "liya@frankbroker.et", jobTitle: "Compliance Officer", department: "Compliance", role: "Compliance", status: "Active", mfa: true, lastActive: "1 hr ago" },
+  { id: "usr_settlement", tenantId: "brk_abyssinia", employeeId: "ABS-0088", name: "Rahel Getachew", email: "rahel@frankbroker.et", jobTitle: "Settlement Officer", department: "Post-trade", role: "Settlement", status: "Active", mfa: false, lastActive: "Yesterday" },
+  { id: "usr_relationship", tenantId: "brk_abyssinia", employeeId: "ABS-0164", name: "Kalkidan Alemu", email: "kalkidan@frankbroker.et", jobTitle: "Relationship Officer", department: "Client Services", role: "Relationship", status: "Active", mfa: false, lastActive: "2 days ago" },
+  { id: "usr_service", tenantId: "brk_abyssinia", employeeId: "ABS-0171", name: "Bethel Tesfaye", email: "bethel@frankbroker.et", jobTitle: "Client Service Officer", department: "Client Services", role: "Client service", status: "Invited", mfa: false, lastActive: "Not yet" },
+  { id: "usr_blue_admin", tenantId: "brk_blue_nile", employeeId: "BNC-0001", name: "Samuel Kebede", email: "samuel@bluenile.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Active", mfa: true, lastActive: "18 min ago" },
+  { id: "usr_sheba_admin", tenantId: "brk_sheba", employeeId: "SIS-0001", name: "Abel Yohannes", email: "abel@sheba.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Suspended", mfa: true, lastActive: "9 days ago" },
 ];
 
 export const initialIntegrations: TenantIntegration[] = initialTenants.flatMap((tenant) => [

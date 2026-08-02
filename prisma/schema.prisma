@@ -42,12 +42,23 @@ model Broker {
 model User {
   id                            String                    @id
   brokerId                      String?                   @map("broker_id")
+  employeeId                    String?                   @map("employee_id")
   email                         String                    @unique
   fullName                      String                    @map("full_name")
+  jobTitle                      String?                   @map("job_title")
+  department                    String?
   role                          String
   status                        String                    @default("active")
   lastLoginAt                   DateTime?                 @map("last_login_at")
   mfaEnabled                    Boolean                   @default(false) @map("mfa_enabled")
+  authProvider                  String                    @default("pending") @map("auth_provider")
+  authProviderId                String?                   @map("auth_provider_id")
+  invitedAt                     DateTime?                 @map("invited_at")
+  invitationExpiresAt           DateTime?                 @map("invitation_expires_at")
+  passwordResetRequired         Boolean                   @default(false) @map("password_reset_required")
+  passwordResetRequestedAt      DateTime?                 @map("password_reset_requested_at")
+  accessReviewDueAt             DateTime?                 @map("access_review_due_at")
+  deactivatedAt                 DateTime?                 @map("deactivated_at")
   createdAt                     DateTime                  @default(now()) @map("created_at")
   updatedAt                     DateTime                  @updatedAt @map("updated_at")
   broker                        Broker?                   @relation(fields: [brokerId], references: [id], onDelete: SetNull)
@@ -81,7 +92,8 @@ model User {
   backupAssignments             InvestorAssignment[]      @relation("AssignmentBackup")
   recordedAssignments           InvestorAssignment[]      @relation("AssignmentRecorder")
 
-  @@index([brokerId])
+  @@unique([brokerId, employeeId])
+  @@index([brokerId, status])
   @@map("users")
 }
 

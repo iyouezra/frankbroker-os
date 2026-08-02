@@ -1,4 +1,5 @@
 export type Role =
+  | "access_admin"
   | "broker_admin"
   | "trader"
   | "operations"
@@ -31,6 +32,7 @@ export type ValidationResult = {
 };
 
 export const roleLabels: Record<Role, string> = {
+  access_admin: "Broker access admin",
   broker_admin: "Broker admin",
   trader: "Trader / dealer",
   operations: "Operations officer",
@@ -82,6 +84,7 @@ const CRM_READ_AND_NOTE = [CRM_PERMISSIONS.view, CRM_PERMISSIONS.note, CRM_PERMI
 const CRM_TASK_FULL = [CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.taskAssign, CRM_PERMISSIONS.taskComplete];
 
 export const workflowPermissions: Record<Role, string[]> = {
+  access_admin: ["access.manage"],
   broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL],
   trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE, ...MARKET_FULL],
   operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL, ...MARKET_VIEW],

@@ -9,6 +9,7 @@ export type Actor = {
 };
 
 const demoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
+  access_admin: { id: "usr_access_admin", email: "access.admin@frankbroker.et" },
   broker_admin: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et" },
   trader: { id: "usr_trader", email: "dawit@frankbroker.et" },
   operations: { id: "usr_operations", email: "hana@frankbroker.et" },

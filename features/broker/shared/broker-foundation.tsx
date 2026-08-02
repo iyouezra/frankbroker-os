@@ -380,16 +380,17 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "audit", label: "Audit trail", icon: "audit", roles: ["broker_admin", "compliance"] },
   ] },
   { label: "Administration", items: [
-    { id: "users", label: "Users & roles", icon: "users", roles: ["broker_admin"] },
+    { id: "users", label: "Users & roles", icon: "users", roles: ["access_admin", "broker_admin"] },
     { id: "settings", label: "Settings", icon: "settings", roles: ["broker_admin"] },
   ] },
 ];
 export const navItems: NavItem[] = navGroups.flatMap((group) => group.items.flatMap((item) => [item, ...(item.children ?? [])]));
-export const navVisible = (item: NavItem, role: Role) => role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role);
+export const navVisible = (item: NavItem, role: Role) => role === "access_admin" ? item.id === "users" : role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role);
 export const PENDING_CASH_STATUSES = ["pending_verification", "pending_approval", "approved"];
 export type QueueItem = { key: string; permission: string; roles?: Role[]; tone: "warning" | "danger" | "info"; icon: string; title: string; detail: string; onOpen: () => void };
 export const queueVisible = (item: QueueItem, role: Role) => item.roles ? item.roles.includes(role) : role === "management" || role === "super_admin" || hasPermission(role, item.permission);
 export const roleNames: Record<Role, string> = {
+  access_admin: "Sara Alemayehu",
   broker_admin: "Mekdes Tadesse",
   trader: "Dawit Alemu",
   operations: "Hana Kebede",

@@ -310,6 +310,7 @@ export default function FrankBrokerApp() {
   // If the active role can't see the current view, fall back to the dashboard.
   const changeRole = (nextRole: Role) => {
     setRole(nextRole);
+    if (nextRole === "access_admin") { setView("users"); return; }
     const current = navItems.find((item) => item.id === view);
     if (current && !navVisible(current, nextRole)) setView("dashboard");
   };

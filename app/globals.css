@@ -276,6 +276,62 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .perm-yes { color: var(--green); font-weight: 800; }
 .perm-no { color: var(--fx-text-3); }
 
+/* Broker-owned employee access administration */
+.access-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 15px; }
+.access-metrics article { min-height: 105px; display: flex; flex-direction: column; padding: 15px 17px; border-top: 3px solid var(--fx-teal); }
+.access-metrics small { color: var(--fx-text-3); font-size: 9px; font-weight: 850; letter-spacing: .08em; }
+.access-metrics b { margin-top: 11px; font-family: var(--font-mono); font-size: 23px; }
+.access-metrics span { margin-top: 4px; color: var(--fx-text-3); font-size: 10.5px; }
+.access-team-panel { margin-bottom: 15px; }
+.access-team-panel .panel-head { min-height: 72px; }
+.access-filters { width: min(590px, 65%); display: grid; grid-template-columns: minmax(220px,1fr) 155px; gap: 9px; }
+.access-filters input { min-height: 38px; padding: 0 11px; border: 1px solid var(--fx-line); border-radius: 10px; outline: 0; background: var(--fx-sunken); color: var(--fx-text); font: inherit; }
+.access-filters input:focus { border-color: #78c8c3; box-shadow: 0 0 0 3px rgba(20,211,200,.1); }
+.access-team-table { min-width: 950px; }
+.access-team-table th:nth-child(1) { width: 28%; }
+.access-team-table th:nth-child(2) { width: 13%; }
+.access-team-table th:nth-child(3) { width: 17%; }
+.access-team-table th:nth-child(4) { width: 10%; }
+.access-team-table th:nth-child(5) { width: 14%; }
+.access-team-table td { vertical-align: middle; }
+.access-team-table td > b, .access-team-table td > small { display: block; }
+.access-team-table td > small { margin-top: 4px; color: var(--fx-text-3); font-size: 9.5px; }
+.access-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.access-person > i { width: 36px; height: 36px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: var(--fx-accent-soft); color: var(--fx-teal); font-style: normal; font-size: 10.5px; font-weight: 850; }
+.access-person > span { min-width: 0; display: flex; flex-direction: column; }
+.access-person b { font-size: 11.5px; }
+.access-person small { margin-top: 3px; overflow: hidden; color: var(--fx-text-3); font-family: var(--font-mono); font-size: 8.8px; text-overflow: ellipsis; white-space: nowrap; }
+.access-person em { margin-top: 3px; color: var(--fx-text-2); font-size: 9px; font-style: normal; }
+.access-team-table .bselect { width: 100%; }
+.access-row-actions { display: flex; align-items: flex-start; flex-direction: column; gap: 6px; }
+.access-row-actions button { padding: 0; border: 0; background: transparent; color: var(--fx-teal); cursor: pointer; font: 750 9.5px var(--font-body); text-align: left; }
+.access-row-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.access-row-actions .danger-link { color: var(--fx-red); }
+.access-empty { display: flex; flex-direction: column; align-items: center; padding: 42px; color: var(--fx-text-3); }
+.access-empty b { color: var(--fx-text); }
+.access-empty span { margin-top: 5px; font-size: 10.5px; }
+.broker-access-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 22px; background: rgba(3,31,34,.52); backdrop-filter: blur(3px); }
+.broker-access-dialog { width: min(470px,100%); max-height: calc(100vh - 44px); overflow-y: auto; padding: 25px; border: 1px solid var(--fx-line); border-radius: 20px; background: var(--fx-card); box-shadow: 0 28px 80px rgba(0,23,27,.35); }
+.invite-employee-dialog { width: min(720px,100%); }
+.broker-access-dialog > span { color: var(--fx-teal); font-size: 9px; font-weight: 850; letter-spacing: .1em; }
+.broker-access-dialog h2 { margin: 6px 0 7px; font-size: 20px; }
+.broker-access-dialog > p { margin: 0 0 18px; color: var(--fx-text-3); font-size: 10.5px; line-height: 1.55; }
+.broker-access-dialog label { display: flex; flex-direction: column; gap: 6px; color: var(--fx-text-2); font-size: 9.5px; font-weight: 750; }
+.broker-access-dialog input, .broker-access-dialog textarea { width: 100%; min-height: 41px; padding: 9px 11px; border: 1px solid var(--fx-line); border-radius: 10px; outline: 0; background: var(--fx-sunken); color: var(--fx-text); font: 11px var(--font-body); }
+.broker-access-dialog textarea { resize: vertical; line-height: 1.45; }
+.broker-access-dialog input:focus, .broker-access-dialog textarea:focus { border-color: #78c8c3; box-shadow: 0 0 0 3px rgba(20,211,200,.1); }
+.access-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.access-form-grid .bselect { width: 100%; }
+.access-risk-note { display: flex; flex-direction: column; margin-top: 13px; padding: 11px 12px; border-left: 3px solid var(--fx-amber); border-radius: 8px; background: var(--fx-amber-soft); }
+.access-risk-note b { color: var(--fx-amber); font-size: 10px; }
+.access-risk-note span { margin-top: 3px; color: var(--fx-text-2); font-size: 9.5px; line-height: 1.45; }
+.access-form-error { margin-top: 12px; padding: 10px; border-radius: 8px; background: var(--fx-red-soft); color: var(--fx-red); font-size: 10px; }
+.broker-access-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.broker-access-toast { position: fixed; right: 24px; bottom: 24px; z-index: 100; max-width: 420px; display: flex; align-items: center; gap: 10px; padding: 13px 15px; border: 1px solid var(--fx-line); border-radius: 13px; background: var(--fx-card); box-shadow: 0 15px 40px rgba(5,35,38,.2); color: var(--fx-text-2); font-size: 10.5px; }
+.broker-access-toast i { width: 24px; height: 24px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--fx-green-soft); color: var(--fx-green); font-style: normal; font-weight: 850; }
+@media (max-width: 1000px) { .access-metrics { grid-template-columns: 1fr 1fr; }.access-team-panel .panel-head { align-items: flex-start; flex-direction: column; }.access-filters { width: 100%; } }
+@media (max-width: 620px) { .access-metrics, .access-form-grid { grid-template-columns: 1fr; }.access-filters { grid-template-columns: 1fr; }.broker-access-dialog { padding: 20px; }.broker-access-dialog footer { flex-direction: column-reverse; }.broker-access-dialog footer .btn { width: 100%; }.broker-access-toast { right: 14px; bottom: 14px; left: 14px; } }
+
 /* Client conversations (CRM) - split inbox, message thread, composer */
 .crm-metrics { grid-template-columns: repeat(4, minmax(0,1fr)); }
 .crm-split { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 15px; align-items: start; }

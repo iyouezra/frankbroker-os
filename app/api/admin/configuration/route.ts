@@ -7,12 +7,8 @@ import { apiError as routeError } from "../../../../lib/api";
 export const runtime = "nodejs";
 
 const roleToUi: Record<string, string> = {
-  broker_admin: "Broker admin", trader: "Trader", compliance: "Compliance",
-  settlement: "Settlement", management: "Read only", operations: "Read only",
-};
-const roleToDb: Record<string, string> = {
-  "Broker admin": "broker_admin", Trader: "trader", Compliance: "compliance",
-  Settlement: "settlement", "Read only": "management",
+  access_admin: "Access admin", broker_admin: "Broker admin", trader: "Trader", operations: "Operations", compliance: "Compliance",
+  settlement: "Settlement", relationship_officer: "Relationship", service_officer: "Client service", management: "Read only",
 };
 const title = (value: string) => value.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 const dateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -158,7 +154,8 @@ export async function GET(request: Request) {
       };
     });
     const users = brokers.flatMap((broker) => broker.users.map((user) => ({
-      id: user.id, tenantId: broker.id, name: user.fullName, email: user.email,
+      id: user.id, tenantId: broker.id, employeeId: user.employeeId ?? "—", name: user.fullName, email: user.email,
+      jobTitle: user.jobTitle ?? "", department: user.department ?? "",
       role: roleToUi[user.role] ?? title(user.role), status: title(user.status), mfa: user.mfaEnabled,
       lastActive: user.lastLoginAt ? user.lastLoginAt.toISOString() : "Not yet",
     })));
@@ -256,12 +253,13 @@ export async function PATCH(request: Request) {
     }
 
     if (payload.entity === "user") {
-      const update: { status?: string; role?: string; mfaEnabled?: boolean } = {};
-      if (typeof payload.data.status === "string") update.status = payload.data.status.toLowerCase();
-      if (typeof payload.data.role === "string") update.role = roleToDb[payload.data.role] ?? payload.data.role.toLowerCase();
-      if (typeof payload.data.mfa === "boolean") update.mfaEnabled = payload.data.mfa;
-      const user = await prisma.user.update({ where: { id: payload.id }, data: update });
-      await audit(user.brokerId, "USER_UPDATED", "user", user.id, `${user.fullName} access updated`, null, payload.data);
+      const current = await prisma.user.findUnique({ where: { id: payload.id } });
+      if (!current) return Response.json({ error: "User not found." }, { status: 404 });
+      const action = String(payload.data.action ?? "");
+      const reason = String(payload.data.reason ?? "").trim();
+      if (action !== "emergency_suspend" || reason.length < 5) return Response.json({ error: "Platform users may only perform a reasoned emergency suspension. Routine access is broker-managed." }, { status: 403 });
+      const user = await prisma.user.update({ where: { id: payload.id }, data: { status: "suspended", deactivatedAt: new Date() } });
+      await prisma.auditLog.create({ data: { id: crypto.randomUUID(), brokerId: user.brokerId, actorId: null, action: "PLATFORM_EMERGENCY_USER_SUSPENSION", entityType: "user", entityId: user.id, summary: `${user.fullName} access emergency-suspended by Frank`, reason } });
       return Response.json({ ok: true });
     }
 
@@ -409,12 +407,23 @@ export async function POST(request: Request) {
       return Response.json({ platformFeeSchedule: { id, version, effectiveFrom } }, { status: 201 });
     }
     if (payload.entity !== "user") return Response.json({ error: "Unsupported configuration entity." }, { status: 400 });
+    const brokerId = String(data.tenantId ?? "");
+    const employeeId = String(data.employeeId ?? "").trim().toUpperCase();
+    const authorizationReference = String(data.authorizationReference ?? "").trim();
+    if (!brokerId || !/^[A-Za-z0-9][A-Za-z0-9._/-]{1,39}$/.test(employeeId) || String(data.name ?? "").trim().length < 3 || !String(data.email ?? "").includes("@") || !String(data.jobTitle ?? "").trim() || !String(data.department ?? "").trim() || authorizationReference.length < 5) {
+      return Response.json({ error: "Tenant, employee ID, name, work email, job title, department, and authorized-request reference are required." }, { status: 400 });
+    }
+    const activeAccessAdmins = await prisma.user.count({ where: { brokerId, role: "access_admin", status: { in: ["active", "invited"] } } });
+    if (activeAccessAdmins >= 2) return Response.json({ error: "This tenant already has two active or invited access administrators. Use the recovery workflow to replace one." }, { status: 409 });
     const id = String(data.id ?? `usr_${crypto.randomUUID().slice(0, 10)}`);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const user = await prisma.user.create({ data: {
-      id, brokerId: String(data.tenantId), email: String(data.email), fullName: String(data.name),
-      role: roleToDb[String(data.role)] ?? "management", status: "invited", mfaEnabled: Boolean(data.mfa),
+      id, brokerId, employeeId, email: String(data.email).trim().toLowerCase(), fullName: String(data.name).trim(),
+      jobTitle: String(data.jobTitle ?? "Access Administrator").trim(), department: String(data.department ?? "").trim(),
+      role: "access_admin", status: "invited", mfaEnabled: false, authProvider: "pending", invitedAt: new Date(), invitationExpiresAt: expiresAt,
+      accessReviewDueAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
     } });
-    await audit(user.brokerId, "USER_INVITED", "user", user.id, `${user.fullName} invited as ${String(data.role)}`);
+    await prisma.auditLog.create({ data: { id: crypto.randomUUID(), brokerId: user.brokerId, actorId: null, action: "ACCESS_ADMIN_BOOTSTRAPPED", entityType: "user", entityId: user.id, summary: `${user.fullName} (${employeeId}) bootstrapped as broker access administrator`, reason: authorizationReference, newValue: JSON.stringify({ employeeId, email: user.email, role: "access_admin" }) } });
     return Response.json({ user: { id: user.id } }, { status: 201 });
   } catch (error) { return routeError(error); }
 }

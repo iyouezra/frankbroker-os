@@ -59,7 +59,7 @@ The schema is in `prisma/schema.prisma`; the repeatable demonstration seed is in
 
 ## Roles
 
-The MVP exposes Broker admin, Trader/dealer, Operations, Compliance, Settlement, Management, and Frank super-admin views. The role selector and `x-frank-demo-role` header are demonstration controls, not production authentication.
+The MVP exposes a non-operational Broker access admin plus Broker admin, Trader/dealer, Operations, Compliance, Settlement, Relationship, Client service, Management, and Frank super-admin views. Frank bootstraps up to two broker access administrators; those administrators manage ordinary employee invitations, roles, password-reset requests, suspensions, and restorations inside their tenant. The role selector and `x-frank-demo-role` header are demonstration controls, not production authentication.
 
 Keep any public deployment protected until verified server-side authentication and user provisioning are implemented. Before live brokerage use, also complete threat modeling, penetration testing, segregation-of-duties controls, configurable fees and limits, secrets management, backup and recovery procedures, regulatory review, and independent ledger/reconciliation validation.
 

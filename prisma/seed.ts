@@ -25,16 +25,18 @@ async function main() {
 
   await prisma.user.createMany({
     data: [
-      { id: "usr_demo_admin", brokerId: "brk_abyssinia", email: "demo.admin@frankbroker.et", fullName: "Mekdes Tadesse", role: "broker_admin", status: "active" },
-      { id: "usr_trader", brokerId: "brk_abyssinia", email: "dawit@frankbroker.et", fullName: "Dawit Alemu", role: "trader", status: "active" },
-      { id: "usr_operations", brokerId: "brk_abyssinia", email: "hana@frankbroker.et", fullName: "Hana Kebede", role: "operations", status: "active" },
-      { id: "usr_compliance", brokerId: "brk_abyssinia", email: "liya@frankbroker.et", fullName: "Liya Girma", role: "compliance", status: "active" },
-      { id: "usr_settlement", brokerId: "brk_abyssinia", email: "rahel@frankbroker.et", fullName: "Rahel Getachew", role: "settlement", status: "active" },
-      { id: "usr_relationship", brokerId: "brk_abyssinia", email: "kalkidan@frankbroker.et", fullName: "Kalkidan Alemu", role: "relationship_officer", status: "active" },
-      { id: "usr_service", brokerId: "brk_abyssinia", email: "bethel@frankbroker.et", fullName: "Bethel Tesfaye", role: "service_officer", status: "active" },
+      { id: "usr_access_admin", brokerId: "brk_abyssinia", employeeId: "ABS-0012", email: "access.admin@frankbroker.et", fullName: "Sara Alemayehu", jobTitle: "People Operations Lead", department: "People & Operations", role: "access_admin", status: "active", mfaEnabled: true, accessReviewDueAt: new Date("2026-10-01T00:00:00Z") },
+      { id: "usr_access_admin_backup", brokerId: "brk_abyssinia", employeeId: "ABS-0031", email: "access.backup@frankbroker.et", fullName: "Nahom Bekele", jobTitle: "Information Security Lead", department: "Technology", role: "access_admin", status: "active", mfaEnabled: true, accessReviewDueAt: new Date("2026-10-01T00:00:00Z") },
+      { id: "usr_demo_admin", brokerId: "brk_abyssinia", employeeId: "ABS-0004", email: "demo.admin@frankbroker.et", fullName: "Mekdes Tadesse", jobTitle: "Brokerage Operations Director", department: "Operations", role: "broker_admin", status: "active" },
+      { id: "usr_trader", brokerId: "brk_abyssinia", employeeId: "ABS-0107", email: "dawit@frankbroker.et", fullName: "Dawit Alemu", jobTitle: "Senior Trader", department: "Trading", role: "trader", status: "active" },
+      { id: "usr_operations", brokerId: "brk_abyssinia", employeeId: "ABS-0142", email: "hana@frankbroker.et", fullName: "Hana Kebede", jobTitle: "Operations Officer", department: "Operations", role: "operations", status: "active" },
+      { id: "usr_compliance", brokerId: "brk_abyssinia", employeeId: "ABS-0063", email: "liya@frankbroker.et", fullName: "Liya Girma", jobTitle: "Compliance Officer", department: "Compliance", role: "compliance", status: "active" },
+      { id: "usr_settlement", brokerId: "brk_abyssinia", employeeId: "ABS-0088", email: "rahel@frankbroker.et", fullName: "Rahel Getachew", jobTitle: "Settlement Officer", department: "Post-trade", role: "settlement", status: "active" },
+      { id: "usr_relationship", brokerId: "brk_abyssinia", employeeId: "ABS-0164", email: "kalkidan@frankbroker.et", fullName: "Kalkidan Alemu", jobTitle: "Relationship Officer", department: "Client Services", role: "relationship_officer", status: "active" },
+      { id: "usr_service", brokerId: "brk_abyssinia", employeeId: "ABS-0171", email: "bethel@frankbroker.et", fullName: "Bethel Tesfaye", jobTitle: "Client Service Officer", department: "Client Services", role: "service_officer", status: "active" },
       { id: "usr_platform_admin", brokerId: null, email: "platform.admin@frankmoney.et", fullName: "Fikru Yilma", role: "super_admin", status: "active", mfaEnabled: true },
-      { id: "usr_blue_admin", brokerId: "brk_blue_nile", email: "samuel@bluenile.example", fullName: "Samuel Kebede", role: "broker_admin", status: "active", mfaEnabled: true },
-      { id: "usr_sheba_admin", brokerId: "brk_sheba", email: "abel@sheba.example", fullName: "Abel Yohannes", role: "broker_admin", status: "suspended", mfaEnabled: true },
+      { id: "usr_blue_admin", brokerId: "brk_blue_nile", employeeId: "BNC-0001", email: "samuel@bluenile.example", fullName: "Samuel Kebede", jobTitle: "Access Administrator", department: "Operations", role: "access_admin", status: "active", mfaEnabled: true },
+      { id: "usr_sheba_admin", brokerId: "brk_sheba", employeeId: "SIS-0001", email: "abel@sheba.example", fullName: "Abel Yohannes", jobTitle: "Access Administrator", department: "Operations", role: "access_admin", status: "suspended", mfaEnabled: true },
     ],
     skipDuplicates: true,
   });

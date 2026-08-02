@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { roleLabels, workflowPermissions, type Role } from "../../../lib/frank";
-import { BROKER_TENANT_ID, SectionHeader, etb, roleNames } from "../shared/broker-foundation";
+import { BROKER_ASSIGNABLE_ROLES, fallbackBrokerUsers, formatAccessDate, type BrokerAssignableRole, type BrokerUserAccess } from "../../../lib/user-access";
+import { BrandSelect } from "../../shared/brand-select";
+import { BROKER_TENANT_ID, SectionHeader, etb } from "../shared/broker-foundation";
 
 type SettingsFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
 type SettingsControls = { brokerageFeePct: number; minimumFee: number; approvalThreshold: number; clientDailyLimit: number; makerChecker: boolean; allowedOrderTypes: string[]; settlementCycle: string; feeRules: SettingsFeeRule[]; feeScheduleVersion: string; feeScheduleEffectiveFrom: string | null; regulatoryFeeScheduleVersion: string };
-const STAFF_ROLES: Role[] = ["broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "management"];
+const STAFF_ROLES: Role[] = ["access_admin", "broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "management"];
 const PERMISSION_COLUMNS: [string, string][] = [["create", "Create"], ["approve", "Approve"], ["reject", "Reject"], ["trade", "Trade"], ["settle", "Settle"], ["adjust", "Adjust"], ["report", "Report"]];
 // Client-service rights are shown in their own matrix so neither table becomes too wide to scan.
 const CRM_PERMISSION_COLUMNS: [string, string][] = [["crm.thread.view", "View"], ["crm.thread.create", "Start"], ["crm.thread.reply", "Reply"], ["crm.thread.note", "Note"], ["crm.thread.assign", "Assign"], ["crm.thread.status", "Status"], ["crm.thread.priority", "Priority"]];
-const ALL_PERMISSION_COLUMNS = [...PERMISSION_COLUMNS, ...CRM_PERMISSION_COLUMNS];
-const grantedCount = (staffRole: Role) => ALL_PERMISSION_COLUMNS.filter(([key]) => workflowPermissions[staffRole].includes(key)).length;
 const FEATURE_LABELS: Record<string, string> = { investorPortal: "Investor portal", selfDirected: "Self-directed investing", bonds: "Government bonds", recurringInvestments: "Recurring investments", institutionalAccounts: "Institutional accounts", manualTradeCapture: "Manual trade capture" };
 
 export function SettingsPage() {
@@ -71,13 +71,78 @@ export function SettingsPage() {
 }
 
 export function UsersPage({ role }: { role: Role }) {
+  const canManage = role === "access_admin";
+  const [users, setUsers] = useState<BrokerUserAccess[]>(fallbackBrokerUsers);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState("");
+  const [pending, setPending] = useState<{ user: BrokerUserAccess; action: "reset_password" | "suspend" | "restore" | "change_role"; nextRole?: BrokerAssignableRole } | null>(null);
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/users", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
+      .then((data: { users?: BrokerUserAccess[] }) => { if (data.users?.length) setUsers(data.users); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [role]);
+
+  const visible = useMemo(() => users.filter((user) => {
+    const haystack = `${user.employeeId} ${user.fullName} ${user.email} ${user.jobTitle} ${user.department} ${roleLabels[user.role]}`.toLowerCase();
+    return haystack.includes(query.trim().toLowerCase()) && (statusFilter === "all" || user.status === statusFilter);
+  }), [query, statusFilter, users]);
+  const active = users.filter((user) => user.status === "active").length;
+  const pendingInvites = users.filter((user) => user.status === "invited").length;
+  const resetPending = users.filter((user) => user.passwordResetRequired).length;
+  const mfaCoverage = active ? Math.round(users.filter((user) => user.status === "active" && user.mfaEnabled).length / active * 100) : 0;
+  const flash = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 4000); };
+  const replaceUser = (next: BrokerUserAccess) => setUsers((current) => current.map((item) => item.id === next.id ? next : item));
+
+  const applyOfflineAction = (item: BrokerUserAccess, action: string, nextRole?: BrokerAssignableRole): BrokerUserAccess => {
+    const now = new Date().toISOString();
+    if (action === "reset_password") return { ...item, passwordResetRequired: true, passwordResetRequestedAt: now };
+    if (action === "suspend") return { ...item, status: "suspended" };
+    if (action === "restore") return { ...item, status: "active" };
+    if (action === "change_role" && nextRole) return { ...item, role: nextRole };
+    return { ...item, invitedAt: now, invitationExpiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
+  };
+  const runAction = async (item: BrokerUserAccess, action: "reset_password" | "suspend" | "restore" | "change_role" | "resend_invite", actionReason: string, nextRole?: BrokerAssignableRole) => {
+    setBusy(`${action}:${item.id}`);
+    try {
+      const response = await fetch("/api/users", { method: "PATCH", headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": "access_admin" }, body: JSON.stringify({ id: item.id, action, reason: actionReason, role: nextRole }) });
+      const result = await response.json().catch(() => ({})) as { user?: BrokerUserAccess; error?: string; delivery?: "sent" | "deferred" };
+      if (!response.ok) throw new Error(result.error ?? "Unable to update access.");
+      if (result.user) replaceUser(result.user);
+      flash(action === "reset_password" && result.delivery === "deferred" ? "Password reset recorded. Delivery will activate with the identity provider." : action === "resend_invite" && result.delivery === "deferred" ? "Invitation renewed. Delivery will activate with the identity provider." : "Access change recorded and audit logged.");
+    } catch (error) {
+      replaceUser(applyOfflineAction(item, action, nextRole));
+      flash(error instanceof Error && !error.message.includes("fetch") ? error.message : "Access change recorded in the offline demo.");
+    } finally { setBusy(""); setPending(null); setReason(""); }
+  };
+
   return <>
-    <SectionHeader eyebrow="ADMINISTRATION" title="Users &amp; roles" copy="Who can access this workspace, and what each role is permitted to do." />
-    <div className="settings-banner"><span>PLATFORM MANAGED</span><p>User accounts are provisioned by your Frank platform administrator. Contact them to invite a colleague, change a role, or suspend access.</p></div>
-    <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">ACCESS</span><h2>Team</h2></div><span className="account-number">{STAFF_ROLES.length} users</span></div>
-      <div className="table-scroll"><table><thead><tr><th>User</th><th>Role</th><th className="num">Permissions</th><th>Status</th></tr></thead><tbody>
-        {STAFF_ROLES.map((staffRole) => <tr key={staffRole}><td><b>{roleNames[staffRole]}</b>{staffRole === role && <small>You</small>}</td><td>{roleLabels[staffRole]}</td><td className="num">{grantedCount(staffRole)} of {ALL_PERMISSION_COLUMNS.length}</td><td><span className="status status-success"><i />Active</span></td></tr>)}
+    <SectionHeader eyebrow="ACCESS ADMINISTRATION" title="Employees &amp; access" copy="Your brokerage owns employee invitations, role assignment, password recovery, and access removal." action={canManage ? <button className="btn primary" onClick={() => setInviteOpen(true)}>＋ Invite employee</button> : undefined} />
+    <div className="settings-banner"><span>BROKER MANAGED</span><p>{canManage ? "You can manage ordinary employee access. Frank can view access health but intervenes only for access-admin bootstrap or recovery." : "Broker access administrators manage employee access. This operational administrator view is read-only."}</p></div>
+    <div className="access-metrics">
+      <article className="panel"><small>ACTIVE EMPLOYEES</small><b>{active}</b><span>{users.length} total records</span></article>
+      <article className="panel"><small>MFA READINESS</small><b>{mfaCoverage}%</b><span>Enforced when identity is connected</span></article>
+      <article className="panel"><small>PENDING INVITATIONS</small><b>{pendingInvites}</b><span>Seven-day invitation window</span></article>
+      <article className="panel"><small>RESET REQUESTS</small><b>{resetPending}</b><span>Awaiting identity-provider completion</span></article>
+    </div>
+    <section className="panel table-panel access-team-panel">
+      <div className="panel-head"><div><span className="eyebrow">EMPLOYEE DIRECTORY</span><h2>Workspace access</h2></div><div className="access-filters"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee ID, name or role…" aria-label="Search employees" /><BrandSelect value={statusFilter} onChange={setStatusFilter} ariaLabel="Access status" options={[{ value: "all", label: "All statuses" }, { value: "active", label: "Active" }, { value: "invited", label: "Invited" }, { value: "suspended", label: "Suspended" }]} /></div></div>
+      <div className="table-scroll"><table className="access-team-table"><thead><tr><th>Employee</th><th>Department</th><th>Role</th><th>Status</th><th>Last active</th><th>Actions</th></tr></thead><tbody>
+        {visible.map((user) => {
+          const protectedAdmin = user.role === "access_admin";
+          const statusTone = user.status === "active" ? "success" : user.status === "invited" ? "warning" : "danger";
+          return <tr key={user.id}><td><span className="access-person"><i>{user.fullName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</i><span><b>{user.fullName}</b><small>{user.employeeId} · {user.email}</small><em>{user.jobTitle}</em></span></span></td><td><b>{user.department || "—"}</b><small>{user.mfaEnabled ? "MFA ready" : "MFA pending"}</small></td><td><BrandSelect value={user.role} disabled={!canManage || protectedAdmin || user.status === "suspended"} onChange={(next) => setPending({ user, action: "change_role", nextRole: next as BrokerAssignableRole })} ariaLabel={`${user.fullName} role`} options={protectedAdmin ? [{ value: "access_admin", label: roleLabels.access_admin }] : BROKER_ASSIGNABLE_ROLES.map((item) => ({ value: item, label: roleLabels[item] }))} />{protectedAdmin && <small>Frank recovery controlled</small>}</td><td><span className={`status status-${statusTone}`}><i />{user.status === "active" ? "Active" : user.status === "invited" ? "Invited" : "Suspended"}</span>{user.passwordResetRequired && <small>Reset requested</small>}</td><td><b>{formatAccessDate(user.lastLoginAt)}</b><small>{user.accessReviewDueAt ? `Review ${formatAccessDate(user.accessReviewDueAt)}` : "Review not scheduled"}</small></td><td><div className="access-row-actions">{canManage && <>{user.status === "invited" ? <button disabled={Boolean(busy)} onClick={() => void runAction(user, "resend_invite", "Invitation renewed by access administrator")}>Resend invite</button> : <button disabled={Boolean(busy)} onClick={() => setPending({ user, action: "reset_password" })}>Reset password</button>}{!protectedAdmin && user.status !== "invited" && <button className={user.status === "suspended" ? "" : "danger-link"} disabled={Boolean(busy)} onClick={() => setPending({ user, action: user.status === "suspended" ? "restore" : "suspend" })}>{user.status === "suspended" ? "Restore" : "Suspend"}</button>}</>}</div></td></tr>;
+        })}
+        {!visible.length && <tr><td colSpan={6}><div className="access-empty"><b>No employees match these filters</b><span>Try another employee ID, name, role, or status.</span></div></td></tr>}
       </tbody></table></div>
+      <div className="settings-note">Access-admin appointments and recovery are protected platform workflows. Every invitation, role change, reset request, suspension, and restoration is recorded in the tenant audit trail.</div>
     </section>
     <section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CONTROL MATRIX</span><h2>Trading &amp; operations</h2></div></div>
       <div className="table-scroll"><table><thead><tr><th>Role</th>{PERMISSION_COLUMNS.map(([key, label]) => <th key={key} className="num">{label}</th>)}</tr></thead><tbody>
@@ -91,5 +156,40 @@ export function UsersPage({ role }: { role: Role }) {
       </tbody></table></div>
       <div className="settings-note">Replying to an investor is separate from adding an internal note. Internal notes are never shown to investors.</div>
     </section>
+    {inviteOpen && <InviteEmployeeDialog onClose={() => setInviteOpen(false)} onInvited={(user, delivery) => { setUsers((current) => [...current, user]); setInviteOpen(false); flash(delivery === "deferred" ? "Employee recorded. Invitation delivery will activate with the identity provider." : "Employee invited and audit logged."); }} />}
+    {pending && <AccessActionDialog pending={pending} reason={reason} setReason={setReason} busy={Boolean(busy)} onClose={() => { setPending(null); setReason(""); }} onConfirm={() => void runAction(pending.user, pending.action, reason, pending.nextRole)} />}
+    {notice && <div className="broker-access-toast" role="status"><i>✓</i><span>{notice}</span></div>}
   </>;
+}
+
+function InviteEmployeeDialog({ onClose, onInvited }: { onClose: () => void; onInvited: (user: BrokerUserAccess, delivery?: "sent" | "deferred") => void }) {
+  const [value, setValue] = useState({ employeeId: "", fullName: "", email: "", jobTitle: "", department: "", role: "operations" as BrokerAssignableRole, reason: "New employee access" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const set = (key: keyof typeof value, next: string) => setValue((current) => ({ ...current, [key]: next }));
+  const valid = /^[A-Za-z0-9][A-Za-z0-9._/-]{1,39}$/.test(value.employeeId.trim()) && value.fullName.trim().length >= 3 && value.email.includes("@") && Boolean(value.jobTitle.trim()) && Boolean(value.department.trim());
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); if (!valid) return; setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/users", { method: "POST", headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": "access_admin" }, body: JSON.stringify(value) });
+      const result = await response.json().catch(() => ({})) as { user?: BrokerUserAccess; error?: string; delivery?: "sent" | "deferred" };
+      if (!response.ok || !result.user) throw new Error(result.error ?? "Unable to invite employee.");
+      onInvited(result.user, result.delivery);
+    } catch (caught) {
+      if (caught instanceof Error && !caught.message.includes("fetch")) setError(caught.message);
+      else onInvited({ id: `usr_${Date.now()}`, employeeId: value.employeeId.toUpperCase(), fullName: value.fullName, email: value.email.toLowerCase(), jobTitle: value.jobTitle, department: value.department, role: value.role, status: "invited", mfaEnabled: false, authProvider: "pending", lastLoginAt: null, invitedAt: new Date().toISOString(), invitationExpiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), passwordResetRequired: false, passwordResetRequestedAt: null, accessReviewDueAt: new Date(Date.now() + 90 * 86400000).toISOString() }, "deferred");
+    } finally { setBusy(false); }
+  };
+  return <div className="broker-access-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><form className="broker-access-dialog invite-employee-dialog" onSubmit={(event) => void submit(event)}><span>NEW EMPLOYEE ACCESS</span><h2>Invite an employee</h2><p>Record the employee identity and assign one role. Access-admin appointments remain a Frank recovery-controlled workflow.</p><div className="access-form-grid"><label><span>Employee ID</span><input autoFocus value={value.employeeId} onChange={(event) => set("employeeId", event.target.value.toUpperCase())} placeholder="e.g. ABS-0184" /></label><label><span>Full legal name</span><input value={value.fullName} onChange={(event) => set("fullName", event.target.value)} placeholder="Employee name" /></label><label><span>Work email</span><input type="email" value={value.email} onChange={(event) => set("email", event.target.value)} placeholder="name@broker.et" /></label><label><span>Job title</span><input value={value.jobTitle} onChange={(event) => set("jobTitle", event.target.value)} placeholder="Operations Officer" /></label><label><span>Department</span><input value={value.department} onChange={(event) => set("department", event.target.value)} placeholder="Operations" /></label><label><span>Workspace role</span><BrandSelect value={value.role} onChange={(next) => setValue((current) => ({ ...current, role: next as BrokerAssignableRole }))} ariaLabel="Workspace role" options={BROKER_ASSIGNABLE_ROLES.map((item) => ({ value: item, label: roleLabels[item] }))} /></label></div>{value.role === "broker_admin" && <div className="access-risk-note"><b>Broad operational role</b><span>This role can create, approve, trade, settle, and adjust. Use a specialist role wherever possible.</span></div>}{error && <div className="access-form-error">{error}</div>}<footer><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!valid || busy}>{busy ? "Recording…" : "Record invitation"}</button></footer></form></div>;
+}
+
+function AccessActionDialog({ pending, reason, setReason, busy, onClose, onConfirm }: { pending: { user: BrokerUserAccess; action: "reset_password" | "suspend" | "restore" | "change_role"; nextRole?: BrokerAssignableRole }; reason: string; setReason: (value: string) => void; busy: boolean; onClose: () => void; onConfirm: () => void }) {
+  const labels = { reset_password: "Reset password", suspend: "Suspend access", restore: "Restore access", change_role: "Change employee role" } as const;
+  const descriptions = {
+    reset_password: "This invalidates the employee's current password when authentication is connected and records a reset request now.",
+    suspend: "The employee will be blocked from the broker workspace. Existing audit history remains intact.",
+    restore: "The employee's workspace access will be restored and a new access-review date scheduled.",
+    change_role: `Change from ${roleLabels[pending.user.role]} to ${pending.nextRole ? roleLabels[pending.nextRole] : "the selected role"}.`,
+  } as const;
+  return <div className="broker-access-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><section className="broker-access-dialog"><span>CONTROLLED ACCESS CHANGE</span><h2>{labels[pending.action]}</h2><p><b>{pending.user.fullName}</b> · {pending.user.employeeId}<br />{descriptions[pending.action]}</p><label><span>Reason for audit trail</span><textarea autoFocus rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Record the business or support reason…" /></label><footer><button className="btn secondary" disabled={busy} onClick={onClose}>Cancel</button><button className={`btn ${pending.action === "suspend" ? "danger" : "primary"}`} disabled={reason.trim().length < 5 || busy} onClick={onConfirm}>{busy ? "Recording…" : labels[pending.action]}</button></footer></section></div>;
 }
