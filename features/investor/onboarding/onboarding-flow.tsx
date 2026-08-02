@@ -71,6 +71,7 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
   const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid && emailValid;
   const identityStepValid = faydaValid
     && tinValid
+    && profile.pepStatus !== "not_declared"
     && (profile.accountType === "retail" || (profile.address.trim().length >= 4 && profile.registrationNumber.trim().length >= 4 && profile.representativeName.trim().length >= 3 && profile.beneficialOwnerName.trim().length >= 3));
   const bankStepValid = linkedBanks.length > 0 && linkedBanks.length <= 3 && linkedBanks.every((account) =>
     account.bankName.trim().length > 0
@@ -123,6 +124,7 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
       </>}
       <div><dt>Fayda ID</dt><dd>{masked(profile.faydaId)}</dd></div>
       <div><dt>TIN</dt><dd>{masked(profile.tin)}</dd></div>
+      <div><dt>PEP declaration</dt><dd>{profile.pepStatus === "not_pep" ? "No PEP connection declared" : profile.pepStatus === "pep" ? "PEP declared" : "Family member / close associate declared"}</dd></div>
       {profile.accountType === "retail"
         ? <div><dt>Address evidence</dt><dd>{profile.proofOfAddressType}{profile.proofOfAddressReference ? ` · ${profile.proofOfAddressReference}` : ""}</dd></div>
         : <div><dt>Documents</dt><dd>{[businessLicenseFile, tinCertificateFile, certificateOfIncorporationFile, articleOfAssociationFile].filter(Boolean).length} of 4 uploaded</dd></div>}
@@ -166,6 +168,21 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
         <KycField label="Authorized representative" value={profile.representativeName} onChange={(value) => update("representativeName", value)} placeholder="Full legal name" />
         <KycField label="Beneficial owner / controller" value={profile.beneficialOwnerName} onChange={(value) => update("beneficialOwnerName", value)} placeholder="Primary declared owner or controller" />
       </>}
+      <label className={styles.formField}>
+        <span>{profile.accountType === "retail" ? "Politically exposed person (PEP) declaration" : "PEP connection to the institution"}</span>
+        <BrandSelect value={profile.pepStatus} onChange={(next) => update("pepStatus", next)} ariaLabel="Politically exposed person declaration" options={profile.accountType === "retail" ? [
+          { value: "not_declared", label: "Select an answer" },
+          { value: "not_pep", label: "I am not a PEP" },
+          { value: "pep", label: "I am a PEP" },
+          { value: "related_to_pep", label: "I am a family member or close associate of a PEP" },
+        ] : [
+          { value: "not_declared", label: "Select an answer" },
+          { value: "not_pep", label: "No connected person is a PEP" },
+          { value: "pep", label: "A connected person is a PEP" },
+          { value: "related_to_pep", label: "A connected person is related or closely associated to a PEP" },
+        ]} />
+        <small>{profile.accountType === "retail" ? "This includes current or former prominent public functions, and close family or associates." : "Answer for authorized representatives, beneficial owners, directors, and other people who control the institution."}</small>
+      </label>
       {profile.accountType === "retail" ? <>
         <fieldset className={styles.proofTypeOptions}>
           <legend>Proof of address type</legend>

@@ -381,6 +381,35 @@ model FeeRule {
   @@map("fee_rules")
 }
 
+model PlatformFeeSchedule {
+  id            String            @id
+  name          String
+  version       String            @unique
+  status        String            @default("draft")
+  effectiveFrom DateTime          @map("effective_from") @db.Date
+  effectiveTo   DateTime?         @map("effective_to") @db.Date
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  rules         PlatformFeeRule[]
+
+  @@index([status, effectiveFrom])
+  @@map("platform_fee_schedules")
+}
+
+model PlatformFeeRule {
+  id                    String              @id
+  platformFeeScheduleId String              @map("platform_fee_schedule_id")
+  assetClass            String              @map("asset_class")
+  marketSegment         String              @default("main") @map("market_segment")
+  regulatorPct          Decimal             @default(0) @map("regulator_pct") @db.Decimal(8, 4)
+  exchangePct           Decimal             @default(0) @map("exchange_pct") @db.Decimal(8, 4)
+  csdPct                Decimal             @default(0) @map("csd_pct") @db.Decimal(8, 4)
+  schedule              PlatformFeeSchedule @relation(fields: [platformFeeScheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([platformFeeScheduleId, assetClass, marketSegment])
+  @@map("platform_fee_rules")
+}
+
 model BrokerInstrument {
   id           String     @id
   brokerId     String     @map("broker_id")

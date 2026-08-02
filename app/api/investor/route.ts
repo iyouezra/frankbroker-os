@@ -32,7 +32,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const { brokerId, clientId } = resolveInvestorContext(request);
-    const [broker, client] = await Promise.all([
+    const [broker, client, regulatoryFeeSchedule] = await Promise.all([
       prisma.broker.findUnique({
         where: { id: brokerId },
         include: {
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
             take: 1,
           },
           feeSchedules: {
-            where: { status: "published" },
+            where: { status: "published", effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }] },
             include: { rules: true },
             orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
             take: 1,
@@ -72,6 +72,11 @@ export async function GET(request: Request) {
           documents: { include: { content: { select: { documentId: true } } }, orderBy: { uploadedAt: "desc" } },
           linkedBankAccounts: { orderBy: { createdAt: "asc" } },
         },
+      }),
+      prisma.platformFeeSchedule.findFirst({
+        where: { status: "published", effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }] },
+        include: { rules: true },
+        orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
       }),
     ]);
     if (!broker) return Response.json({ error: "Tenant not found." }, { status: 404 });
@@ -198,17 +203,22 @@ export async function GET(request: Request) {
         feeSchedule: feeSchedule ? {
           id: feeSchedule.id,
           version: feeSchedule.version,
+          regulatoryVersion: regulatoryFeeSchedule?.version ?? "legacy",
           effectiveFrom: feeSchedule.effectiveFrom.toISOString().slice(0, 10),
-          rules: feeSchedule.rules.map((rule) => ({
-            assetClass: rule.assetClass,
-            marketSegment: rule.marketSegment,
-            brokeragePct: toNum(rule.brokeragePct),
-            regulatorPct: toNum(rule.regulatorPct),
-            exchangePct: toNum(rule.exchangePct),
-            csdPct: toNum(rule.csdPct),
-            minimumFee: toNum(rule.minimumFee),
-            maximumFee: rule.maximumFee ? toNum(rule.maximumFee) : null,
-          })),
+          rules: feeSchedule.rules.map((rule) => {
+            const regulatoryRule = regulatoryFeeSchedule?.rules.find((item) => item.assetClass === rule.assetClass && item.marketSegment === rule.marketSegment)
+              ?? regulatoryFeeSchedule?.rules.find((item) => item.assetClass === rule.assetClass);
+            return {
+              assetClass: rule.assetClass,
+              marketSegment: rule.marketSegment,
+              brokeragePct: toNum(rule.brokeragePct),
+              regulatorPct: toNum(regulatoryRule?.regulatorPct ?? rule.regulatorPct),
+              exchangePct: toNum(regulatoryRule?.exchangePct ?? rule.exchangePct),
+              csdPct: toNum(regulatoryRule?.csdPct ?? rule.csdPct),
+              minimumFee: toNum(rule.minimumFee),
+              maximumFee: rule.maximumFee ? toNum(rule.maximumFee) : null,
+            };
+          }),
         } : null,
       },
       profile: client ? {
@@ -445,9 +455,13 @@ export async function POST(request: Request) {
       const email = String(payload.email ?? "").trim();
       const faydaId = String(payload.faydaId ?? "").replace(/\D/g, "");
       const tin = String(payload.tin ?? "").replace(/\D/g, "");
+      const pepStatus = String(payload.pepStatus ?? "not_declared");
       const emailValid = email.length <= 160 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       if (!fullName || fullName.length > 160 || !emailValid || faydaId.length !== 16 || tin.length < 4 || tin.length > 32) {
         return Response.json({ error: "Name, email, a 16-digit Fayda FAN, and TIN are required." }, { status: 400 });
+      }
+      if (!["not_pep", "pep", "related_to_pep"].includes(pepStatus)) {
+        return Response.json({ error: "Complete the politically exposed person declaration before submitting KYC." }, { status: 400 });
       }
       const [client, settings, legalDocument] = await Promise.all([
         prisma.client.findFirst({ where: { id: clientId, brokerId } }),
@@ -502,7 +516,7 @@ export async function POST(request: Request) {
           ? [{ name: String(payload.beneficialOwnerName).trim(), status: "declared" }]
           : undefined,
         kycStatus: "pending_review",
-        riskRating: "standard",
+        riskRating: pepStatus === "not_pep" ? "standard" : "enhanced",
         status: "pending_approval",
         kycConsentAt: new Date(),
         submittedAt: new Date(),
@@ -511,7 +525,7 @@ export async function POST(request: Request) {
         sourceOfFunds: String(payload.sourceOfFunds ?? "").trim() || null,
         investmentObjective: String(payload.investmentObjective ?? "").trim() || null,
         taxResidency: String(payload.taxResidency ?? "Ethiopia").trim(),
-        pepStatus: String(payload.pepStatus ?? "not_pep"),
+        pepStatus,
         nationality: String(payload.nationality ?? "Ethiopian").trim(),
         countryOfResidence: String(payload.countryOfResidence ?? "Ethiopia").trim(),
         occupation: String(payload.occupation ?? "").trim() || null,
@@ -535,23 +549,9 @@ export async function POST(request: Request) {
           && clash.phone?.replace(/\D/g, "") === String(payload.phone ?? "").replace(/\D/g, "");
         if (clash && !resumableApplication) throw new Response("These identity details are already registered with this broker.", { status: 409 });
         await tx.verificationChallenge.update({ where: { id: phoneVerification.id }, data: { status: "consumed", consumedAt: new Date() } });
-        if (resumableApplication) {
-          await writeNotificationOnce(tx, {
-            dedupeKey: `investor-onboarding:${clash.id}`,
-            scope: "broker",
-            brokerId,
-            roles: SERVICE,
-            category: "kyc",
-            severity: "warning",
-            title: "New account application",
-            body: `${clash.fullName} (${clash.clientCode}) is waiting for onboarding review.`,
-            entityType: "client",
-            entityId: clash.id,
-            link: "/?view=clients",
-          });
-          return clash;
-        }
-        const next = newApplication
+        const next = resumableApplication
+          ? await tx.client.update({ where: { id: clash!.id }, data: clientData })
+          : newApplication
           ? await tx.client.create({
             data: {
               id: applicationClientId,
@@ -594,6 +594,7 @@ export async function POST(request: Request) {
         await tx.auditLog.create({ data: {
           id: crypto.randomUUID(), brokerId, actorId: null, action: "INVESTOR_KYC_SUBMITTED",
           entityType: "client", entityId: targetClientId, summary: `Digital KYC submitted for broker review for ${fullName}; only masked identifiers retained`,
+          newValue: JSON.stringify({ clientType: applicationClientType, pepStatus, riskRating: clientData.riskRating, source: "investor_portal" }),
         } });
         await writeNotificationOnce(tx, {
           dedupeKey: `investor-onboarding:${targetClientId}`,

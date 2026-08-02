@@ -16,6 +16,7 @@ const roleToDb: Record<string, string> = {
 };
 const title = (value: string) => value.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 const dateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
+const dayBefore = (value: Date) => new Date(value.getTime() - 24 * 60 * 60 * 1000);
 const initials = (value: string) => value.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
 function audit(brokerId: string | null, action: string, entityType: string, entityId: string, summary: string, previousValue?: unknown, newValue?: unknown) {
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     requirePlatformAdmin(request);
     const start = new Date();
     start.setUTCHours(0, 0, 0, 0);
-    const [brokers, instruments, auditRows] = await Promise.all([
+    const [brokers, instruments, auditRows, platformFeeSchedule] = await Promise.all([
       prisma.broker.findMany({
         include: {
           settings: true,
@@ -55,6 +56,11 @@ export async function GET(request: Request) {
       }),
       prisma.instrument.findMany({ include: { brokerAccess: true }, orderBy: { symbol: "asc" } }),
       prisma.auditLog.findMany({ include: { actor: true }, orderBy: { createdAt: "desc" }, take: 50 }),
+      prisma.platformFeeSchedule.findFirst({
+        where: { status: "published" },
+        include: { rules: true },
+        orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+      }),
     ]);
 
     const tenants = brokers.map((broker) => {
@@ -163,6 +169,20 @@ export async function GET(request: Request) {
 
     return Response.json({
       tenants,
+      platformFeeSchedule: platformFeeSchedule ? {
+        id: platformFeeSchedule.id,
+        name: platformFeeSchedule.name,
+        version: platformFeeSchedule.version,
+        status: platformFeeSchedule.status,
+        effectiveFrom: platformFeeSchedule.effectiveFrom.toISOString().slice(0, 10),
+        rules: platformFeeSchedule.rules.map((rule) => ({
+          assetClass: rule.assetClass,
+          marketSegment: rule.marketSegment,
+          regulatorPct: toNum(rule.regulatorPct),
+          exchangePct: toNum(rule.exchangePct),
+          csdPct: toNum(rule.csdPct),
+        })),
+      } : null,
       instruments: instruments.map((item) => ({
         id: item.id, symbol: item.symbol, name: item.name,
         assetClass: item.assetClass === "bond" ? "Government bond" : "Equity",
@@ -346,6 +366,47 @@ export async function POST(request: Request) {
         } });
       });
       return Response.json({ feeSchedule: { id } }, { status: 201 });
+    }
+    if (payload.entity === "platform_fee_schedule") {
+      const version = String(data.version ?? "").trim();
+      const effectiveFrom = String(data.effectiveFrom ?? "");
+      const rules = Array.isArray(data.rules) ? data.rules as Array<Record<string, unknown>> : [];
+      if (!version || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom) || !rules.length) {
+        return Response.json({ error: "Version, effective date, and at least one platform fee rule are required." }, { status: 400 });
+      }
+      const normalized = rules.map((rule) => ({
+        assetClass: String(rule.assetClass ?? ""),
+        marketSegment: String(rule.marketSegment ?? "main"),
+        regulatorPct: Number(rule.regulatorPct),
+        exchangePct: Number(rule.exchangePct),
+        csdPct: Number(rule.csdPct),
+      }));
+      if (normalized.some((rule) => !["equity", "bond"].includes(rule.assetClass) || [rule.regulatorPct, rule.exchangePct, rule.csdPct].some((value) => !Number.isFinite(value) || value < 0))) {
+        return Response.json({ error: "Enter valid non-negative platform fee rates." }, { status: 400 });
+      }
+      const existing = await prisma.platformFeeSchedule.findUnique({ where: { version } });
+      if (existing && existing.effectiveFrom.toISOString().slice(0, 10) !== effectiveFrom) {
+        return Response.json({ error: "Use a new platform fee version when changing the effective date." }, { status: 409 });
+      }
+      const id = existing?.id ?? `platform_fees_${version.replaceAll(".", "_")}`;
+      const effectiveDate = dateOnly(effectiveFrom);
+      await prisma.$transaction(async (tx) => {
+        await tx.platformFeeSchedule.updateMany({ where: { status: "published", id: { not: id }, effectiveFrom: { lt: effectiveDate } }, data: { effectiveTo: dayBefore(effectiveDate) } });
+        await tx.platformFeeSchedule.updateMany({ where: { status: "published", id: { not: id }, effectiveFrom: { gte: effectiveDate } }, data: { status: "archived" } });
+        await tx.platformFeeSchedule.upsert({
+          where: { id },
+          update: { name: String(data.name ?? "ESX market and regulatory fees"), version, status: "published", effectiveFrom: effectiveDate, effectiveTo: null },
+          create: { id, name: String(data.name ?? "ESX market and regulatory fees"), version, status: "published", effectiveFrom: effectiveDate },
+        });
+        await tx.platformFeeRule.deleteMany({ where: { platformFeeScheduleId: id } });
+        await tx.platformFeeRule.createMany({ data: normalized.map((rule) => ({ id: crypto.randomUUID(), platformFeeScheduleId: id, ...rule })) });
+        await tx.auditLog.create({ data: {
+          id: crypto.randomUUID(), brokerId: null, actorId: null, action: "PLATFORM_FEE_SCHEDULE_PUBLISHED",
+          entityType: "platform_fee_schedule", entityId: id, summary: `Platform market and regulatory fee schedule version ${version} published for all tenants`,
+          newValue: JSON.stringify({ version, effectiveFrom, rules: normalized }),
+        } });
+      });
+      return Response.json({ platformFeeSchedule: { id, version, effectiveFrom } }, { status: 201 });
     }
     if (payload.entity !== "user") return Response.json({ error: "Unsupported configuration entity." }, { status: 400 });
     const id = String(data.id ?? `usr_${crypto.randomUUID().slice(0, 10)}`);

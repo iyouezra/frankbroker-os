@@ -56,17 +56,17 @@ export function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrder
           {isStopLoss && <div><dt>Trigger price</dt><dd>{formatEtb(triggerValue)}</dd></div>}
           <div><dt>Gross consideration</dt><dd>{formatEtb(gross)}</dd></div>
           <div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div>
-          {fees.regulator > 0 && <div><dt>Regulatory fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>}
-          {fees.exchange > 0 && <div><dt>Exchange fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>}
-          {fees.csd > 0 && <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>}
+          <div><dt>ECMA fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>
+          <div><dt>ESX fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>
+          <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>
           <div><dt>Total estimated fees</dt><dd>{formatEtb(fees.total)}</dd></div>
-          <div><dt>{isSell ? "Estimated net proceeds" : "Estimated cash required"}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div>
+          <div><dt>{isSell ? "Estimated net proceeds" : "Total order cost"}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div>
         </dl>
         {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>Order held: {heldChecks.length === 1 ? "1 check needs attention" : `${heldChecks.length} checks need attention`}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
         <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !triggerValid} onClick={() => setReviewing(true)}>Review order</Button>
       </section>
     </div>
-    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">Confirm order</h2><p>You&apos;re {isSell ? "selling" : "buying"} <b>{shares.toFixed(0)} shares of {stock.ticker}</b> for about <b>{formatEtb(gross)}</b>, plus estimated fees of <b>{formatEtb(fees.total)}</b>. {isStopLoss ? <>If the price reaches <b>{formatEtb(triggerValue)}</b>, this becomes a Market sell and the final price may differ.</> : "A market order can execute at a different price; a limit order may not fill."}</p><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the instrument, quantity, order type, estimated value, fee breakdown, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : side}</Button></div></section></div>}
+    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">Confirm order</h2><p>You&apos;re {isSell ? "selling" : "buying"} <b>{shares.toFixed(0)} shares of {stock.ticker}</b>. {isStopLoss ? <>If the price reaches <b>{formatEtb(triggerValue)}</b>, this becomes a Market sell and the final price may differ.</> : "A market order can execute at a different price; a limit order may not fill."}</p><dl className={styles.orderTotals}><div><dt>Order value</dt><dd>{formatEtb(gross)}</dd></div><div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div><div><dt>ECMA fee</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>ESX fee</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>Total fees</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{isSell ? "Net proceeds" : "Total order cost"}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the instrument, quantity, order type, estimated value, fee breakdown, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : side}</Button></div></section></div>}
   </>;
 }
 
@@ -112,16 +112,17 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
           <div><dt>Price per bond</dt><dd>{formatEtb(pricePerBond)}</dd></div>
           <div><dt>Bond value</dt><dd>{formatEtb(allocation.gross)}</dd></div>
           <div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div>
-          {fees.regulator > 0 && <div><dt>Regulatory fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>}
-          {fees.exchange > 0 && <div><dt>Exchange fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>}
-          {fees.csd > 0 && <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>}
-          <div><dt>Total required</dt><dd>{formatEtb(allocation.total)}</dd></div>
+          <div><dt>ECMA fee</dt><dd>{formatEtb(fees.regulator)}</dd></div>
+          <div><dt>ESX fee</dt><dd>{formatEtb(fees.exchange)}</dd></div>
+          <div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div>
+          <div><dt>Total estimated fees</dt><dd>{formatEtb(fees.total)}</dd></div>
+          <div><dt>Total order cost</dt><dd>{formatEtb(allocation.total)}</dd></div>
           <div><dt>Amount left</dt><dd>{formatEtb(allocation.unused)}</dd></div>
         </dl>
         {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>Order held: {heldChecks.length === 1 ? "1 check needs attention" : `${heldChecks.length} checks need attention`}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
         <Button className={styles.full} disabled={!valid} onClick={() => setReviewing(true)}>Review order</Button>
       </section>
     </div>
-    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="bond-confirm-title"><h2 id="bond-confirm-title">Confirm bond order</h2><p>You&apos;re buying <b>{allocation.units} {allocation.units === 1 ? "bond" : "bonds"} of {bond.ticker}</b> for <b>{formatEtb(allocation.gross)}</b>, plus estimated fees of <b>{formatEtb(fees.total)}</b>. This limit order may not fill.</p><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the bond, quantity, price, estimated value, fees, maturity, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : "Buy bond"}</Button></div></section></div>}
+    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="bond-confirm-title"><h2 id="bond-confirm-title">Confirm bond order</h2><p>You&apos;re buying <b>{allocation.units} {allocation.units === 1 ? "bond" : "bonds"} of {bond.ticker}</b>. This limit order may not fill.</p><dl className={styles.orderTotals}><div><dt>Bond value</dt><dd>{formatEtb(allocation.gross)}</dd></div><div><dt>Brokerage</dt><dd>{formatEtb(fees.brokerage)}</dd></div><div><dt>ECMA fee</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>ESX fee</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>CSD fee</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>Total fees</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>Total order cost</dt><dd>{formatEtb(allocation.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>I reviewed the bond, quantity, price, estimated value, fees, maturity, and execution risk and authorize this instruction.</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>Cancel</Button><Button disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? "Sending…" : "Buy bond"}</Button></div></section></div>}
   </>;
 }

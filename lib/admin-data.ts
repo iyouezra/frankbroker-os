@@ -12,6 +12,16 @@ export type AdminFeeRule = {
   maximumFee: number | null;
 };
 
+export type PlatformFeeRule = Pick<AdminFeeRule, "assetClass" | "marketSegment" | "regulatorPct" | "exchangePct" | "csdPct">;
+export type PlatformFeeSchedule = {
+  id?: string;
+  name: string;
+  version: string;
+  status: "draft" | "published";
+  effectiveFrom: string;
+  rules: PlatformFeeRule[];
+};
+
 export type TenantConfig = {
   id: string;
   name: string;
@@ -92,6 +102,17 @@ const defaultFeeSchedule = (brokeragePct: number, minimumFee: number) => ({
     maximumFee: null,
   })),
 });
+
+export const initialPlatformFeeSchedule: PlatformFeeSchedule = {
+  name: "ESX market and regulatory fees",
+  version: "1.0",
+  status: "published",
+  effectiveFrom: "2026-07-14",
+  rules: [
+    { assetClass: "equity", marketSegment: "main", regulatorPct: 0.15, exchangePct: 0.36, csdPct: 0 },
+    { assetClass: "bond", marketSegment: "main", regulatorPct: 0.005, exchangePct: 0.021, csdPct: 0 },
+  ],
+};
 
 export type AdminInstrument = {
   id: string;

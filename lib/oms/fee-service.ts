@@ -4,6 +4,8 @@ import { D, money, ZERO, type DecimalValue } from "../money";
 export type FeePolicy = {
   scheduleId: string | null;
   scheduleVersion: string;
+  regulatoryScheduleId: string | null;
+  regulatoryScheduleVersion: string;
   assetClass: string;
   marketSegment: string;
   brokeragePct: Prisma.Decimal;
@@ -22,7 +24,7 @@ export type FeeBreakdown = {
   total: Prisma.Decimal;
 };
 
-type FeeDb = Pick<Prisma.TransactionClient, "feeSchedule">;
+type FeeDb = Pick<Prisma.TransactionClient, "feeSchedule" | "platformFeeSchedule">;
 type SettingsLike = {
   brokerageFeePct: Prisma.Decimal;
   minimumFee: Prisma.Decimal;
@@ -36,28 +38,43 @@ export async function resolveFeePolicy(
   settings: SettingsLike,
   valueDate = new Date(),
 ): Promise<FeePolicy> {
-  const schedule = await db.feeSchedule.findFirst({
-    where: {
-      brokerId,
-      status: "published",
-      effectiveFrom: { lte: valueDate },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gte: valueDate } }],
-    },
-    include: { rules: true },
-    orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
-  });
+  const [schedule, regulatorySchedule] = await Promise.all([
+    db.feeSchedule.findFirst({
+      where: {
+        brokerId,
+        status: "published",
+        effectiveFrom: { lte: valueDate },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: valueDate } }],
+      },
+      include: { rules: true },
+      orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+    }),
+    db.platformFeeSchedule.findFirst({
+      where: {
+        status: "published",
+        effectiveFrom: { lte: valueDate },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: valueDate } }],
+      },
+      include: { rules: true },
+      orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+    }),
+  ]);
   const rule = schedule?.rules.find((item) => item.assetClass === instrument.assetClass && item.marketSegment === instrument.marketSegment)
     ?? schedule?.rules.find((item) => item.assetClass === instrument.assetClass)
     ?? schedule?.rules[0];
+  const regulatoryRule = regulatorySchedule?.rules.find((item) => item.assetClass === instrument.assetClass && item.marketSegment === instrument.marketSegment)
+    ?? regulatorySchedule?.rules.find((item) => item.assetClass === instrument.assetClass);
   return {
     scheduleId: schedule?.id ?? null,
     scheduleVersion: schedule?.version ?? "legacy",
+    regulatoryScheduleId: regulatorySchedule?.id ?? null,
+    regulatoryScheduleVersion: regulatorySchedule?.version ?? "legacy",
     assetClass: instrument.assetClass,
     marketSegment: instrument.marketSegment,
     brokeragePct: rule?.brokeragePct ?? settings?.brokerageFeePct ?? D(0.5),
-    regulatorPct: rule?.regulatorPct ?? ZERO,
-    exchangePct: rule?.exchangePct ?? ZERO,
-    csdPct: rule?.csdPct ?? ZERO,
+    regulatorPct: regulatoryRule?.regulatorPct ?? rule?.regulatorPct ?? ZERO,
+    exchangePct: regulatoryRule?.exchangePct ?? rule?.exchangePct ?? ZERO,
+    csdPct: regulatoryRule?.csdPct ?? rule?.csdPct ?? ZERO,
     minimumFee: rule?.minimumFee ?? settings?.minimumFee ?? ZERO,
     maximumFee: rule?.maximumFee ?? null,
   };
@@ -132,12 +149,30 @@ export function addFeeBreakdowns(values: FeeBreakdown[]): FeeBreakdown {
   }), { brokerage: ZERO, regulator: ZERO, exchange: ZERO, csd: ZERO, total: ZERO });
 }
 
-export function serializeFeeBreakdown(breakdown: FeeBreakdown): Prisma.InputJsonObject {
+export function serializeFeeBreakdown(breakdown: FeeBreakdown, policy?: FeePolicy): Prisma.InputJsonObject {
   return {
     brokerage: breakdown.brokerage.toFixed(2),
     regulator: breakdown.regulator.toFixed(2),
     exchange: breakdown.exchange.toFixed(2),
     csd: breakdown.csd.toFixed(2),
     total: breakdown.total.toFixed(2),
+    ...(policy ? {
+      policy: {
+        brokerageScheduleId: policy.scheduleId,
+        brokerageScheduleVersion: policy.scheduleVersion,
+        regulatoryScheduleId: policy.regulatoryScheduleId,
+        regulatoryScheduleVersion: policy.regulatoryScheduleVersion,
+        assetClass: policy.assetClass,
+        marketSegment: policy.marketSegment,
+        ratesPct: {
+          brokerage: policy.brokeragePct.toString(),
+          regulator: policy.regulatorPct.toString(),
+          exchange: policy.exchangePct.toString(),
+          csd: policy.csdPct.toString(),
+        },
+        minimumBrokerage: policy.minimumFee.toString(),
+        maximumBrokerage: policy.maximumFee?.toString() ?? null,
+      },
+    } : {}),
   };
 }

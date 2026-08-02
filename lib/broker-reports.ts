@@ -21,6 +21,7 @@ const EXECUTED = new Set(["settlement_pending", "settled", "partially_filled"]);
 const REJECTED = new Set(["rejected", "validation_failed", "cancelled", "failed"]);
 const humanize = (value: string) => value.replaceAll("_", " ").replace(/^\w/, (c) => c.toUpperCase());
 const money = (value: number) => Number(value ?? 0).toFixed(2);
+const breakdown = (order: DemoOrder) => order.estimatedFeeBreakdown ?? { brokerage: order.estimatedFees ?? 0, regulator: 0, exchange: 0, csd: 0, total: order.estimatedFees ?? 0 };
 
 export function buildReports(orders: DemoOrder[], clients: BrokerClient[], audit: AuditRow[]): Report[] {
   const executed = orders.filter((order) => EXECUTED.has(order.status));
@@ -85,9 +86,9 @@ export function buildReports(orders: DemoOrder[], clients: BrokerClient[], audit
     {
       id: "fees",
       name: "Fees & commissions",
-      description: "Brokerage and market fees on executed orders.",
-      columns: ["Order ID", "Client", "Instrument", "Gross (ETB)", "Fees (ETB)"],
-      rows: executed.map((order) => [order.id, order.client, order.symbol, money(order.estimatedGross), money(order.estimatedFees)]),
+      description: "Itemized brokerage, ECMA, ESX, and CSD charges on executed orders.",
+      columns: ["Order ID", "Client", "Instrument", "Gross (ETB)", "Brokerage (ETB)", "ECMA (ETB)", "ESX (ETB)", "CSD (ETB)", "Total fees (ETB)", "Broker schedule", "Platform schedule"],
+      rows: executed.map((order) => { const fees = breakdown(order); return [order.id, order.client, order.symbol, money(order.estimatedGross), money(fees.brokerage), money(fees.regulator), money(fees.exchange), money(fees.csd), money(fees.total), fees.policy?.brokerageScheduleVersion ?? "legacy", fees.policy?.regulatoryScheduleVersion ?? "legacy"]; }),
     },
     {
       id: "audit-log",
@@ -100,7 +101,7 @@ export function buildReports(orders: DemoOrder[], clients: BrokerClient[], audit
 }
 
 export function feesEarned(orders: DemoOrder[]): number {
-  return orders.filter((order) => EXECUTED.has(order.status)).reduce((total, order) => total + (order.estimatedFees ?? 0), 0);
+  return orders.filter((order) => EXECUTED.has(order.status)).reduce((total, order) => total + breakdown(order).brokerage, 0);
 }
 
 const escapeCsv = (value: string | number) => {

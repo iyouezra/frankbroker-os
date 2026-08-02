@@ -19,6 +19,14 @@ export type DemoOrder = {
   submissionReference?: string | null;
   estimatedGross: number;
   estimatedFees: number;
+  estimatedFeeBreakdown?: {
+    brokerage: number;
+    regulator: number;
+    exchange: number;
+    csd: number;
+    total: number;
+    policy?: { brokerageScheduleVersion?: string; regulatoryScheduleVersion?: string };
+  } | null;
   estimatedNet: number;
   status: OrderStatus;
   source: string;
@@ -59,6 +67,7 @@ export type DemoOrder = {
     executionPrice: number;
     gross: number;
     fees: number;
+    feeBreakdown?: DemoOrder["estimatedFeeBreakdown"];
     net: number;
     tradeDate: string;
     settlementDate: string;

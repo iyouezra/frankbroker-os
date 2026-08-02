@@ -9,6 +9,11 @@ import { csvCell, MARKET_LINK_ELIGIBLE_STATUSES, ORDER_STATUS_GROUPS, orderRespo
 
 export const runtime = "nodejs";
 
+const normalizeFeeBreakdown = (value: unknown) => {
+  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return { brokerage: Number(data.brokerage ?? 0), regulator: Number(data.regulator ?? 0), exchange: Number(data.exchange ?? 0), csd: Number(data.csd ?? 0), total: Number(data.total ?? 0), policy: data.policy };
+};
+
 export async function GET(request: Request) {
   try {
     const actor = resolveActor(request);
@@ -70,6 +75,7 @@ export async function GET(request: Request) {
       validity: true,
       estimatedGross: true,
       estimatedFees: true,
+      estimatedFeeBreakdown: true,
       estimatedNet: true,
       filledQuantity: true,
       remainingQuantity: true,
@@ -129,6 +135,7 @@ export async function GET(request: Request) {
         submissionReference: order.submissionReference,
         estimatedGross: toNum(order.estimatedGross),
         estimatedFees: toNum(order.estimatedFees),
+        estimatedFeeBreakdown: normalizeFeeBreakdown(order.estimatedFeeBreakdown),
         estimatedNet: toNum(order.estimatedNet),
         status: order.status,
         source: order.source,
@@ -150,13 +157,15 @@ export async function GET(request: Request) {
       };
     });
     if (exporting) {
-      const headers = ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated value", "Executed value", "Status", "Source", "Submission reference", "Execution references", "Assigned trader", "Next action", "Action owner", "Exception reason"];
+      const headers = ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated gross", "Brokerage", "ECMA fee", "ESX fee", "CSD fee", "Total estimated fees", "Estimated total/net", "Executed value", "Status", "Source", "Submission reference", "Execution references", "Assigned trader", "Next action", "Action owner", "Exception reason"];
       const csv = [
         headers,
         ...orders.map((order) => [
           order.id, order.createdAt, order.updatedAt, order.client, order.clientCode, order.accountNumber,
           order.symbol, order.side, order.orderType, order.validity, order.price, order.triggerPrice ?? "",
-          order.quantity, order.filledQuantity, order.remainingQuantity, order.estimatedNet, order.executedNet,
+          order.quantity, order.filledQuantity, order.remainingQuantity, order.estimatedGross,
+          order.estimatedFeeBreakdown?.brokerage ?? order.estimatedFees, order.estimatedFeeBreakdown?.regulator ?? 0,
+          order.estimatedFeeBreakdown?.exchange ?? 0, order.estimatedFeeBreakdown?.csd ?? 0, order.estimatedFees, order.estimatedNet, order.executedNet,
           order.status, order.source, order.submissionReference ?? "", order.executionReferences.join("; "),
           order.trader, order.nextAction, order.actionOwner, order.rejectionReason ?? "",
         ]),

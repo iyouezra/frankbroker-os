@@ -192,6 +192,25 @@ async function main() {
     ],
     skipDuplicates: true,
   });
+
+  await prisma.platformFeeSchedule.upsert({
+    where: { id: "platform_fees_1_0" },
+    update: { name: "ESX market and regulatory fees", status: "published", effectiveFrom: dateOnly("2026-07-14") },
+    create: {
+      id: "platform_fees_1_0",
+      name: "ESX market and regulatory fees",
+      version: "1.0",
+      status: "published",
+      effectiveFrom: dateOnly("2026-07-14"),
+    },
+  });
+  await prisma.platformFeeRule.createMany({
+    data: [
+      { id: "platform_fee_equity_main", platformFeeScheduleId: "platform_fees_1_0", assetClass: "equity", marketSegment: "main", regulatorPct: 0.15, exchangePct: 0.36, csdPct: 0 },
+      { id: "platform_fee_bond_main", platformFeeScheduleId: "platform_fees_1_0", assetClass: "bond", marketSegment: "main", regulatorPct: 0.005, exchangePct: 0.021, csdPct: 0 },
+    ],
+    skipDuplicates: true,
+  });
   await prisma.clientConsent.createMany({
     data: [
       { id: "consent_investor_terms_1_0", clientId: "cli_investor_demo", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "investor_portal", acceptedAt: new Date("2026-07-14T08:00:00Z"), metadata: { electronicDeliveryConsent: true } },

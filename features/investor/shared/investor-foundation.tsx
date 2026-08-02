@@ -37,7 +37,7 @@ export type InvestorKyc = {
   sourceOfFunds: string;
   investmentObjective: string;
   taxResidency: string;
-  pepStatus: "not_pep" | "pep" | "related_to_pep";
+  pepStatus: "not_declared" | "not_pep" | "pep" | "related_to_pep";
   verificationId?: string;
 };
 export type InvestorOrderInput = { symbol: string; side: "buy" | "sell"; quantity: number; price: number; triggerPrice?: number; orderType: string; disclosureAccepted: boolean; disclosureVersion: "order-v1" };
@@ -84,7 +84,7 @@ export type InvestorHolding = {
   couponFrequency: string | null;
 };
 export type InvestorBootstrap = {
-  tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
+  tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; regulatoryVersion: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
   profile: { fullName: string; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
   account: { id: string; accountNumber: string; status?: string; restrictionReason?: string | null; restrictedAt?: string | null; totalCash: number; availableCash: number; blockedCash: number; holdings: InvestorHolding[]; orders: Array<{ id: string }> } | null;
   access: {
@@ -361,7 +361,7 @@ export function emptyInvestorKyc(accountType: InvestorKyc["accountType"]): Inves
     sourceOfFunds: "",
     investmentObjective: "",
     taxResidency: "Ethiopia",
-    pepStatus: "not_pep",
+    pepStatus: "not_declared",
   };
 }
 

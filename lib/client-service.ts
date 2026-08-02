@@ -139,7 +139,7 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
           : undefined,
         electronicDeliveryConsentAt: input.electronicDeliveryConsent ? now : null,
         kycStatus: "pending_review",
-        riskRating: input.riskRating ?? "standard",
+        riskRating: input.pepStatus === "not_pep" ? (input.riskRating ?? "standard") : "enhanced",
         status: "pending_approval",
         createdBy: actor.id,
         submittedAt: now,
@@ -205,7 +205,7 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
           entityType: "client",
           entityId: clientId,
           summary: `${client.fullName} created through broker onboarding`,
-          newValue: JSON.stringify({ clientCode, clientType: client.clientType, status: "pending_approval", accountNumber }),
+          newValue: JSON.stringify({ clientCode, clientType: client.clientType, status: "pending_approval", accountNumber, pepStatus: client.pepStatus, riskRating: client.riskRating }),
         },
         {
           id: crypto.randomUUID(),

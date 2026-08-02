@@ -5,6 +5,11 @@ import { orderResponsibility } from "../../../../lib/order-log";
 import { prisma } from "../../../../lib/prisma";
 import { resolveActor } from "../../../../lib/server-auth";
 
+const feeBreakdown = (value: unknown) => {
+  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return { brokerage: Number(data.brokerage ?? 0), regulator: Number(data.regulator ?? 0), exchange: Number(data.exchange ?? 0), csd: Number(data.csd ?? 0), total: Number(data.total ?? 0), policy: data.policy };
+};
+
 export const runtime = "nodejs";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -65,6 +70,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         submissionReference: order.submissionReference,
         estimatedGross: toNum(order.estimatedGross),
         estimatedFees: toNum(order.estimatedFees),
+        estimatedFeeBreakdown: feeBreakdown(order.estimatedFeeBreakdown),
         estimatedNet: toNum(order.estimatedNet),
         status: order.status,
         source: order.source,
@@ -108,6 +114,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           executionPrice: toNum(trade.executionPrice),
           gross: toNum(trade.grossAmount),
           fees: toNum(trade.fees),
+          feeBreakdown: feeBreakdown(trade.feeBreakdown),
           net: toNum(trade.netAmount),
           tradeDate: trade.tradeDate.toISOString().slice(0, 10),
           settlementDate: trade.settlementDate.toISOString().slice(0, 10),

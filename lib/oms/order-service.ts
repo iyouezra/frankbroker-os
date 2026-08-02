@@ -230,7 +230,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         estimatedGross: amounts.gross,
         estimatedFees: amounts.fees,
         estimatedNet: amounts.net,
-        estimatedFeeBreakdown: serializeFeeBreakdown(amounts.breakdown),
+        estimatedFeeBreakdown: serializeFeeBreakdown(amounts.breakdown, feePolicy),
         termsVersion: input.termsVersion ?? null,
         disclosureVersion: input.disclosureVersion ?? null,
         disclosureAcceptedAt: input.disclosureAcceptedAt ?? null,
@@ -301,6 +301,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         price: toNum(price),
         estimatedNet: toNum(amounts.net),
         feeScheduleVersion: feePolicy.scheduleVersion,
+        regulatoryFeeScheduleVersion: feePolicy.regulatoryScheduleVersion,
         disclosureVersion: input.disclosureVersion ?? null,
       },
     });

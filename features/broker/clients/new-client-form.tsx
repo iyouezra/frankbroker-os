@@ -103,7 +103,7 @@ export function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { v
       <label>CSD account/reference <span className="optional-label">optional</span><input value={value.csdReference} onChange={(event) => set("csdReference", event.target.value)} placeholder="Record when available" /></label>
       <div className="field-row"><label>Occupation / business activity<input value={value.occupation} onChange={(event) => set("occupation", event.target.value)} /></label><label>Source of funds<input value={value.sourceOfFunds} onChange={(event) => set("sourceOfFunds", event.target.value)} placeholder="Employment, business, pension…" /></label></div>
       <div className="field-row"><label>Investment objective<input value={value.investmentObjective} onChange={(event) => set("investmentObjective", event.target.value)} /></label><label>Tax residency<input value={value.taxResidency} onChange={(event) => set("taxResidency", event.target.value)} /></label></div>
-      <label>PEP declaration<BrandSelect value={value.pepStatus} onChange={(next) => set("pepStatus", next as NewClientValue["pepStatus"])} ariaLabel="PEP declaration" options={[{ value: "not_pep", label: "Not a politically exposed person" }, { value: "pep", label: "Politically exposed person" }, { value: "related_to_pep", label: "Family member / close associate" }]} /></label>
+      <label>PEP declaration<BrandSelect value={value.pepStatus} onChange={(next) => set("pepStatus", next as NewClientValue["pepStatus"])} ariaLabel="PEP declaration" options={organization ? [{ value: "not_pep", label: "No connected person is a PEP" }, { value: "pep", label: "A connected person is a PEP" }, { value: "related_to_pep", label: "Connected to a PEP" }] : [{ value: "not_pep", label: "Not a politically exposed person" }, { value: "pep", label: "Politically exposed person" }, { value: "related_to_pep", label: "Family member / close associate" }]} /><small>{organization ? "Answer for representatives, beneficial owners, directors, and controllers." : "Include current or former prominent public functions, close family, and associates."}</small></label>
     </section>
     {organization && <section className="form-section">
       <h3>{value.clientType === "corporate" ? "Corporate authority" : "Institutional authority"}</h3>
@@ -128,5 +128,4 @@ export function NewClientForm({ value, setValue, busy, onCancel, onSubmit }: { v
     <div className="drawer-actions"><button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>Cancel</button><button type="submit" className="btn primary" disabled={busy || !ready}>{busy ? "Submitting…" : "Submit for approval"} <span>→</span></button></div>
   </form>;
 }
-
 

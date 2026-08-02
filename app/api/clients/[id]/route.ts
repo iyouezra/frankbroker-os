@@ -212,6 +212,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         taxIdMasked: client.taxIdLast4 ? `•••••• ${client.taxIdLast4}` : null,
         businessRegistrationNumber: client.businessRegistrationNumber,
         authorizedRepresentativeName: client.authorizedRepresentativeName,
+        pepStatus: client.pepStatus,
         beneficialOwners: client.beneficialOwners,
         signatoryAuthorityConfirmed: client.signatoryAuthorityConfirmed,
       },
