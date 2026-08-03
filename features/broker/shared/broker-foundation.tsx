@@ -5,7 +5,7 @@ import { demoClients, demoInstruments, initialOrders, type BrokerClient, type De
 import { hasPermission, type OrderStatus, type Role } from "../../../lib/frank";
 import { orderResponsibility } from "../../../lib/order-log";
 
-export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "reports" | "audit" | "users" | "settings";
+export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings";
 export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
 export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationChannel: "sms" | "email"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
@@ -59,9 +59,10 @@ export type BrokerInstrument = { id: string; symbol: string; name: string; asset
 export type TenantFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
 export type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[]; feeRules: TenantFeeRule[] };
 export type TenantFeatures = { manualTradeCapture: boolean; [key: string]: boolean };
+export type TenantModules = { dealer_operations: boolean; investor_servicing: boolean; issuer_advisory: boolean };
 export type TenantInfo = { name: string; license: string; primaryColor: string };
 export type TenantApiInstrument = { id: string; symbol: string; name: string; assetClass: string; issuer: string; status: string; currency: string; price: number; lotSize: number; tickSize: number; settlementCycle: string };
-export type TenantApiResult = { tenant?: { tradingName?: string; licenseNumber?: string; primaryColor?: string; features?: Partial<TenantFeatures>; controls?: Partial<TenantControls> | null }; instruments?: TenantApiInstrument[] };
+export type TenantApiResult = { tenant?: { id?: string; tradingName?: string; licenseNumber?: string; primaryColor?: string; features?: Partial<TenantFeatures>; modules?: Partial<TenantModules>; profile?: { businessType?: string } | null; availableRoles?: Role[]; controls?: Partial<TenantControls> | null }; instruments?: TenantApiInstrument[] };
 export type CashPoolView = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; status: string; bookBalance: number; statementBalance: number; beneficialTotal: number; ownershipVariance: number; bankVariance: number; lastReconciledAt: string | null };
 export type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: number; currency: string; status: string; bankReference: string | null; proofReference: string | null; destinationBankName: string | null; destinationAccountName: string | null; destinationAccountMasked: string | null; channel: string; submissionReference: string; submittedAt: string; rejectionReason: string | null; failureReason: string | null; client?: { id: string; code: string; name: string }; account?: { id: string; number: string }; pool?: { id: string; bankName: string; accountName: string; accountNumberMasked: string; purpose: string } };
 export type CashOperationsData = { summary: { bankBookTotal: number; statementTotal: number; beneficialTotal: number; pendingDeposits: number; pendingWithdrawals: number }; pools: CashPoolView[]; movements: CashMovementView[] };
@@ -288,6 +289,7 @@ export const fallbackControls: TenantControls = {
   ],
 };
 export const fallbackFeatures: TenantFeatures = { manualTradeCapture: true };
+export const fallbackModules: TenantModules = { dealer_operations: true, investor_servicing: true, issuer_advisory: false };
 export const fallbackCashOperations: CashOperationsData = {
   summary: { bankBookTotal: 19_449_700, statementTotal: 19_449_700, beneficialTotal: 19_449_700, pendingDeposits: 1, pendingWithdrawals: 0 },
   pools: [
@@ -353,26 +355,30 @@ export function calculateConfiguredAmounts(side: "buy" | "sell", quantity: numbe
   return { gross, fees, net, brokerage, regulator, exchange, csd };
 }
 
-export type NavItem = { id: View; label: string; icon: string; roles?: Role[]; children?: NavItem[] };
+export type NavItem = { id: View; label: string; icon: string; module?: keyof TenantModules; roles?: Role[]; children?: NavItem[] };
 export const navGroups: { label: string; items: NavItem[] }[] = [
   { label: "Overview", items: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-    { id: "market", label: "Market Watch", icon: "performance" },
+    { id: "market", label: "Market Watch", icon: "performance", module: "dealer_operations" },
   ] },
   { label: "Clients", items: [
     // The client-servicing surfaces live as sub-nav under the directory: opening
     // "Clients & accounts" shows the directory and reveals these beneath it.
-    { id: "clients", label: "Clients & accounts", icon: "clients", roles: ["broker_admin", "operations", "compliance", "relationship_officer", "service_officer"], children: [
-      { id: "crm", label: "Conversations", icon: "conversations" },
-      { id: "crm_tasks", label: "My tasks", icon: "tasks" },
-      { id: "crm_cases", label: "Complaints", icon: "complaints" },
+    { id: "clients", label: "Clients & accounts", icon: "clients", module: "investor_servicing", roles: ["broker_admin", "operations", "compliance", "relationship_officer", "service_officer"], children: [
+      { id: "crm", label: "Conversations", icon: "conversations", module: "investor_servicing" },
+      { id: "crm_tasks", label: "My tasks", icon: "tasks", module: "investor_servicing" },
+      { id: "crm_cases", label: "Complaints", icon: "complaints", module: "investor_servicing" },
     ] },
-    { id: "cash", label: "Client money", icon: "cash", roles: ["broker_admin", "operations", "settlement"] },
+    { id: "cash", label: "Client money", icon: "cash", module: "dealer_operations", roles: ["broker_admin", "operations", "settlement"] },
   ] },
   { label: "Trading", items: [
-    { id: "orders", label: "Order log", icon: "orders" },
-    { id: "settlement", label: "Settlement", icon: "settlement", roles: ["broker_admin", "settlement", "operations"] },
-    { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", roles: ["broker_admin", "settlement", "operations"] },
+    { id: "orders", label: "Order log", icon: "orders", module: "dealer_operations" },
+    { id: "settlement", label: "Settlement", icon: "settlement", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations"] },
+    { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations"] },
+  ] },
+  { label: "Issuer advisory", items: [
+    { id: "advisory", label: "Advisory pipeline", icon: "advisory", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
+    { id: "issuers", label: "Issuers", icon: "issuers", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
   ] },
   { label: "Oversight", items: [
     { id: "performance", label: "Performance", icon: "performance", roles: ["broker_admin"] },
@@ -385,7 +391,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
   ] },
 ];
 export const navItems: NavItem[] = navGroups.flatMap((group) => group.items.flatMap((item) => [item, ...(item.children ?? [])]));
-export const navVisible = (item: NavItem, role: Role) => role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role);
+export const navVisible = (item: NavItem, role: Role, modules: TenantModules = fallbackModules) => (!item.module || modules[item.module]) && (role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role));
 export const PENDING_CASH_STATUSES = ["pending_verification", "pending_approval", "approved"];
 export type QueueItem = { key: string; permission: string; roles?: Role[]; tone: "warning" | "danger" | "info"; icon: string; title: string; detail: string; onOpen: () => void };
 export const queueVisible = (item: QueueItem, role: Role) => item.roles ? item.roles.includes(role) : role === "management" || role === "super_admin" || hasPermission(role, item.permission);
@@ -398,6 +404,8 @@ export const roleNames: Record<Role, string> = {
   relationship_officer: "Kalkidan Alemu",
   service_officer: "Bethel Tesfaye",
   management: "Yonas Alemayehu",
+  advisory_lead: "Saron Desta",
+  advisory_analyst: "Nahom Bekele",
   super_admin: "Frank",
 };
 export const initials = (name: string) => name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
@@ -416,6 +424,8 @@ const ICON_PATHS: Record<string, string> = {
   reports: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z M14 2v4a2 2 0 0 0 2 2h4 M16 13H8 M16 17H8 M10 9H8",
   audit: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2",
   performance: "M3 3v16a2 2 0 0 0 2 2h16 M18 17V9 M13 17V5 M8 17v-3",
+  advisory: "M4 20h16 M6 16l4-4 3 3 5-7 M18 8h2v2 M4 4h16v16H4z",
+  issuers: "M3 21h18 M5 21V8l7-5 7 5v13 M9 21v-6h6v6 M8 10h1 M12 10h1 M16 10h1",
   settings: "M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7V20a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M21 21l-4.3-4.3",
   bell: "M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
@@ -506,7 +516,9 @@ export function EmptyState({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-state"><span>✓</span><strong>{title}</strong><p>{copy}</p></div>;
 }
 
-export const BROKER_TENANT_ID = "brk_abyssinia";
+export let BROKER_TENANT_ID = "brk_abyssinia";
+/** Demo-only live binding used by legacy feature hooks until production auth owns tenant context. */
+export function setDemoBrokerTenantId(tenantId: string) { BROKER_TENANT_ID = tenantId; }
 export function hydrateOrders(rows: Array<Omit<DemoOrder, "time">>) {
   return rows.map((order) => ({
     ...order,

@@ -2,13 +2,14 @@ import { prisma } from "../../../lib/prisma";
 import { resolveActor, resolveBrokerId } from "../../../lib/server-auth";
 import { toNum } from "../../../lib/money";
 import { apiError } from "../../../lib/api";
+import { resolveTenantContext } from "../../../lib/tenant-capabilities";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
     const brokerId = resolveBrokerId(request);
-    const [broker, regulatoryFeeSchedule] = await Promise.all([prisma.broker.findUnique({
+    const [broker, regulatoryFeeSchedule, tenantContext] = await Promise.all([prisma.broker.findUnique({
       where: { id: brokerId },
       include: {
         settings: true,
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
       where: { status: "published", effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }] },
       include: { rules: true },
       orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
-    })]);
+    }), resolveTenantContext(brokerId)]);
     if (!broker) return Response.json({ error: "Tenant not found." }, { status: 404 });
 
     return Response.json({
@@ -37,6 +38,12 @@ export async function GET(request: Request) {
         welcomeMessage: broker.settings?.welcomeMessage ?? "Access Ethiopian shares and government bonds through one simple platform.",
         supportEmail: broker.settings?.supportEmail,
         features: broker.settings?.features ?? {},
+        profile: tenantContext ? { businessType: tenantContext.businessType } : null,
+        licenses: tenantContext?.licenses ?? [],
+        entitlements: tenantContext?.entitlements ?? [],
+        modules: tenantContext?.modules ?? { dealer_operations: true, investor_servicing: true, issuer_advisory: false },
+        checklistPacks: tenantContext?.checklistPacks ?? [],
+        availableRoles: tenantContext?.availableRoles ?? [],
         controls: {
           brokerageFeePct: broker.settings ? toNum(broker.settings.brokerageFeePct) : 0.5,
           minimumFee: broker.settings ? toNum(broker.settings.minimumFee) : 0,

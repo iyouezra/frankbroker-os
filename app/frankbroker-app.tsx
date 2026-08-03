@@ -11,7 +11,6 @@ import type { AppTarget, WorkItem } from "../lib/back-office";
 import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/notifications-demo";
 import { isOrderEligibleClient } from "../lib/client-readiness";
 import {
-  BROKER_TENANT_ID,
   Icon,
   PENDING_CASH_STATUSES,
   calculateConfiguredAmounts,
@@ -23,6 +22,7 @@ import {
   fallbackCrmThreads,
   fallbackControls,
   fallbackFeatures,
+  fallbackModules,
   fallbackInstruments,
   fallbackReconBatch,
   fmt,
@@ -34,6 +34,7 @@ import {
   newClientDefaults,
   normalizedOrderType,
   roleNames,
+  setDemoBrokerTenantId,
   statusLabels,
   type AuditEntry,
   type BrokerCashInput,
@@ -50,6 +51,7 @@ import {
   type TenantControls,
   type TenantFeatures,
   type TenantInfo,
+  type TenantModules,
   type View,
 } from "../features/broker/shared/broker-foundation";
 import { Dashboard } from "../features/broker/dashboard/dashboard-screen";
@@ -70,6 +72,7 @@ import { MarketWatchPage, type OrderFocus } from "../features/broker/market/mark
 import { BrokerOrderOutcomeDialog } from "../features/broker/orders/order-submission-feedback";
 import { BrandSelect } from "../features/shared/brand-select";
 import { UniversalSearch } from "../features/broker/shared/universal-search";
+import { AdvisoryWorkspace } from "../features/broker/advisory/advisory-workspace";
 import {
   failedOutcome,
   heldOutcome,
@@ -78,6 +81,7 @@ import {
 } from "../lib/order-submission-ux";
 
 export default function FrankBrokerApp() {
+  const demoTenantSwitcherEnabled = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_FRANK_DEMO_TENANT_SWITCHER === "true";
   const [view, setView] = useState<View>("dashboard");
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [selectedId, setSelectedId] = useState<string>(initialOrders[0].id);
@@ -86,6 +90,11 @@ export default function FrankBrokerApp() {
   const [orderRefreshKey, setOrderRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<Role>("broker_admin");
+  const [tenantId, setTenantId] = useState("brk_abyssinia");
+  const [modules, setModules] = useState<TenantModules>(fallbackModules);
+  const [businessType, setBusinessType] = useState("securities_dealer");
+  const [availableRoles, setAvailableRoles] = useState<Role[]>(Object.keys(roleLabels).filter((item) => item !== "super_admin" && item !== "advisory_lead" && item !== "advisory_analyst") as Role[]);
+  const [demoTenants, setDemoTenants] = useState<Array<{ id: string; tradingName: string; businessType: string; modules: TenantModules; availableRoles: Role[] }>>([]);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [clients, setClients] = useState<BrokerClient[]>(fallbackClients);
   const [selectedClientId, setSelectedClientId] = useState(fallbackClients[0].id);
@@ -126,9 +135,37 @@ export default function FrankBrokerApp() {
   const pendingCashCount = cashOperations.movements.filter((movement) => PENDING_CASH_STATUSES.includes(movement.status)).length;
 
   useEffect(() => {
+    if (!demoTenantSwitcherEnabled) return;
+    void fetch("/api/demo/tenants")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data: { tenants?: Array<{ id: string; tradingName: string; businessType: string; modules: TenantModules; availableRoles: Role[] }> }) => setDemoTenants(data.tenants ?? []))
+      .catch(() => setDemoTenants([
+        { id: "brk_abyssinia", tradingName: "Abyssinia Securities", businessType: "securities_dealer", modules: fallbackModules, availableRoles },
+        { id: "brk_blue_nile", tradingName: "Blue Nile Capital", businessType: "investment_bank", modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, availableRoles: ["broker_admin", "trader", "operations", "compliance", "settlement", "advisory_lead", "advisory_analyst", "management"] },
+        { id: "brk_sheba", tradingName: "Sheba Advisory", businessType: "securities_investment_adviser", modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: true }, availableRoles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
+      ]));
+    // The demo tenant catalogue is static for the browser session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoTenantSwitcherEnabled]);
+
+  const changeTenant = (nextTenantId: string) => {
+    const next = demoTenants.find((item) => item.id === nextTenantId);
+    setDemoBrokerTenantId(nextTenantId);
+    setTenantId(nextTenantId);
+    setDrawer(null); setQuery(""); setOrderFocus(null); setClientsFocus(null); setCrmFocus(null);
+    if (next) {
+      setModules(next.modules); setBusinessType(next.businessType); setAvailableRoles(next.availableRoles);
+      if (!next.availableRoles.includes(role)) setRole(next.availableRoles.includes("advisory_lead") ? "advisory_lead" : next.availableRoles[0] ?? "broker_admin");
+      setView(next.modules.dealer_operations ? "dashboard" : next.modules.issuer_advisory ? "advisory" : "dashboard");
+      setTenantInfo((current) => ({ ...current, name: next.tradingName }));
+      notify(`Switched to ${next.tradingName}.`);
+    }
+  };
+
+  useEffect(() => {
     const controller = new AbortController();
 
-    void fetch("/api/orders?pageSize=100", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } })
+    void fetch("/api/orders?pageSize=100", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Order API unavailable")))
       .then((result: { orders?: Array<Omit<DemoOrder, "time">> }) => {
         if (!result.orders) return;
@@ -139,35 +176,35 @@ export default function FrankBrokerApp() {
       });
 
     return () => controller.abort();
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/cash-movements", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+    void fetch("/api/cash-movements", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId, "x-frank-demo-role": role } })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Cash API unavailable")))
       .then((result: CashOperationsData) => setCashOperations(result))
       .catch(() => setCashOperations(fallbackCashOperations));
     return () => controller.abort();
-  }, [role]);
+  }, [role, tenantId]);
 
   // Unread conversation count for the sidebar badge; the facet is cheap so the
   // list itself is not fetched here.
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/crm/threads?pageSize=10", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+    void fetch("/api/crm/threads?pageSize=10", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId, "x-frank-demo-role": role } })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("CRM API unavailable")))
       .then((result: CrmThreadsResponse) => setCrmUnread(result.facets.unreadThreads))
       .catch(() => setCrmUnread(fallbackCrmThreads.filter((thread) => thread.unread > 0).length));
     return () => controller.abort();
-  }, [role, view]);
+  }, [role, view, tenantId]);
 
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([
-      fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
-      fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
-      fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
-      fetch("/api/audit", { signal: controller.signal, headers: { "x-frank-tenant-id": BROKER_TENANT_ID } }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/audit", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
     ]).then(([clientResult, reconResult, tenantResult, auditResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, TenantApiResult, { events?: AuditEntry[] }]) => {
       if (clientResult.clients) {
         setClients(clientResult.clients);
@@ -182,6 +219,9 @@ export default function FrankBrokerApp() {
       });
       setControls(nextControls);
       setFeatures(nextFeatures);
+      setModules({ ...fallbackModules, ...(tenantResult.tenant?.modules ?? {}) });
+      setBusinessType(tenantResult.tenant?.profile?.businessType ?? "securities_dealer");
+      if (tenantResult.tenant?.availableRoles?.length) setAvailableRoles(tenantResult.tenant.availableRoles);
       if (tenantResult.tenant?.tradingName) setTenantInfo({ name: tenantResult.tenant.tradingName, license: tenantResult.tenant.licenseNumber ?? "", primaryColor: tenantResult.tenant.primaryColor ?? "#0C8189" });
 
       if (tenantResult.instruments) {
@@ -209,16 +249,16 @@ export default function FrankBrokerApp() {
       // The synthetic fallback keeps the market-validation demo usable offline.
     });
     return () => controller.abort();
-  }, []);
+  }, [tenantId]);
 
   const selected = orderDetails[selectedId] ?? orders.find((order) => order.id === selectedId) ?? orders[0];
 
   const refreshWorkItems = useCallback(() => {
-    void fetch("/api/work-items", { headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } })
+    void fetch("/api/work-items", { headers: { "x-frank-tenant-id": tenantId, "x-frank-demo-role": role } })
       .then((response) => response.ok ? response.json() : Promise.reject())
       .then((data: { items: WorkItem[] }) => setWorkItems(data.items))
       .catch(() => setWorkItems([]));
-  }, [role]);
+  }, [role, tenantId]);
   useEffect(() => {
     refreshWorkItems();
     const interval = window.setInterval(refreshWorkItems, 10_000);
@@ -239,7 +279,7 @@ export default function FrankBrokerApp() {
 
   const loadOrderDetail = async (id: string) => {
     try {
-      const response = await fetch(`/api/orders/${encodeURIComponent(id)}`, { headers: { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role } });
+      const response = await fetch(`/api/orders/${encodeURIComponent(id)}`, { headers: { "x-frank-tenant-id": tenantId, "x-frank-demo-role": role } });
       if (!response.ok) throw new Error("Order detail unavailable");
       const result = await response.json() as { order: Omit<DemoOrder, "time"> };
       const detail = hydrateOrders([result.order])[0];
@@ -285,7 +325,7 @@ export default function FrankBrokerApp() {
 
   // Notifications are role-aware: switching the demo role reloads the feed so
   // approvers, traders, and settlement each see what they must act on.
-  const notifyHeaders = { "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": role };
+  const notifyHeaders = { "x-frank-tenant-id": tenantId, "x-frank-demo-role": role };
   useEffect(() => {
     const controller = new AbortController();
     // Poll only the lightweight notifications here. The client book is heavy to
@@ -311,7 +351,7 @@ export default function FrankBrokerApp() {
   const changeRole = (nextRole: Role) => {
     setRole(nextRole);
     const current = navItems.find((item) => item.id === view);
-    if (current && !navVisible(current, nextRole)) setView("dashboard");
+    if (current && !navVisible(current, nextRole, modules)) setView("dashboard");
   };
   const unreadCount = notifications.filter((item) => !item.read).length;
   const markAllRead = () => {
@@ -339,7 +379,7 @@ export default function FrankBrokerApp() {
   };
 
   const apiRequest = async <T,>(url: string, init?: RequestInit): Promise<T> => {
-    const response = await fetch(url, { ...init, headers: { "x-frank-tenant-id": BROKER_TENANT_ID, ...(init?.headers as Record<string, string> | undefined) } });
+    const response = await fetch(url, { ...init, headers: { "x-frank-tenant-id": tenantId, ...(init?.headers as Record<string, string> | undefined) } });
     const result = await response.json().catch(() => ({})) as T & { error?: string };
     if (!response.ok) throw new Error(result.error || "The operation could not be completed.");
     return result;
@@ -755,13 +795,13 @@ export default function FrankBrokerApp() {
             // Show an item when the role can see it, or when it only owns
             // sub-nav the role can see (e.g. trader/settlement reach the CRM
             // sub-nav without the client directory).
-            const items = group.items.filter((item) => navVisible(item, role) || (item.children ?? []).some((child) => navVisible(child, role)));
+            const items = group.items.filter((item) => navVisible(item, role, modules) || (item.children ?? []).some((child) => navVisible(child, role, modules)));
             if (!items.length) return null;
             return <div className="nav-group" key={group.label}>
               <span className="nav-label">{group.label}</span>
               {items.map((item) => {
-                const children = item.children?.filter((child) => navVisible(child, role)) ?? [];
-                const canOpenSelf = navVisible(item, role);
+                const children = item.children?.filter((child) => navVisible(child, role, modules)) ?? [];
+                const canOpenSelf = navVisible(item, role, modules);
                 // If the role cannot open the parent's own view, its click lands
                 // on the first sub-nav item it is allowed to see.
                 const target = canOpenSelf ? item.id : children[0]?.id ?? item.id;
@@ -776,7 +816,7 @@ export default function FrankBrokerApp() {
             </div>;
           })}
         </nav>
-        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={Object.entries(roleLabels).map(([id, label]) => ({ value: id, label }))} /></div></div></div></div>
+        <div className="sidebar-foot">{demoTenantSwitcherEnabled && demoTenants.length > 0 && <div className="demo-context-switch"><small>DEMO TENANT</small><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={tenantId} onChange={changeTenant} ariaLabel="Demo tenant" options={demoTenants.map((item) => ({ value: item.id, label: `${item.tradingName} — ${displayLabel(item.businessType)}` }))} /></div>}<div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={availableRoles.map((id) => ({ value: id, label: id === "broker_admin" && businessType !== "securities_dealer" ? "Tenant admin" : roleLabels[id] }))} /></div></div></div></div>
       </aside>
 
       <div className="workspace">
@@ -796,7 +836,7 @@ export default function FrankBrokerApp() {
         </header>
 
         <main>
-          {view === "dashboard" && <Dashboard orders={orders} auditEntries={auditEntries} queue={workItems} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} onOpenWork={(item) => navigateToTarget(item.target)} onOpenStatus={(status) => { setOrdersStatusFocus(status); setOrderFocus(null); setQuery(""); setView("orders"); setDrawer(null); }} />}
+          {view === "dashboard" && (modules.dealer_operations ? <Dashboard orders={orders} auditEntries={auditEntries} queue={workItems} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} onOpenWork={(item) => navigateToTarget(item.target)} onOpenStatus={(status) => { setOrdersStatusFocus(status); setOrderFocus(null); setQuery(""); setView("orders"); setDrawer(null); }} /> : <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />)}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "market" && <MarketWatchPage role={role} orders={orders} onOpenOrder={openDetail} onViewOrders={(focus) => { setOrderFocus(focus); setQuery(""); setView("orders"); setDrawer(null); }} />}
           {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} focus={orderFocus} initialStatus={ordersStatusFocus} onInitialStatusConsumed={() => setOrdersStatusFocus(null)} onClearFocus={() => setOrderFocus(null)} onOpen={openDetail} onNewOrder={openNewOrder} />}
@@ -807,13 +847,15 @@ export default function FrankBrokerApp() {
           {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} focusId={cashFocus} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} focusId={reconciliationFocus} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} resolvingId={busyAction} />}
+          {view === "advisory" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />}
+          {view === "issuers" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="issuers" onNotify={notify} />}
           {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} onDownloaded={(name) => notify(`${name} exported as CSV.`)} />}
           {view === "audit" && <AuditPage events={auditEntries} />}
           {view === "users" && <UsersPage role={role} />}
           {view === "settings" && <SettingsPage />}
         </main>
 
-        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.filter((item) => navVisible(item, role)).filter((item, index) => index < 5 || item.id === "market").map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
+        <nav className="mobile-nav" aria-label="Mobile navigation">{navItems.filter((item) => navVisible(item, role, modules)).filter((item, index) => index < 5 || item.id === "market").map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><i><Icon name={item.icon} size={21} /></i><span>{item.label.split(" ")[0]}</span></button>)}</nav>
       </div>
 
       {drawer && <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>

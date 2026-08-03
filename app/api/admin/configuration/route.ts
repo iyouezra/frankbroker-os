@@ -8,11 +8,11 @@ export const runtime = "nodejs";
 
 const roleToUi: Record<string, string> = {
   broker_admin: "Broker admin", trader: "Trader", compliance: "Compliance",
-  settlement: "Settlement", management: "Read only", operations: "Read only",
+  settlement: "Settlement", advisory_lead: "Advisory lead", advisory_analyst: "Advisory analyst", management: "Read only", operations: "Read only",
 };
 const roleToDb: Record<string, string> = {
   "Broker admin": "broker_admin", Trader: "trader", Compliance: "compliance",
-  Settlement: "settlement", "Read only": "management",
+  Settlement: "settlement", "Advisory lead": "advisory_lead", "Advisory analyst": "advisory_analyst", "Read only": "management",
 };
 const title = (value: string) => value.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 const dateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -32,10 +32,15 @@ export async function GET(request: Request) {
     requirePlatformAdmin(request);
     const start = new Date();
     start.setUTCHours(0, 0, 0, 0);
-    const [brokers, instruments, auditRows, platformFeeSchedule] = await Promise.all([
+    const [brokers, instruments, auditRows, platformFeeSchedule, checklistTemplates] = await Promise.all([
       prisma.broker.findMany({
         include: {
           settings: true,
+          tenantProfile: true,
+          tenantLicenses: { orderBy: { createdAt: "asc" } },
+          tenantEntitlements: { where: { status: "active" } },
+          tenantModules: true,
+          tenantChecklistPacks: true,
           users: { orderBy: { fullName: "asc" } },
           clients: { include: { accounts: { include: { holdings: { include: { instrument: true } } } } } },
           orders: { where: { submittedAt: { gte: start } } },
@@ -61,6 +66,7 @@ export async function GET(request: Request) {
         include: { rules: true },
         orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
       }),
+      prisma.checklistTemplate.findMany({ where: { status: "published" }, orderBy: [{ transactionType: "asc" }, { marketSegment: "asc" }] }),
     ]);
 
     const tenants = brokers.map((broker) => {
@@ -91,6 +97,11 @@ export async function GET(request: Request) {
         ordersToday: broker.orders.length,
         assetsUnderAdministration: aua,
         features: settings?.features ?? {},
+        businessType: broker.tenantProfile?.businessType ?? "securities_dealer",
+        licenses: broker.tenantLicenses.map((item) => ({ id: item.id, regulator: item.regulator, licenseType: item.licenseType, licenseNumber: item.licenseNumber, status: item.status, validFrom: item.validFrom?.toISOString().slice(0, 10) ?? null, validTo: item.validTo?.toISOString().slice(0, 10) ?? null })),
+        entitlements: broker.tenantEntitlements.map((item) => item.activityKey),
+        modules: Object.fromEntries(["dealer_operations", "investor_servicing", "issuer_advisory"].map((key) => [key, broker.tenantModules.find((item) => item.moduleKey === key)?.enabled ?? (key !== "issuer_advisory")])),
+        checklistPacks: checklistTemplates.map((template) => ({ templateId: template.id, code: template.code, version: template.version, transactionType: template.transactionType, marketSegment: template.marketSegment, title: template.title, enabled: broker.tenantChecklistPacks.some((pack) => pack.templateId === template.id && pack.enabled) })),
         controls: {
           makerChecker: settings?.makerChecker ?? true,
           approvalThreshold: toNum(settings?.approvalThreshold),
@@ -207,15 +218,20 @@ export async function PATCH(request: Request) {
     if (!payload.entity || !payload.id || !payload.data) return Response.json({ error: "entity, id, and data are required." }, { status: 400 });
 
     if (payload.entity === "tenant") {
-      const current = await prisma.broker.findUnique({ where: { id: payload.id }, include: { settings: true } });
+      const tenantId = payload.id;
+      const current = await prisma.broker.findUnique({ where: { id: tenantId }, include: { settings: true } });
       if (!current) return Response.json({ error: "Tenant not found." }, { status: 404 });
       const data = payload.data;
       const controls = data.controls as Record<string, unknown>;
-      await prisma.$transaction([
-        prisma.broker.update({ where: { id: payload.id }, data: {
+      const modules = (data.modules ?? {}) as Record<string, unknown>;
+      const entitlements = Array.isArray(data.entitlements) ? data.entitlements.map(String) : [];
+      if ((modules.dealer_operations === true || modules.investor_servicing === true) && !entitlements.includes("securities_dealing")) return Response.json({ error: "Dealer operations and investor servicing require the securities dealing entitlement." }, { status: 400 });
+      if (modules.issuer_advisory === true && !entitlements.includes("transaction_advisory")) return Response.json({ error: "Issuer advisory requires the transaction advisory entitlement." }, { status: 400 });
+      await prisma.$transaction(async (tx) => {
+        await tx.broker.update({ where: { id: tenantId }, data: {
           name: String(data.name), licenseNumber: String(data.licenseNumber), status: String(data.status), baseCurrency: String(data.baseCurrency ?? "ETB"),
-        } }),
-        prisma.brokerSettings.upsert({ where: { brokerId: payload.id }, update: {
+        } });
+        await tx.brokerSettings.upsert({ where: { brokerId: tenantId }, update: {
           tradingName: String(data.tradingName), plan: String(data.plan), domain: String(data.domain ?? ""), supportEmail: String(data.supportEmail ?? ""),
           primaryColor: String(data.primaryColor), welcomeMessage: String(data.welcomeMessage ?? ""), timezone: String(data.timezone), businessDate: dateOnly(String(data.businessDate)),
           features: data.features as Prisma.InputJsonValue, makerChecker: Boolean(controls.makerChecker), approvalThreshold: Number(controls.approvalThreshold),
@@ -225,7 +241,7 @@ export async function PATCH(request: Request) {
           discrepancyWindowDays: Number(controls.discrepancyWindowDays),
           kycReviewMonths: Number(controls.kycReviewMonths),
         }, create: {
-          id: `set_${payload.id}`, brokerId: payload.id, tradingName: String(data.tradingName), plan: String(data.plan), domain: String(data.domain ?? ""),
+          id: `set_${tenantId}`, brokerId: tenantId, tradingName: String(data.tradingName), plan: String(data.plan), domain: String(data.domain ?? ""),
           supportEmail: String(data.supportEmail ?? ""), primaryColor: String(data.primaryColor), welcomeMessage: String(data.welcomeMessage ?? ""),
           timezone: String(data.timezone), businessDate: dateOnly(String(data.businessDate)), features: data.features as Prisma.InputJsonValue,
           makerChecker: Boolean(controls.makerChecker), approvalThreshold: Number(controls.approvalThreshold), clientDailyLimit: Number(controls.clientDailyLimit),
@@ -234,9 +250,18 @@ export async function PATCH(request: Request) {
           requireTermsAcceptance: Boolean(controls.requireTermsAcceptance),
           discrepancyWindowDays: Number(controls.discrepancyWindowDays),
           kycReviewMonths: Number(controls.kycReviewMonths),
-        } }),
-        audit(payload.id, "TENANT_CONFIGURATION_UPDATED", "broker", payload.id, `${String(data.tradingName)} configuration updated`, current, data),
-      ]);
+        } });
+        await tx.tenantProfile.upsert({ where: { tenantId }, update: { businessType: String(data.businessType ?? "securities_dealer") }, create: { tenantId, businessType: String(data.businessType ?? "securities_dealer") } });
+        await tx.tenantLicense.deleteMany({ where: { tenantId } });
+        const licenses = Array.isArray(data.licenses) ? data.licenses as Array<Record<string, unknown>> : [];
+        if (licenses.length) await tx.tenantLicense.createMany({ data: licenses.map((item) => ({ id: String(item.id ?? crypto.randomUUID()), tenantId, regulator: String(item.regulator ?? "ECMA"), licenseType: String(item.licenseType ?? ""), licenseNumber: String(item.licenseNumber ?? ""), status: String(item.status ?? "active"), validFrom: item.validFrom ? dateOnly(String(item.validFrom)) : null, validTo: item.validTo ? dateOnly(String(item.validTo)) : null })) });
+        await tx.tenantEntitlement.deleteMany({ where: { tenantId } });
+        if (entitlements.length) await tx.tenantEntitlement.createMany({ data: entitlements.map((activityKey) => ({ id: crypto.randomUUID(), tenantId, activityKey, basis: "Platform-admin configured", status: "active" })) });
+        for (const moduleKey of ["dealer_operations", "investor_servicing", "issuer_advisory"]) await tx.tenantModule.upsert({ where: { tenantId_moduleKey: { tenantId, moduleKey } }, update: { enabled: modules[moduleKey] === true }, create: { id: crypto.randomUUID(), tenantId, moduleKey, enabled: modules[moduleKey] === true } });
+        const packs = Array.isArray(data.checklistPacks) ? data.checklistPacks as Array<Record<string, unknown>> : [];
+        for (const pack of packs) await tx.tenantChecklistPack.upsert({ where: { tenantId_templateId: { tenantId, templateId: String(pack.templateId) } }, update: { enabled: pack.enabled === true }, create: { id: crypto.randomUUID(), tenantId, templateId: String(pack.templateId), enabled: pack.enabled === true } });
+        await tx.auditLog.create({ data: { id: crypto.randomUUID(), brokerId: tenantId, actorId: null, action: "TENANT_CONFIGURATION_UPDATED", entityType: "broker", entityId: tenantId, summary: `${String(data.tradingName)} configuration updated`, previousValue: JSON.stringify(current), newValue: JSON.stringify(data) } });
+      });
       return Response.json({ ok: true });
     }
 

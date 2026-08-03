@@ -18,7 +18,7 @@ async function main() {
     data: [
       { id: "brk_abyssinia", name: "Abyssinia Securities S.C.", licenseNumber: "ESCA-BR-004", status: "active", baseCurrency: "ETB" },
       { id: "brk_blue_nile", name: "Blue Nile Capital PLC", licenseNumber: "ESCA-BR-011", status: "pilot", baseCurrency: "ETB" },
-      { id: "brk_sheba", name: "Sheba Investment Services S.C.", licenseNumber: "PILOT-023", status: "suspended", baseCurrency: "ETB" },
+      { id: "brk_sheba", name: "Sheba Advisory S.C.", licenseNumber: "PILOT-023", status: "pilot", baseCurrency: "ETB" },
     ],
     skipDuplicates: true,
   });
@@ -34,7 +34,9 @@ async function main() {
       { id: "usr_service", brokerId: "brk_abyssinia", email: "bethel@frankbroker.et", fullName: "Bethel Tesfaye", role: "service_officer", status: "active" },
       { id: "usr_platform_admin", brokerId: null, email: "platform.admin@frankmoney.et", fullName: "Fikru Yilma", role: "super_admin", status: "active", mfaEnabled: true },
       { id: "usr_blue_admin", brokerId: "brk_blue_nile", email: "samuel@bluenile.example", fullName: "Samuel Kebede", role: "broker_admin", status: "active", mfaEnabled: true },
-      { id: "usr_sheba_admin", brokerId: "brk_sheba", email: "abel@sheba.example", fullName: "Abel Yohannes", role: "broker_admin", status: "suspended", mfaEnabled: true },
+      { id: "usr_sheba_admin", brokerId: "brk_sheba", email: "abel@sheba.example", fullName: "Abel Yohannes", role: "broker_admin", status: "active", mfaEnabled: true },
+      { id: "usr_advisory_lead", brokerId: "brk_blue_nile", email: "lead@bluenile.example", fullName: "Saron Desta", role: "advisory_lead", status: "active", mfaEnabled: true },
+      { id: "usr_advisory_analyst", brokerId: "brk_blue_nile", email: "analyst@bluenile.example", fullName: "Nahom Bekele", role: "advisory_analyst", status: "active", mfaEnabled: true },
     ],
     skipDuplicates: true,
   });
@@ -162,7 +164,7 @@ async function main() {
   const tenantSettings = [
     { id: "set_brk_abyssinia", brokerId: "brk_abyssinia", tradingName: "Abyssinia Securities", plan: "Enterprise", domain: "invest.abyssinia.et", supportEmail: "support@abyssinia.example", primaryColor: "#0C8189", welcomeMessage: "Access Ethiopian shares and government bonds through one simple platform.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
     { id: "set_brk_blue_nile", brokerId: "brk_blue_nile", tradingName: "Blue Nile Capital", plan: "Growth", domain: "invest.bluenile.example", supportEmail: "care@bluenile.example", primaryColor: "#2277C8", welcomeMessage: "A simpler way to own ESX companies and government bonds.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
-    { id: "set_brk_sheba", brokerId: "brk_sheba", tradingName: "Sheba Invest", plan: "Pilot", domain: "sheba.frankbroker.demo", supportEmail: "operations@sheba.example", primaryColor: "#0E9F5B", welcomeMessage: "Start small, understand every step, and build from there.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: false, selfDirected: true, bonds: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true }, makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
+    { id: "set_brk_sheba", brokerId: "brk_sheba", tradingName: "Sheba Advisory", plan: "Pilot", domain: "sheba.frankbroker.demo", supportEmail: "advisory@sheba.example", primaryColor: "#0E9F5B", welcomeMessage: "Manage Ethiopian issuer readiness with clear ownership and evidence.", businessDate: dateOnly("2026-07-14"), features: { investorPortal: false, selfDirected: false, bonds: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: false }, makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
   ];
   for (const settings of tenantSettings) {
     await prisma.brokerSettings.upsert({ where: { brokerId: settings.brokerId }, update: settings, create: settings });
@@ -406,6 +408,98 @@ async function main() {
     ],
     skipDuplicates: true,
   });
+
+  // Tenant capability profiles are additive around the legacy broker records.
+  const profiles = [
+    { tenantId: "brk_abyssinia", businessType: "securities_dealer", entitlements: ["securities_dealing"], modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: false }, licenseType: "securities_dealer", licenseNumber: "ESCA-BR-004" },
+    { tenantId: "brk_blue_nile", businessType: "investment_bank", entitlements: ["securities_dealing", "transaction_advisory"], modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, licenseType: "investment_bank", licenseNumber: "ESCA-BR-011" },
+    { tenantId: "brk_sheba", businessType: "securities_investment_adviser", entitlements: ["transaction_advisory"], modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: true }, licenseType: "securities_investment_adviser", licenseNumber: "PILOT-023" },
+  ] as const;
+  for (const profile of profiles) {
+    await prisma.tenantProfile.upsert({ where: { tenantId: profile.tenantId }, update: { businessType: profile.businessType }, create: { tenantId: profile.tenantId, businessType: profile.businessType } });
+    await prisma.tenantLicense.upsert({ where: { tenantId_licenseNumber: { tenantId: profile.tenantId, licenseNumber: profile.licenseNumber } }, update: { licenseType: profile.licenseType, status: "active" }, create: { id: `lic_${profile.tenantId}`, tenantId: profile.tenantId, regulator: "ECMA", licenseType: profile.licenseType, licenseNumber: profile.licenseNumber, status: "active", validFrom: dateOnly("2025-01-01") } });
+    for (const activityKey of profile.entitlements) await prisma.tenantEntitlement.upsert({ where: { tenantId_activityKey: { tenantId: profile.tenantId, activityKey } }, update: { status: "active" }, create: { id: `ent_${profile.tenantId}_${activityKey}`, tenantId: profile.tenantId, activityKey, basis: profile.licenseNumber, status: "active" } });
+    for (const [moduleKey, enabled] of Object.entries(profile.modules)) await prisma.tenantModule.upsert({ where: { tenantId_moduleKey: { tenantId: profile.tenantId, moduleKey } }, update: { enabled }, create: { id: `mod_${profile.tenantId}_${moduleKey}`, tenantId: profile.tenantId, moduleKey, enabled } });
+  }
+
+  const sources = {
+    publicOffer: { title: "ECMA Public Offering and Trading Directive 1030/2024", url: "https://ecma.gov.et/po/" },
+    listing: { title: "ESX Rulebook and Guide to Listing", url: "https://esx.et/wp-content/uploads/2025/04/IPO-Guide-ESX-v3.pdf" },
+    demat: { title: "ECMA Dematerialization Directive 1047/2025", url: "https://ecma.gov.et/demat/" },
+    otc: { title: "ESX OTC Rules — May 2026 amendment", url: "https://esx.et/wp-content/uploads/2026/05/OTC-rule-Book_First-Amendment-may-6-2026-WC-1.pdf" },
+  };
+  const ipoItems = [
+    ["mandate", "Mandate & appointments", "Confirm the transaction mandate and licensed professional appointments.", "Signed mandate and appointment letters", sources.publicOffer, "Articles 8 and 77"],
+    ["issuer_eligibility", "Issuer eligibility", "Confirm the issuer is legally eligible to make a public offer.", "Legal opinion, incorporation records and issuer resolutions", sources.publicOffer, "Article 6"],
+    ["market_eligibility", "Market eligibility", "Assess the selected ESX market segment and document every applicable threshold.", "Eligibility assessment with supporting calculations", sources.listing, "Initial listing requirements"],
+    ["financial_statements", "Financial reporting", "Collect the required audited financial statements and resolve material qualifications.", "Signed audited financial statements and audit opinion", sources.listing, "Main/Growth financial statement requirements"],
+    ["public_float", "Capital and public float", "Evidence fully paid, transferable shares, equal class rights, capitalization and planned public float.", "Capital table and shareholder distribution analysis", sources.listing, "Capital and public float requirements"],
+    ["due_diligence", "Due diligence", "Coordinate legal, financial, tax, governance and commercial due diligence.", "Signed due-diligence reports and issue tracker", sources.publicOffer, "Registration statement requirements"],
+    ["risks_contracts", "Risks and material matters", "Record material contracts, litigation, related parties and principal risks.", "Material contracts register and risk disclosures", sources.publicOffer, "Prospectus content requirements"],
+    ["valuation", "Valuation and expert evidence", "Track the externally prepared valuation, pricing evidence and expert consents.", "Valuation report, pricing memorandum and expert consents", sources.publicOffer, "Prospectus expert disclosures"],
+    ["prospectus", "ECMA registration and prospectus", "Track completion, approval and publication of the registration statement and prospectus.", "Filed registration statement and ECMA-approved prospectus", sources.publicOffer, "Articles 8, 34, 51 and 52"],
+    ["advertising", "Offer communications", "Confirm public-offer advertisements and communications have required approval.", "Approved advertising and communication register", sources.publicOffer, "Article 53"],
+    ["esx_application", "ESX application", "Track listing application documents, fees, comments and admission decision.", "ESX application pack, fee evidence and decision", sources.listing, "Application documents"],
+    ["dematerialization", "CSD and dematerialization", "Prepare the share register and dematerialization evidence for CSD readiness.", "CSD confirmation and reconciled shadow register", sources.demat, "Dematerialization and CSD registration"],
+    ["offer_readiness", "Offer and trading readiness", "Track allotment, refund and first-day readiness evidence without operating the bookbuild in Frank.", "Allotment controls, reconciliation and launch checklist", sources.publicOffer, "Offer administration requirements"],
+  ] as const;
+  const otcItems = [
+    ["registration_basis", "ECMA registration basis", "Confirm ECMA registration or the applicable exemption and information memorandum route.", "ECMA registration evidence or exemption memorandum", sources.publicOffer, "Articles 4, 29, 30 and 34"],
+    ["issuer_approvals", "Issuer and adviser approvals", "Confirm issuer resolutions, mandate and licensed adviser responsibility.", "Board/shareholder resolutions and signed mandate", sources.publicOffer, "Registration statement requirements"],
+    ["otc_application", "ESX OTC application", "Complete the prescribed OTC admission application.", "Completed ESX OTC application form", sources.otc, "Rule 3.3(1)(a)"],
+    ["offer_document", "Approved offer document", "Provide the ECMA-approved prospectus or relevant information memorandum.", "Approved prospectus or information memorandum", sources.otc, "Rule 3.3(1)(b)"],
+    ["ecma_reports", "Current ECMA reports", "Collect the latest periodic and current reports filed with ECMA.", "Latest ECMA filing acknowledgements and reports", sources.otc, "Rule 3.3(1)(c)"],
+    ["constitutional_docs", "Constitutional documents", "Collect the issuer's memorandum and constitutional records.", "Memorandum of Association and amendments", sources.otc, "Rule 3.3(1)(d)"],
+    ["annual_report", "Latest annual report", "Confirm the latest annual report has been filed and is included.", "Filed annual report", sources.otc, "Rule 3.3(1)(e)"],
+    ["dematerialization", "CSD readiness", "Confirm the securities are eligible and admitted for dematerialized settlement.", "CSD admission and reconciled security register", sources.demat, "Directive 1047/2025"],
+    ["admission_readiness", "Fees, disclosures and admission queries", "Close ESX queries, evidence fees and confirm ongoing disclosure ownership.", "Fee receipt, query log and disclosure calendar", sources.otc, "Rules 3.3 and ongoing obligations"],
+  ] as const;
+
+  const templates = [
+    { id: "tpl_ipo_main_v1", code: "ETH-IPO-MAIN", version: "1.0", transactionType: "ipo", marketSegment: "main", title: "Ethiopian IPO — Main Market", items: ipoItems },
+    { id: "tpl_ipo_growth_v1", code: "ETH-IPO-GROWTH", version: "1.0", transactionType: "ipo", marketSegment: "growth", title: "Ethiopian IPO — Growth Market", items: ipoItems },
+    { id: "tpl_otc_v1", code: "ETH-OTC-ADMISSION", version: "1.0", transactionType: "otc_admission", marketSegment: "otc", title: "Ethiopian OTC Admission", items: otcItems },
+  ] as const;
+  for (const template of templates) {
+    await prisma.checklistTemplate.upsert({ where: { id: template.id }, update: { title: template.title, status: "published" }, create: { id: template.id, code: template.code, version: template.version, transactionType: template.transactionType, marketSegment: template.marketSegment, title: template.title, status: "published", effectiveFrom: dateOnly("2026-05-06"), sourceSet: Object.values(sources) } });
+    await prisma.checklistTemplateItem.createMany({ data: template.items.map((item, index) => ({ id: `${template.id}_${item[0]}`, templateId: template.id, itemCode: item[0], section: item[1], title: item[1], guidance: item[2], expectedEvidence: item[3], required: true, sortOrder: (index + 1) * 10, sourceTitle: item[4].title, sourceUrl: item[4].url, sourceReference: item[5] })), skipDuplicates: true });
+    for (const tenantId of ["brk_blue_nile", "brk_sheba"]) await prisma.tenantChecklistPack.upsert({ where: { tenantId_templateId: { tenantId, templateId: template.id } }, update: { enabled: true }, create: { id: `pack_${tenantId}_${template.id}`, tenantId, templateId: template.id, enabled: true } });
+  }
+
+  await prisma.issuer.createMany({ data: [
+    { id: "iss_blue_awash_foods", tenantId: "brk_blue_nile", legalName: "Awash Foods Share Company", tradingName: "Awash Foods", entityType: "share_company", registrationNumber: "SC-AA-2012-4481", tinReference: "TIN-100-884-21", sector: "Consumer goods", contactName: "Marta Alemu", contactEmail: "marta@awashfoods.example", status: "active" },
+    { id: "iss_blue_rift_logistics", tenantId: "brk_blue_nile", legalName: "Rift Valley Logistics S.C.", tradingName: "Rift Logistics", entityType: "share_company", registrationNumber: "SC-AA-2018-9021", sector: "Logistics", contactName: "Yonatan Bekele", contactEmail: "yonatan@riftlogistics.example", status: "active" },
+    { id: "iss_sheba_highland", tenantId: "brk_sheba", legalName: "Highland Manufacturing S.C.", tradingName: "Highland Manufacturing", entityType: "share_company", registrationNumber: "SC-OR-2015-3308", sector: "Manufacturing", contactName: "Eden Girma", contactEmail: "eden@highland.example", status: "active" },
+  ], skipDuplicates: true });
+
+  await prisma.advisoryDeal.createMany({ data: [
+    { id: "deal_blue_awash_ipo", tenantId: "brk_blue_nile", issuerId: "iss_blue_awash_foods", checklistTemplateId: "tpl_ipo_main_v1", name: "Awash Foods IPO readiness", transactionType: "ipo", marketSegment: "main", mandateReference: "BN-IB-2026-014", leadUserId: "usr_advisory_lead", stage: "due_diligence", status: "active", targetDate: dateOnly("2026-12-15"), createdByUserId: "usr_advisory_lead" },
+    { id: "deal_blue_rift_otc", tenantId: "brk_blue_nile", issuerId: "iss_blue_rift_logistics", checklistTemplateId: "tpl_otc_v1", name: "Rift Logistics OTC admission", transactionType: "otc_admission", marketSegment: "otc", mandateReference: "BN-IB-2026-021", leadUserId: "usr_advisory_lead", stage: "readiness", status: "active", targetDate: dateOnly("2026-10-30"), createdByUserId: "usr_advisory_lead" },
+    { id: "deal_sheba_highland_ipo", tenantId: "brk_sheba", issuerId: "iss_sheba_highland", checklistTemplateId: "tpl_ipo_growth_v1", name: "Highland Manufacturing Growth Market", transactionType: "ipo", marketSegment: "growth", mandateReference: "SHA-2026-003", leadUserId: "usr_sheba_admin", stage: "readiness", status: "active", targetDate: dateOnly("2027-02-15"), createdByUserId: "usr_sheba_admin" },
+  ], skipDuplicates: true });
+  for (const deal of [{ id: "deal_blue_awash_ipo", tenantId: "brk_blue_nile", templateId: "tpl_ipo_main_v1" }, { id: "deal_blue_rift_otc", tenantId: "brk_blue_nile", templateId: "tpl_otc_v1" }, { id: "deal_sheba_highland_ipo", tenantId: "brk_sheba", templateId: "tpl_ipo_growth_v1" }]) {
+    const items = await prisma.checklistTemplateItem.findMany({ where: { templateId: deal.templateId }, orderBy: { sortOrder: "asc" } });
+    await prisma.dealChecklistItem.createMany({ data: items.map((item, index) => ({ id: `chk_${deal.id}_${item.itemCode}`, tenantId: deal.tenantId, dealId: deal.id, templateItemId: item.id, itemCode: item.itemCode, section: item.section, title: item.title, guidance: item.guidance, expectedEvidence: item.expectedEvidence, required: item.required, sortOrder: item.sortOrder, sourceTitle: item.sourceTitle, sourceUrl: item.sourceUrl, sourceReference: item.sourceReference, ownerUserId: deal.tenantId === "brk_blue_nile" ? "usr_advisory_analyst" : "usr_sheba_admin", status: index < 2 ? "satisfied" : index === 2 ? "pending_approval" : index === 5 ? "blocked" : "in_progress", preparedByUserId: index < 3 ? "usr_advisory_analyst" : null, preparedAt: index < 3 ? new Date("2026-07-29T09:00:00Z") : null, reviewedByUserId: index < 2 ? "usr_advisory_lead" : null, reviewedAt: index < 2 ? new Date("2026-07-30T10:00:00Z") : null, dueDate: new Date(`2026-${String(Math.min(12, 8 + Math.floor(index / 4))).padStart(2, "0")}-${String(10 + index).padStart(2, "0")}`) })), skipDuplicates: true });
+  }
+  await prisma.dealParty.createMany({ data: [
+    { id: "party_awash_issuer", tenantId: "brk_blue_nile", dealId: "deal_blue_awash_ipo", partyRole: "issuer", organization: "Awash Foods S.C.", contactName: "Marta Alemu", email: "marta@awashfoods.example" },
+    { id: "party_awash_legal", tenantId: "brk_blue_nile", dealId: "deal_blue_awash_ipo", partyRole: "legal_counsel", organization: "Addis Legal Partners", contactName: "Ruth Worku", email: "ruth@addislegal.example" },
+    { id: "party_awash_auditor", tenantId: "brk_blue_nile", dealId: "deal_blue_awash_ipo", partyRole: "auditor", organization: "Meridian Audit LLP", contactName: "Kebede Tadesse" },
+  ], skipDuplicates: true });
+  await prisma.dealTask.createMany({ data: [
+    { id: "dtask_awash_financials", tenantId: "brk_blue_nile", dealId: "deal_blue_awash_ipo", title: "Resolve audit qualification follow-up", assignedToUserId: "usr_advisory_analyst", createdByUserId: "usr_advisory_lead", dueDate: dateOnly("2026-08-08"), priority: "high", status: "in_progress" },
+    { id: "dtask_rift_reports", tenantId: "brk_blue_nile", dealId: "deal_blue_rift_otc", title: "Collect latest ECMA periodic reports", assignedToUserId: "usr_advisory_analyst", createdByUserId: "usr_advisory_lead", dueDate: dateOnly("2026-08-12"), priority: "normal", status: "open" },
+  ], skipDuplicates: true });
+  await prisma.dealSubmission.createMany({ data: [
+    { id: "sub_awash_ecma", tenantId: "brk_blue_nile", dealId: "deal_blue_awash_ipo", authority: "ECMA", submissionType: "pre_filing_consultation", reference: "ECMA-PFC-2026-118", status: "response_received", submittedAt: new Date("2026-07-18T08:30:00Z"), submittedBy: "usr_advisory_lead", responseDueAt: dateOnly("2026-08-06") },
+  ], skipDuplicates: true });
+  await prisma.regulatoryQuery.createMany({ data: [
+    { id: "qry_awash_001", tenantId: "brk_blue_nile", submissionId: "sub_awash_ecma", reference: "Q-03", question: "Provide reconciliation between the audited share capital and the latest shareholder register.", ownerUserId: "usr_advisory_analyst", receivedAt: new Date("2026-07-25T10:00:00Z"), dueDate: dateOnly("2026-08-07"), status: "open" },
+  ], skipDuplicates: true });
+  await prisma.dealDocument.createMany({ data: [
+    { id: "doc_awash_valuation", tenantId: "brk_blue_nile", dealId: "deal_blue_awash_ipo", checklistItemId: "chk_deal_blue_awash_ipo_valuation", title: "Independent valuation report", documentType: "valuation_report", ownerUserId: "usr_advisory_analyst", expectedDate: dateOnly("2026-08-20"), status: "linked", externalUrl: "https://data-room.example/awash-foods/valuation" },
+    { id: "doc_rift_annual", tenantId: "brk_blue_nile", dealId: "deal_blue_rift_otc", checklistItemId: "chk_deal_blue_rift_otc_annual_report", title: "Latest annual report", documentType: "annual_report", ownerUserId: "usr_advisory_analyst", expectedDate: dateOnly("2026-08-10"), status: "expected" },
+  ], skipDuplicates: true });
 
   console.log("FrankBroker OS demo data is ready.");
 }

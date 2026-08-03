@@ -7,6 +7,8 @@ export type Role =
   | "relationship_officer"
   | "service_officer"
   | "management"
+  | "advisory_lead"
+  | "advisory_analyst"
   | "super_admin";
 
 export type OrderStatus =
@@ -39,8 +41,22 @@ export const roleLabels: Record<Role, string> = {
   relationship_officer: "Relationship officer",
   service_officer: "Client service officer",
   management: "Read-only management",
+  advisory_lead: "Advisory lead",
+  advisory_analyst: "Advisory analyst",
   super_admin: "Frank super admin",
 };
+
+export const ADVISORY_PERMISSIONS = {
+  view: "advisory.view",
+  issuerManage: "advisory.issuer.manage",
+  dealManage: "advisory.deal.manage",
+  stageAdvance: "advisory.deal.stage.advance",
+  checklistPrepare: "advisory.checklist.prepare",
+  checklistApprove: "advisory.checklist.approve",
+  documentManage: "advisory.document.manage",
+  taskManage: "advisory.task.manage",
+  submissionManage: "advisory.submission.manage",
+} as const;
 
 /**
  * Investor-servicing permissions. The financial vocabulary above is a flat verb
@@ -82,10 +98,10 @@ const CRM_READ_AND_NOTE = [CRM_PERMISSIONS.view, CRM_PERMISSIONS.note, CRM_PERMI
 const CRM_TASK_FULL = [CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.taskAssign, CRM_PERMISSIONS.taskComplete];
 
 export const workflowPermissions: Record<Role, string[]> = {
-  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL],
+  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...Object.values(ADVISORY_PERMISSIONS)],
   trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE, ...MARKET_FULL],
   operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL, ...MARKET_VIEW],
-  compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage, ...MARKET_VIEW],
+  compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage, ...MARKET_VIEW, ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.checklistApprove],
   settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE, ...MARKET_VIEW],
   relationship_officer: [
     "report",
@@ -100,8 +116,10 @@ export const workflowPermissions: Record<Role, string[]> = {
     ...MARKET_VIEW,
   ],
   service_officer: ["create", "report", ...CRM_ALL, ...MARKET_VIEW],
-  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW],
-  super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL],
+  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW, ADVISORY_PERMISSIONS.view],
+  advisory_lead: ["report", ...Object.values(ADVISORY_PERMISSIONS)],
+  advisory_analyst: ["report", ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.issuerManage, ADVISORY_PERMISSIONS.dealManage, ADVISORY_PERMISSIONS.checklistPrepare, ADVISORY_PERMISSIONS.documentManage, ADVISORY_PERMISSIONS.taskManage],
+  super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...Object.values(ADVISORY_PERMISSIONS)],
 };
 
 /**
