@@ -1,6 +1,6 @@
 import { prisma } from "../../../lib/prisma";
 import { D } from "../../../lib/money";
-import { requirePermission, resolveActor } from "../../../lib/server-auth";
+import { requireTenantModule } from "../../../lib/tenant-capabilities";
 import { apiError } from "../../../lib/api";
 
 export const runtime = "nodejs";
@@ -47,7 +47,7 @@ const serializeBatch = (batch: {
 
 export async function GET(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const { actor } = await requireTenantModule(request, "dealer_operations", "report");
     const batches = await prisma.reconciliationBatch.findMany({
       where: { brokerId: actor.brokerId },
       include: { reviewedByUser: { select: { fullName: true } }, exceptions: { orderBy: { createdAt: "asc" } } },
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, "adjust");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "adjust");
     const payload = (await request.json()) as { fileName?: string; rows?: ReconciliationRow[] };
     const rows = (payload.rows ?? []).filter((row) => row.reference && row.type && Number.isFinite(Number(row.actualValue)));
     if (!payload.fileName || !rows.length) {

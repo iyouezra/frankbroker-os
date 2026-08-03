@@ -3,7 +3,7 @@ import { MARKET_STALE_AFTER_MS } from "../../../lib/market-data/format";
 import { getMarketDataProvider } from "../../../lib/market-data/provider";
 import { MARKET_RANGES, type MarketRange } from "../../../lib/market-data/types";
 import { prisma } from "../../../lib/prisma";
-import { requirePermission } from "../../../lib/server-auth";
+import { requireTenantModule } from "../../../lib/tenant-capabilities";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,7 @@ async function permittedInstrumentIds(brokerId: string) {
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, "market.view");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "market.view");
     const provider = getMarketDataProvider();
     const url = new URL(request.url);
     const instrumentId = url.searchParams.get("instrumentId")?.trim() ?? "";

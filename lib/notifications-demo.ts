@@ -39,7 +39,7 @@ const demoInvestor: NotificationItem[] = [
 const demoPlatform: NotificationItem[] = [
   { id: "ntf_p1", category: "system", severity: "warning", title: "Tenant suspended · Sheba Invest", body: "Trading access paused pending license review.", entityType: "tenant", entityId: "brk_sheba", createdAt: "2026-07-14T09:32:00Z", read: false },
   { id: "ntf_p2", category: "system", severity: "info", title: "Fee schedule changed · Abyssinia Securities", body: "Brokerage fee changed from 0.70% to 0.65%.", entityType: "tenant", entityId: "brk_abyssinia", createdAt: "2026-07-14T11:18:00Z", read: false },
-  { id: "ntf_p3", category: "system", severity: "info", title: "Instrument enabled · ABAYB", body: "ABAYB enabled for investor and broker portals on Blue Nile Capital.", entityType: "tenant", entityId: "brk_blue_nile", createdAt: "2026-07-14T10:51:00Z", read: true },
+  { id: "ntf_p3", category: "system", severity: "info", title: "Instrument enabled · ABAYB", body: "ABAYB enabled for investor and broker portals on Addis Capital.", entityType: "tenant", entityId: "brk_blue_nile", createdAt: "2026-07-14T10:51:00Z", read: true },
 ];
 
 export function demoBrokerNotifications(role: string): NotificationItem[] {

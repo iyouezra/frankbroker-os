@@ -1,12 +1,12 @@
 import { prisma } from "../../../../../lib/prisma";
-import { requirePermission } from "../../../../../lib/server-auth";
+import { requireTenantModule } from "../../../../../lib/tenant-capabilities";
 import { apiError } from "../../../../../lib/api";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, "adjust");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "adjust");
     const { id } = await context.params;
     const payload = (await request.json()) as { notes?: string };
     const exception = await prisma.reconciliationException.findUnique({ where: { id }, include: { batch: true } });

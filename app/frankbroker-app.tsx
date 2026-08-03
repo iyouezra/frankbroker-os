@@ -141,7 +141,7 @@ export default function FrankBrokerApp() {
       .then((data: { tenants?: Array<{ id: string; tradingName: string; businessType: string; modules: TenantModules; availableRoles: Role[] }> }) => setDemoTenants(data.tenants ?? []))
       .catch(() => setDemoTenants([
         { id: "brk_abyssinia", tradingName: "Abyssinia Securities", businessType: "securities_dealer", modules: fallbackModules, availableRoles },
-        { id: "brk_blue_nile", tradingName: "Blue Nile Capital", businessType: "investment_bank", modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, availableRoles: ["broker_admin", "trader", "operations", "compliance", "settlement", "advisory_lead", "advisory_analyst", "management"] },
+        { id: "brk_blue_nile", tradingName: "Addis Capital", businessType: "investment_bank", modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, availableRoles: ["broker_admin", "trader", "operations", "compliance", "settlement", "advisory_lead", "advisory_analyst", "management"] },
         { id: "brk_sheba", tradingName: "Sheba Advisory", businessType: "securities_investment_adviser", modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: true }, availableRoles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
       ]));
     // The demo tenant catalogue is static for the browser session.

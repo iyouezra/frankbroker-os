@@ -2,13 +2,13 @@ import { apiError } from "../../../lib/api";
 import { serializeCashMovement, submitBrokerCashMovement, type CashMovementInput } from "../../../lib/cash-service";
 import { toNum } from "../../../lib/money";
 import { prisma } from "../../../lib/prisma";
-import { requirePermission } from "../../../lib/server-auth";
+import { requireTenantModule } from "../../../lib/tenant-capabilities";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, "report");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "report");
     const [pools, movements] = await Promise.all([
       prisma.pooledBankAccount.findMany({
         where: { brokerId: actor.brokerId },
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, "adjust");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "adjust");
     const payload = await request.json() as CashMovementInput;
     if (!payload || !["deposit", "withdrawal"].includes(payload.movementType)) {
       return Response.json({ error: "Movement type must be deposit or withdrawal." }, { status: 400 });

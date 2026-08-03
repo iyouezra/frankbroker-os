@@ -2,13 +2,13 @@ import { apiError } from "../../../../../lib/api";
 import { COMPLIANCE_PERMISSIONS } from "../../../../../lib/frank";
 import { writeAudit } from "../../../../../lib/oms/audit-service";
 import { prisma } from "../../../../../lib/prisma";
-import { requirePermission } from "../../../../../lib/server-auth";
+import { requireTenantModule } from "../../../../../lib/tenant-capabilities";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.reconciliationSignoff);
+    const { actor } = await requireTenantModule(request, "dealer_operations", COMPLIANCE_PERMISSIONS.reconciliationSignoff);
     const { id } = await context.params;
     const payload = await request.json() as { evidenceReference?: string };
     const evidenceReference = String(payload.evidenceReference ?? "").trim();

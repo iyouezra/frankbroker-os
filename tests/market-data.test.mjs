@@ -83,7 +83,7 @@ test("market endpoints enforce tenant entitlement, roles, supported ranges, and 
     readFile(new URL("../lib/market-data/provider.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/orders/route.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(route, /requirePermission\(request, "market\.view"\)/);
+  assert.match(route, /requireTenantModule\(request, "dealer_operations", "market\.view"\)/);
   assert.match(route, /brokerId, enabled: true/);
   assert.match(route, /!permitted\.includes\(instrumentId\)/);
   assert.match(route, /MARKET_RANGES\.includes/);

@@ -1,13 +1,13 @@
 import { apiError } from "../../../lib/api";
 import { prisma } from "../../../lib/prisma";
-import { requirePermission } from "../../../lib/server-auth";
+import { requireTenantModule } from "../../../lib/tenant-capabilities";
 import { confirmOtpChallenge, createOtpChallenge, ORDER_SOURCES, OTP_DELIVERY_CHANNELS, otpDestinationHint, orderPayloadHash, type OtpDeliveryChannel } from "../../../lib/verification-service";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, "create");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "create");
     const payload = await request.json() as Record<string, unknown>;
     const action = String(payload.action ?? "");
     const accountId = String(payload.accountId ?? "");

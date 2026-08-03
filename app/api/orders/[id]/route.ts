@@ -3,7 +3,7 @@ import { toNum } from "../../../../lib/money";
 import { availableActions } from "../../../../lib/oms/status";
 import { orderResponsibility } from "../../../../lib/order-log";
 import { prisma } from "../../../../lib/prisma";
-import { resolveActor } from "../../../../lib/server-auth";
+import { requireTenantModule } from "../../../../lib/tenant-capabilities";
 
 const feeBreakdown = (value: unknown) => {
   const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = resolveActor(request);
+    const { actor } = await requireTenantModule(request, "dealer_operations", "report");
     const { id } = await context.params;
     const order = await prisma.order.findFirst({
       where: { id, brokerId: actor.brokerId },

@@ -1,12 +1,12 @@
 import { apiError } from "../../../../../lib/api";
 import { reviewCashMovement, serializeCashMovement } from "../../../../../lib/cash-service";
-import { requirePermission } from "../../../../../lib/server-auth";
+import { requireTenantModule } from "../../../../../lib/tenant-capabilities";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, "adjust");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "adjust");
     const { id } = await context.params;
     const payload = await request.json() as { action?: string; reason?: string; bankReference?: string };
     if (!payload.action || !["verify", "approve", "complete", "reject", "fail"].includes(payload.action)) {

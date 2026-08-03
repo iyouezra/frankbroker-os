@@ -1,11 +1,11 @@
 import { prisma } from "../../../lib/prisma";
-import { requirePermission, resolveActor } from "../../../lib/server-auth";
 import { toNum } from "../../../lib/money";
 import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { Prisma } from "../../generated/prisma/client";
 import { csvCell, MARKET_LINK_ELIGIBLE_STATUSES, ORDER_STATUS_GROUPS, orderResponsibility } from "../../../lib/order-log";
+import { requireTenantModule } from "../../../lib/tenant-capabilities";
 
 export const runtime = "nodejs";
 
@@ -16,7 +16,7 @@ const normalizeFeeBreakdown = (value: unknown) => {
 
 export async function GET(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const { actor } = await requireTenantModule(request, "dealer_operations", "report");
     const url = new URL(request.url);
     const page = boundedInteger(url.searchParams.get("page"), 1, 1, 100_000);
     const pageSize = boundedInteger(url.searchParams.get("pageSize"), 25, 10, 100);
@@ -211,7 +211,7 @@ function periodStart(period: string) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, "create");
+    const { actor } = await requireTenantModule(request, "dealer_operations", "create");
     const payload = (await request.json()) as {
       accountId?: string;
       instrumentId?: string;

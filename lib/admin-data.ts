@@ -191,14 +191,14 @@ export const initialTenants: TenantConfig[] = [
   },
   {
     id: "brk_blue_nile",
-    name: "Blue Nile Capital PLC",
-    tradingName: "Blue Nile Capital",
+    name: "Addis Capital PLC",
+    tradingName: "Addis Capital",
     initials: "BN",
     licenseNumber: "ESCA-BR-011",
     status: "pilot",
     plan: "Growth",
-    domain: "invest.bluenile.example",
-    supportEmail: "care@bluenile.example",
+    domain: "invest.addiscapital.example",
+    supportEmail: "care@addiscapital.example",
     primaryColor: "#2277C8",
     welcomeMessage: "A simpler way to own ESX companies and government bonds.",
     baseCurrency: "ETB",
@@ -215,7 +215,7 @@ export const initialTenants: TenantConfig[] = [
     modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true },
     checklistPacks: [],
     controls: { makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
-    legalDocument: defaultLegalDocument("Blue Nile Capital"),
+    legalDocument: defaultLegalDocument("Addis Capital"),
     feeSchedule: defaultFeeSchedule(.65, 30),
   },
   {
@@ -270,7 +270,7 @@ export const initialAdminUsers: AdminUser[] = [
   { id: "usr_settlement", tenantId: "brk_abyssinia", employeeId: "ABS-0088", name: "Rahel Getachew", email: "rahel@frankbroker.et", jobTitle: "Settlement Officer", department: "Post-trade", role: "Settlement", status: "Active", mfa: false, lastActive: "Yesterday" },
   { id: "usr_relationship", tenantId: "brk_abyssinia", employeeId: "ABS-0164", name: "Kalkidan Alemu", email: "kalkidan@frankbroker.et", jobTitle: "Relationship Officer", department: "Client Services", role: "Relationship", status: "Active", mfa: false, lastActive: "2 days ago" },
   { id: "usr_service", tenantId: "brk_abyssinia", employeeId: "ABS-0171", name: "Bethel Tesfaye", email: "bethel@frankbroker.et", jobTitle: "Client Service Officer", department: "Client Services", role: "Client service", status: "Invited", mfa: false, lastActive: "Not yet" },
-  { id: "usr_blue_admin", tenantId: "brk_blue_nile", employeeId: "BNC-0001", name: "Samuel Kebede", email: "samuel@bluenile.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Active", mfa: true, lastActive: "18 min ago" },
+  { id: "usr_blue_admin", tenantId: "brk_blue_nile", employeeId: "BNC-0001", name: "Samuel Kebede", email: "samuel@addiscapital.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Active", mfa: true, lastActive: "18 min ago" },
   { id: "usr_sheba_admin", tenantId: "brk_sheba", employeeId: "SIS-0001", name: "Abel Yohannes", email: "abel@sheba.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Suspended", mfa: true, lastActive: "9 days ago" },
 ];
 

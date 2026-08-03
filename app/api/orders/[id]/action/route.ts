@@ -9,7 +9,7 @@ import {
 import { settleNextTrade } from "../../../../../lib/oms/settlement-service";
 import { captureTrade } from "../../../../../lib/oms/trade-service";
 import { parseDateOnly, parsePositiveFiniteNumber } from "../../../../../lib/order-input";
-import { requirePermission } from "../../../../../lib/server-auth";
+import { requireTenantModule } from "../../../../../lib/tenant-capabilities";
 
 export const runtime = "nodejs";
 
@@ -43,7 +43,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if ((payload.reason?.length ?? 0) > 1_000) {
       return Response.json({ error: "The workflow reason is too long." }, { status: 400 });
     }
-    const actor = requirePermission(request, permissions[payload.action]);
+    const { actor } = await requireTenantModule(request, "dealer_operations", permissions[payload.action]);
 
     switch (payload.action) {
       case "approve":
