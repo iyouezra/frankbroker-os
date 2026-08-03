@@ -771,3 +771,23 @@
 .msgComposer textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--investor-ink-200); border-radius: 16px; background: white; color: var(--investor-ink-900); font-family: inherit; font-size: 13.5px; resize: vertical; }
 .msgComposerFoot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .msgComposerFoot input[type="file"] { flex: 1; min-width: 130px; font-size: 11.5px; color: var(--investor-ink-500); }
+
+/* --- Language switcher --------------------------------------------------- */
+.languageSwitch { display: flex; justify-content: center; margin-top: 24px; }
+.languageOptions { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--investor-ink-200); border-radius: 999px; background: white; box-shadow: 0 4px 14px rgba(8,62,71,.05); }
+.languageOptions button { padding: 6px 13px; border: 0; border-radius: 999px; background: transparent; color: var(--investor-ink-500); font-family: inherit; font-size: 10px; font-weight: 700; line-height: 1.5; cursor: pointer; transition: background 140ms ease, color 140ms ease; }
+.languageOptions button:hover { color: var(--investor-teal-700); }
+.languageOptions button:focus-visible { outline: 3px solid rgba(12,129,137,.25); outline-offset: 2px; }
+.languageOptions .languageActive { background: var(--investor-teal-800); color: white; }
+.languageRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 13px 15px; border: 1px solid var(--investor-ink-200); border-radius: 15px; background: white; }
+.languageRowLabel { color: var(--investor-ink-900); font-size: 12px; font-weight: 700; }
+
+/* --- Ethiopic (Ge'ez) typography ----------------------------------------- */
+/* Amharic needs a font that covers Fidel and a little more vertical room than
+   Latin. Afaan Oromoo is written in Qubee (Latin) so it inherits the defaults. */
+:global(html[data-script="ethiopic"]) .investorPage { font-family: "Noto Sans Ethiopic", "Kefa", "Nyala", "Abyssinica SIL", var(--investor-font, system-ui), sans-serif; line-height: 1.6; }
+/* Fidel has no upper case and letter-spacing only pulls the glyphs apart. */
+:global(html[data-script="ethiopic"]) .demoSelectorIntro > small,
+:global(html[data-script="ethiopic"]) .demoSelectorBrand > span,
+:global(html[data-script="ethiopic"]) .licenseBadge,
+:global(html[data-script="ethiopic"]) .dialogEyebrow { letter-spacing: 0; }

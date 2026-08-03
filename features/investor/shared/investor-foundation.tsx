@@ -12,6 +12,8 @@ import {
 } from "../../../lib/investor-data";
 import type { InvestorActivity } from "../../../lib/investor-activity";
 import styles from "../../../app/investor/investor.module.css";
+import { useT } from "../../../lib/i18n/context";
+import type { TranslationKey } from "../../../lib/i18n/en";
 
 export type Tab = "home" | "markets" | "portfolio" | "learn" | "profile";
 export type IconName = "home" | "markets" | "portfolio" | "plan" | "profile" | "search" | "back" | "bell" | "plus" | "shield" | "bulb" | "chevron" | "check" | "order" | "money";
@@ -318,18 +320,20 @@ export function StockRow({ stock, onClick, holdingValue }: { stock: InvestorStoc
 }
 
 export function ScreenHeader({ title, onBack, right }: { title: string; onBack?: () => void; right?: ReactNode }) {
-  return <header className={styles.screenHeader}>{onBack && <button className={styles.iconButton} onClick={onBack} aria-label="Go back"><Icon name="back" size={20} /></button>}<h1>{title}</h1>{right}</header>;
+  const t = useT();
+  return <header className={styles.screenHeader}>{onBack && <button className={styles.iconButton} onClick={onBack} aria-label={t("common.back")}><Icon name="back" size={20} /></button>}<h1>{title}</h1>{right}</header>;
 }
 
 export function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
+  const t = useT();
   const items = [
-    { id: "home", label: "Home", icon: "home" },
-    { id: "markets", label: "Markets", icon: "markets" },
-    { id: "portfolio", label: "Portfolio", icon: "portfolio" },
-    { id: "learn", label: "Learn", icon: "bulb" },
-    { id: "profile", label: "You", icon: "profile" },
-  ] satisfies Array<{ id: Tab; label: string; icon: IconName }>;
-  return <nav className={styles.bottomNav} aria-label="Investor navigation">{items.map((item) => <button key={item.id} className={active === item.id ? styles.navActive : ""} onClick={() => onChange(item.id)}><Icon name={item.icon} size={22} /><span>{item.label}</span></button>)}</nav>;
+    { id: "home", labelKey: "nav.home", icon: "home" },
+    { id: "markets", labelKey: "nav.markets", icon: "markets" },
+    { id: "portfolio", labelKey: "nav.portfolio", icon: "portfolio" },
+    { id: "learn", labelKey: "nav.learn", icon: "bulb" },
+    { id: "profile", labelKey: "nav.profile", icon: "profile" },
+  ] satisfies Array<{ id: Tab; labelKey: TranslationKey; icon: IconName }>;
+  return <nav className={styles.bottomNav} aria-label={t("nav.label")}>{items.map((item) => <button key={item.id} className={active === item.id ? styles.navActive : ""} onClick={() => onChange(item.id)}><Icon name={item.icon} size={22} /><span>{t(item.labelKey)}</span></button>)}</nav>;
 }
 
 export function ProgressDots({ step }: { step: number }) {
@@ -366,7 +370,8 @@ export function emptyInvestorKyc(accountType: InvestorKyc["accountType"]): Inves
 }
 
 export function KycProgress({ step }: { step: number }) {
-  return <div className={styles.kycProgress}><span><b>ACCOUNT SETUP</b><small>{step + 1} of 5</small></span><i><em style={{ width: `${((step + 1) / 5) * 100}%` }} /></i></div>;
+  const t = useT();
+  return <div className={styles.kycProgress}><span><b>{t("onboarding.progressTitle")}</b><small>{t("onboarding.progressStep", { step: step + 1 })}</small></span><i><em style={{ width: `${((step + 1) / 5) * 100}%` }} /></i></div>;
 }
 
 export function KycField({ label, value, onChange, hint, placeholder, inputMode = "text", maxLength, type = "text", autoComplete = "off" }: { label: string; value: string; onChange: (value: string) => void; hint?: string; placeholder?: string; inputMode?: "text" | "numeric" | "tel" | "email"; maxLength?: number; type?: "text" | "email"; autoComplete?: string }) {

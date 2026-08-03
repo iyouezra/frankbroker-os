@@ -59,6 +59,9 @@ import {
   type OrderSubmissionOutcome,
 } from "../../lib/order-submission-ux";
 import { fetchJsonWithTransientRetry } from "../../lib/fetch-json";
+import { useLocale } from "../../lib/i18n/context";
+import type { TranslationKey } from "../../lib/i18n/en";
+import { LanguageSwitcher } from "../../features/investor/shared/language-switcher";
 
 type InvestorPhase = "select" | "existing" | "onboarding" | "app";
 type SubmittedApplication = {
@@ -68,24 +71,27 @@ type SubmittedApplication = {
   fullName: string;
 };
 
+// Names and initials are proper nouns and stay as written in every language;
+// only the descriptive labels are translated.
 const demoPersonas = [
   {
     id: "cli_investor_demo",
     name: "Selam Mekonnen",
     initials: "SM",
-    accountType: "Individual investor",
-    detail: "Active account with holdings, orders and support history",
+    accountTypeKey: "personas.individualType",
+    detailKey: "personas.individualDetail",
   },
   {
     id: "cli_blue",
     name: "Blue Nile Trading PLC",
     initials: "BN",
-    accountType: "Corporate investor",
-    detail: "Active institutional account with larger balances and positions",
+    accountTypeKey: "personas.corporateType",
+    detailKey: "personas.corporateDetail",
   },
-] as const;
+] as const satisfies ReadonlyArray<{ id: string; name: string; initials: string; accountTypeKey: TranslationKey; detailKey: TranslationKey }>;
 
 export default function InvestorApp() {
+  const { t } = useLocale();
   const [phase, setPhase] = useState<InvestorPhase>("select");
   const [activeClientId, setActiveClientId] = useState(INVESTOR_CLIENT_ID);
   const [onboardingType, setOnboardingType] = useState<InvestorKyc["accountType"]>("retail");
@@ -135,7 +141,7 @@ export default function InvestorApp() {
     const data = await fetchJsonWithTransientRetry<InvestorBootstrap>(
       "/api/investor",
       { headers: investorHeadersFor(clientId) },
-      { fallbackMessage: "Unable to open this demo account." },
+      { fallbackMessage: t("msg.openDemoFailed") },
     );
     setBootstrap({ ...data, activity: data.activity ?? [] });
     if (data.profile?.fullName) setProfileName(data.profile.fullName);
@@ -149,7 +155,7 @@ export default function InvestorApp() {
       setActiveClientId(clientId);
       setPhase("app");
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to open this demo account.");
+      notify(error instanceof Error ? error.message : t("msg.openDemoFailed"));
     } finally {
       setEntryBusy(null);
     }
@@ -252,17 +258,17 @@ export default function InvestorApp() {
       : { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) };
     const response = await fetch("/api/investor", init);
     const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; deliveryChannel?: "sms" | "email"; expiresAt?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; fullName: string; kycStatus: string } };
-    if (!response.ok) throw new Error(data.error ?? "Unable to update the investor account.");
+    if (!response.ok) throw new Error(data.error ?? t("msg.updateAccountFailed"));
     return data;
   };
   const completeOnboarding = async (submission: OnboardingSubmission) => {
     const { profile, linkedBanks, documents } = submission;
     if (!bootstrap) {
-      notify("Connect the demo database before submitting an application.");
+      notify(t("msg.connectDatabase"));
       return;
     }
     try {
-      if (!profile.verificationId) throw new Error("Verify the mobile number before submitting the application.");
+      if (!profile.verificationId) throw new Error(t("msg.verifyBeforeSubmit"));
       const formData = new FormData();
       formData.set("payload", JSON.stringify({
         action: "kyc",
@@ -285,10 +291,10 @@ export default function InvestorApp() {
       try {
         result = JSON.parse(responseText) as typeof result;
       } catch {
-        result = { error: responseText.trim() || "Unable to submit onboarding." };
+        result = { error: responseText.trim() || t("msg.submitOnboardingFailed") };
       }
-      if (!response.ok) throw new Error(result.error ?? "Unable to submit onboarding.");
-      if (!result.profile) throw new Error("The application was submitted without a client reference.");
+      if (!response.ok) throw new Error(result.error ?? t("msg.submitOnboardingFailed"));
+      if (!result.profile) throw new Error(t("msg.missingClientReference"));
       setSubmittedApplication(result.profile);
       setProfileName(result.profile.fullName);
       setActiveClientId(result.profile.id);
@@ -308,7 +314,7 @@ export default function InvestorApp() {
           restricted: true,
           canTrade: false,
           canMoveCash: false,
-          reasons: [{ code: "account_status", message: "Your account is awaiting broker approval.", action: null }],
+          reasons: [{ code: "account_status", message: t("msg.awaitingApproval"), action: null }],
         },
         serviceRequests: [],
         cashMovements: [],
@@ -317,21 +323,21 @@ export default function InvestorApp() {
         documents: Object.entries(documents).flatMap(([type, file]) => file ? [{ id: `pending-${type}`, type, name: file.name, status: "pending_review", hasFile: true }] : []),
       } : current);
       setPhase("app");
-      notify(`${result.profile.clientCode} submitted for broker review.`);
+      notify(t("msg.applicationSubmitted", { clientCode: result.profile.clientCode }));
       void refreshInvestor(result.profile.id).catch(() => undefined);
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to submit onboarding.");
+      notify(error instanceof Error ? error.message : t("msg.submitOnboardingFailed"));
     }
   };
   const verifyOnboardingPhone = async (phone: string) => {
     try {
       const challenge = await postInvestor({ action: "request_kyc_otp", phone });
-      if (!challenge.id) throw new Error("A verification code could not be created.");
+      if (!challenge.id) throw new Error(t("msg.otpCreateFailed"));
       setOnboardingOtp({
         id: challenge.id,
         phone,
         deliveryChannel: challenge.deliveryChannel ?? "sms",
-        destinationHint: challenge.destinationHint ?? `mobile ending ${phone.replace(/\D/g, "").slice(-4)}`,
+        destinationHint: challenge.destinationHint ?? t("msg.mobileEnding", { digits: phone.replace(/\D/g, "").slice(-4) }),
         expiresAt: challenge.expiresAt,
         demoCode: challenge.demoCode ?? "246810",
         busy: false,
@@ -341,7 +347,7 @@ export default function InvestorApp() {
         onboardingOtpResolver.current = resolve;
       });
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to verify the mobile number.");
+      notify(error instanceof Error ? error.message : t("msg.verifyMobileFailed"));
       return null;
     }
   };
@@ -354,9 +360,9 @@ export default function InvestorApp() {
       setOnboardingOtp(null);
       onboardingOtpResolver.current?.(verificationId);
       onboardingOtpResolver.current = null;
-      notify("Mobile number verified.");
+      notify(t("msg.mobileVerified"));
     } catch (error) {
-      setOnboardingOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : "The verification code was not accepted." } : current);
+      setOnboardingOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : t("msg.otpRejected") } : current);
     }
   };
   const resendApplicantOtp = async () => {
@@ -364,7 +370,7 @@ export default function InvestorApp() {
     setOnboardingOtp((current) => current ? { ...current, busy: true, error: "" } : current);
     try {
       const challenge = await postInvestor({ action: "request_kyc_otp", phone: onboardingOtp.phone });
-      if (!challenge.id) throw new Error("A new verification code could not be created.");
+      if (!challenge.id) throw new Error(t("msg.otpNewFailed"));
       setOnboardingOtp((current) => current ? {
         ...current,
         id: challenge.id!,
@@ -375,7 +381,7 @@ export default function InvestorApp() {
         error: "",
       } : current);
     } catch (error) {
-      setOnboardingOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : "A new code could not be sent." } : current);
+      setOnboardingOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : t("msg.otpSendFailed") } : current);
     }
   };
   const cancelApplicantOtp = () => {
@@ -391,11 +397,11 @@ export default function InvestorApp() {
         body: JSON.stringify({ bankName, accountNumber, accountHolderName: profileName }),
       });
       const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Unable to link the bank account.");
+      if (!response.ok) throw new Error(data.error ?? t("msg.linkBankFailed"));
       await refreshInvestor();
-      notify("Bank account sent for review.");
+      notify(t("msg.bankSentForReview"));
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to link the bank account.");
+      notify(error instanceof Error ? error.message : t("msg.linkBankFailed"));
     }
   };
   const deleteLinkedBank = async (id: string) => {
@@ -405,28 +411,28 @@ export default function InvestorApp() {
         headers: investorHeaders,
       });
       const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Unable to remove the bank account.");
+      if (!response.ok) throw new Error(data.error ?? t("msg.removeBankFailed"));
       await refreshInvestor();
-      notify("Linked bank account removed.");
+      notify(t("msg.bankRemoved"));
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to remove the bank account.");
+      notify(error instanceof Error ? error.message : t("msg.removeBankFailed"));
     }
   };
   const placeOrder = async (order: InvestorOrderInput): Promise<PlaceResult> => {
     if (submittedApplication && bootstrap?.account?.status !== "active") {
-      notify("Broker approval is required before you can place an order.");
+      notify(t("msg.approvalRequiredForOrder"));
       return { status: "validation_failed" };
     }
     let stage: "authorization" | "submission" = "authorization";
     try {
       const submissionReference = crypto.randomUUID();
       const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel: "sms" });
-      if (!challenge.id) throw new Error("An authorization code could not be requested.");
+      if (!challenge.id) throw new Error(t("msg.authCodeRequestFailed"));
       pendingOtpOrder.current = { order, submissionReference };
       setOrderOtp({
         id: challenge.id,
         deliveryChannel: challenge.deliveryChannel === "email" ? "email" : "sms",
-        destinationHint: challenge.destinationHint ?? "your registered mobile",
+        destinationHint: challenge.destinationHint ?? t("msg.registeredMobile"),
         expiresAt: challenge.expiresAt,
         demoCode: challenge.demoCode,
         busy: false,
@@ -443,7 +449,7 @@ export default function InvestorApp() {
       await refreshInvestor().catch(() => undefined);
       return { status: result.order?.status, checks: result.checks };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The order could not be submitted.";
+      const message = error instanceof Error ? error.message : t("msg.orderSubmitFailed");
       setOrderOutcome(failedOutcome({ audience: "investor", stage, channel: "investor_portal", detail: message }));
       return { status: "error" };
     }
@@ -459,7 +465,7 @@ export default function InvestorApp() {
       orderOtpResolver.current = null;
       pendingOtpOrder.current = null;
     } catch (error) {
-      setOrderOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : "The verification code was not accepted." } : current);
+      setOrderOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : t("msg.otpRejected") } : current);
     }
   };
 
@@ -469,18 +475,18 @@ export default function InvestorApp() {
     try {
       const { order, submissionReference } = pendingOtpOrder.current;
       const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel });
-      if (!challenge.id) throw new Error("A new code could not be requested.");
+      if (!challenge.id) throw new Error(t("msg.otpSendFailed"));
       setOrderOtp({
         id: challenge.id,
         deliveryChannel: challenge.deliveryChannel === "email" ? "email" : "sms",
-        destinationHint: challenge.destinationHint ?? (deliveryChannel === "email" ? "your registered email" : "your registered mobile"),
+        destinationHint: challenge.destinationHint ?? (deliveryChannel === "email" ? t("msg.registeredEmail") : t("msg.registeredMobile")),
         expiresAt: challenge.expiresAt,
         demoCode: challenge.demoCode,
         busy: false,
         error: "",
       });
     } catch (error) {
-      setOrderOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : "A new code could not be sent." } : current);
+      setOrderOtp((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : t("msg.otpSendFailed") } : current);
     }
   };
 
@@ -535,10 +541,10 @@ export default function InvestorApp() {
     try {
       await postInvestor({ action: "support_thread_reply", threadId: supportThreadId, body }, files);
       await openSupportThread(supportThreadId);
-      notify("Message sent to your broker.");
+      notify(t("msg.messageSent"));
       return true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Your message could not be sent.");
+      notify(error instanceof Error ? error.message : t("msg.messageSendFailed"));
       return false;
     } finally {
       setSupportBusy(false);
@@ -551,10 +557,10 @@ export default function InvestorApp() {
       await postInvestor({ action: "support_thread_create", category: input.category, subject: input.subject, body: input.body }, input.files);
       setNewRequestOpen(false);
       await loadSupport();
-      notify("Request sent. Your broker will reply here.");
+      notify(t("msg.requestSent"));
       return true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Your request could not be sent.");
+      notify(error instanceof Error ? error.message : t("msg.requestSendFailed"));
       return false;
     } finally {
       setSupportBusy(false);
@@ -563,10 +569,10 @@ export default function InvestorApp() {
 
   const createServiceRequest = async (requestType: "trade_discrepancy" | "account_closure" | "profile_correction", orderId?: string) => {
     const description = requestType === "trade_discrepancy"
-      ? `Please review the confirmation and execution details for ${orderId}.`
+      ? t("request.discrepancyDescription", { orderId: orderId ?? "" })
       : requestType === "account_closure"
-        ? "Please review my account for closure and tell me which balances, holdings, or open instructions must be cleared."
-        : "Please contact me to review and correct my identity, tax, or contact records.";
+        ? t("request.closureDescription")
+        : t("request.correctionDescription");
     try {
       const result = await postInvestor({ action: "service_request", requestType, orderId, description });
       if (result.request) {
@@ -574,20 +580,20 @@ export default function InvestorApp() {
           id: result.request!.id,
           requestType,
           status: result.request!.status,
-          subject: requestType === "trade_discrepancy" ? `Order discrepancy · ${orderId}` : requestType === "account_closure" ? "Account closure request" : "Profile correction request",
+          subject: requestType === "trade_discrepancy" ? t("request.discrepancySubject", { orderId: orderId ?? "" }) : requestType === "account_closure" ? t("request.closureSubject") : t("request.correctionSubject"),
           description,
           orderId,
           submittedAt: new Date().toISOString(),
         }, ...current.serviceRequests] } : current);
       }
-      notify("Request sent to your broker for controlled review.");
+      notify(t("msg.serviceRequestSent"));
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to submit the request.");
+      notify(error instanceof Error ? error.message : t("msg.serviceRequestFailed"));
     }
   };
   const createCashMovement = async (input: CashMovementInput) => {
     if (bootstrap?.access && !bootstrap.access.canMoveCash) {
-      notify(bootstrap.access.reasons[0]?.message ?? "Cash access is restricted.");
+      notify(bootstrap.access.reasons[0]?.message ?? t("restricted.cashFallback"));
       return false;
     }
     try {
@@ -600,19 +606,19 @@ export default function InvestorApp() {
         } : current);
       }
       await refreshInvestor().catch(() => undefined);
-      notify(input.movementType === "deposit" ? "Deposit sent for independent bank verification." : "Withdrawal reserved and sent for broker approval.");
+      notify(input.movementType === "deposit" ? t("msg.depositSent") : t("msg.withdrawalSent"));
       return true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to submit the cash instruction.");
+      notify(error instanceof Error ? error.message : t("msg.cashSubmitFailed"));
       return false;
     }
   };
   const acceptBrokerageTerms = async () => {
     const version = bootstrap?.tenant.legalDocument?.version;
-    if (!version) throw new Error("There is no published brokerage agreement to accept.");
+    if (!version) throw new Error(t("msg.noAgreement"));
     await postInvestor({ action: "accept_terms", termsVersion: version, accepted: true });
     await refreshInvestor();
-    notify(`Brokerage agreement version ${version} accepted.`);
+    notify(t("msg.termsAccepted", { version }));
   };
   const updateKycDocuments = async (files: Partial<Record<string, File>>) => {
     const formData = new FormData();
@@ -622,9 +628,9 @@ export default function InvestorApp() {
     });
     const response = await fetch("/api/investor", { method: "POST", headers: investorHeaders, body: formData });
     const result = await response.json().catch(() => ({})) as { error?: string };
-    if (!response.ok) throw new Error(result.error ?? "Unable to update KYC documents.");
+    if (!response.ok) throw new Error(result.error ?? t("msg.kycUpdateFailed"));
     await refreshInvestor();
-    notify("KYC documents sent to your broker for review.");
+    notify(t("msg.kycSent"));
   };
   const feePct = bootstrap?.tenant.brokerageFeePct ?? .5;
   const minimumFee = bootstrap?.tenant.minimumFee ?? 25;
@@ -646,8 +652,10 @@ export default function InvestorApp() {
   const tradeRestricted = bootstrap ? !bootstrap.access.canTrade : false;
   const cashRestricted = bootstrap ? !bootstrap.access.canMoveCash : false;
   const restrictedAccess = Boolean(bootstrap?.access.restricted);
-  const restrictionReason = bootstrap?.access.reasons[0]?.message ?? "Trading or money movement is unavailable for this account.";
-  const restrictedScope = tradeRestricted && cashRestricted ? "Trading and money movement are unavailable." : tradeRestricted ? "Trading is unavailable." : "Money movement is unavailable.";
+  // `reasons[0].message` is written by the API and stays in English; only the
+  // fallback and the scope sentence are ours to translate.
+  const restrictionReason = bootstrap?.access.reasons[0]?.message ?? t("restricted.reasonFallback");
+  const restrictedScope = tradeRestricted && cashRestricted ? t("restricted.scopeBoth") : tradeRestricted ? t("restricted.scopeTrading") : t("restricted.scopeCash");
   const restrictionCanSelfResolve = Boolean(bootstrap?.access.reasons.some((reason) => reason.action));
   const linkedBanks = bootstrap?.linkedBanks?.length
     ? bootstrap.linkedBanks
@@ -658,53 +666,54 @@ export default function InvestorApp() {
   return <main className={styles.investorPage} style={theme}>
     <section className={styles.desktopStory}>
       <AppLogo />
-      <span className={styles.licenseBadge}>Platform demo</span>
-      <h1>Own a piece of Ethiopia&apos;s growth</h1>
-      <p>{bootstrap?.tenant.welcomeMessage ?? "Access Ethiopian shares and government bonds through one simple platform."}</p>
-      <Button onClick={() => setPhase("select")}>Demo journey</Button>
+      <span className={styles.licenseBadge}>{t("story.badge")}</span>
+      <h1>{t("story.headline")}</h1>
+      <p>{bootstrap?.tenant.welcomeMessage ?? t("story.welcomeFallback")}</p>
+      <Button onClick={() => setPhase("select")}>{t("story.cta")}</Button>
       <div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div>
-      <small className={styles.riskCopy}>Prices move. Invest money you won&apos;t need soon. Demo data only.</small>
+      <small className={styles.riskCopy}>{t("story.risk")}</small>
     </section>
-    <section className={styles.appFrame} aria-label="Frank Money investor app">
+    <section className={styles.appFrame} aria-label={t("app.frameLabel")}>
       <div className={styles.appViewport}>
         {phase === "app" && restrictedAccess && <div className={styles.restrictedAccessBanner} role="status">
           <span><Icon name="shield" size={18} /></span>
-          <div><b>Restricted access</b><small>{restrictionReason} {restrictedScope}</small></div>
-          <button onClick={() => { setTab("profile"); setStock(null); setBond(null); }}>{restrictionCanSelfResolve ? "Resolve" : "View"}</button>
+          <div><b>{t("restricted.title")}</b><small>{restrictionReason} {restrictedScope}</small></div>
+          <button onClick={() => { setTab("profile"); setStock(null); setBond(null); }}>{restrictionCanSelfResolve ? t("restricted.resolve") : t("restricted.view")}</button>
         </div>}
         {phase === "select" ? <div className={styles.demoSelector}>
-          <div className={styles.demoSelectorBrand}><AppLogo /><span>PLATFORM DEMO</span></div>
+          <div className={styles.demoSelectorBrand}><AppLogo /><span>{t("entry.brand")}</span></div>
           <div className={styles.demoSelectorIntro}>
-            <small>INVESTOR PORTAL</small>
-            <h1>How would you like to begin?</h1>
-            <p>Continue with an active demo account or complete a new investor application.</p>
+            <small>{t("entry.eyebrow")}</small>
+            <h1>{t("entry.title")}</h1>
+            <p>{t("entry.subtitle")}</p>
           </div>
           <div className={styles.entryChoiceList}>
             <button className={styles.entryChoiceCard} onClick={() => setPhase("existing")}>
               <i><Icon name="profile" size={22} /></i>
-              <span><b>Use an existing account</b><small>Open Selam or Blue Nile as an approved investor.</small></span>
+              <span><b>{t("entry.existingTitle")}</b><small>{t("entry.existingDetail")}</small></span>
               <Icon name="chevron" size={17} />
             </button>
             <button className={styles.entryChoiceCard} onClick={() => startApplication("retail")}>
               <i><Icon name="plus" size={22} /></i>
-              <span><b>Open a new account</b><small>Complete the full onboarding and broker approval journey.</small></span>
+              <span><b>{t("entry.newTitle")}</b><small>{t("entry.newDetail")}</small></span>
               <Icon name="chevron" size={17} />
             </button>
           </div>
-          <p className={styles.demoSelectorNote}>New applications remain restricted until the broker completes approval.</p>
+          <LanguageSwitcher />
+          <p className={styles.demoSelectorNote}>{t("entry.note")}</p>
         </div>
           : phase === "existing" ? <div className={styles.demoSelector}>
-            <div className={styles.demoSelectorBack}><button className={styles.iconButton} onClick={() => setPhase("select")} aria-label="Return to account options"><Icon name="back" size={20} /></button></div>
+            <div className={styles.demoSelectorBack}><button className={styles.iconButton} onClick={() => setPhase("select")} aria-label={t("personas.backLabel")}><Icon name="back" size={20} /></button></div>
             <div className={styles.demoSelectorIntro}>
-              <small>USE AN EXISTING ACCOUNT</small>
-              <h1>Choose an investor</h1>
-              <p>Both demo investors are approved and have active trading accounts.</p>
+              <small>{t("personas.eyebrow")}</small>
+              <h1>{t("personas.title")}</h1>
+              <p>{t("personas.subtitle")}</p>
             </div>
             <div className={styles.demoPersonaList}>
               {demoPersonas.map((persona) => <button key={persona.id} className={styles.demoPersonaCard} disabled={Boolean(entryBusy)} onClick={() => void enterPersona(persona.id)}>
                 <i>{persona.initials}</i>
-                <span><b>{persona.name}</b><small>{persona.accountType}</small><em>{persona.detail}</em></span>
-                <strong>{entryBusy === persona.id ? "Opening" : "Open"} <Icon name="chevron" size={15} /></strong>
+                <span><b>{persona.name}</b><small>{t(persona.accountTypeKey)}</small><em>{t(persona.detailKey)}</em></span>
+                <strong>{entryBusy === persona.id ? t("personas.opening") : t("personas.open")} <Icon name="chevron" size={15} /></strong>
               </button>)}
             </div>
           </div>
@@ -726,7 +735,7 @@ export default function InvestorApp() {
                           .then((response) => response.ok ? response.json() : Promise.reject())
                           .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
                           .catch(() => undefined);
-                      }} onCash={() => cashRestricted ? notify(bootstrap?.access.reasons[0]?.message ?? "Cash access is restricted.") : setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
+                      }} onCash={() => cashRestricted ? notify(bootstrap?.access.reasons[0]?.message ?? t("restricted.cashFallback")) : setCashOpen(true)} onActivity={() => openActivity()} onActivityItem={(item) => openActivity(item)} />
                       : tab === "markets"
                         ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} />
                         : tab === "portfolio"
@@ -738,12 +747,12 @@ export default function InvestorApp() {
                 <BottomNav active={tab} onChange={navigate} />
               </>}
         {cashOpen && !cashRestricted && <CashSheet pools={bootstrap?.cashPools ?? []} movements={bootstrap?.cashMovements ?? []} linkedBanks={linkedBanks} availableCash={bootstrap?.account?.availableCash ?? 0} onClose={() => setCashOpen(false)} onSubmit={createCashMovement} onViewActivity={() => { setCashOpen(false); openActivity(); }} />}
-        {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Notifications"><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>Notifications</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>Mark all read</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>Nothing new right now.</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
+        {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label={t("notifications.label")}><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>{t("notifications.title")}</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>{t("notifications.markAllRead")}</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>{t("notifications.empty")}</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
         {newRequestOpen && <NewRequestSheet busy={supportBusy} onClose={() => setNewRequestOpen(false)} onSubmit={createSupportRequest} />}
         {onboardingOtp && <InvestorOrderOtpDialog key={onboardingOtp.id} context="onboarding" challenge={onboardingOtp} onVerify={(code) => void verifyApplicantOtp(code)} onResend={() => void resendApplicantOtp()} onCancel={cancelApplicantOtp} />}
         {orderOtp && <InvestorOrderOtpDialog key={orderOtp.id} challenge={orderOtp} onVerify={(code) => void verifyInvestorOrderOtp(code)} onResend={() => void resendInvestorOrderOtp()} onDeliveryChange={(channel) => { if (channel !== orderOtp.deliveryChannel) void resendInvestorOrderOtp(channel); }} onCancel={cancelInvestorOrderOtp} />}
         {orderOutcome && <InvestorOrderOutcomeDialog outcome={orderOutcome} onClose={() => setOrderOutcome(null)} onViewOrders={() => { setOrderOutcome(null); setStock(null); setBond(null); setTab("profile"); }} />}
-        {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>Shared tenant workflow updated.</small></span></div>}
+        {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>{t("toast.subtitle")}</small></span></div>}
       </div>
     </section>
   </main>;

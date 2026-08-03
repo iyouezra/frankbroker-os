@@ -4,6 +4,8 @@ import test from "node:test";
 
 const investorRoute = await readFile(new URL("../app/api/investor/route.ts", import.meta.url), "utf8");
 const investorApp = await readFile(new URL("../app/investor/investor-app.tsx", import.meta.url), "utf8");
+// Localised investor copy lives in the English dictionary rather than the JSX.
+const investorCopy = await readFile(new URL("../lib/i18n/en.ts", import.meta.url), "utf8");
 const profileScreen = await readFile(new URL("../features/investor/profile/profile-screen.tsx", import.meta.url), "utf8");
 const clientAction = await readFile(new URL("../app/api/clients/[id]/action/route.ts", import.meta.url), "utf8");
 const brokerDocuments = await readFile(new URL("../app/api/clients/[id]/documents/route.ts", import.meta.url), "utf8");
@@ -17,7 +19,8 @@ test("investor access explains trade and cash restrictions and exposes self-serv
   assert.match(investorRoute, /broker_restriction/);
   assert.match(investorRoute, /accept_terms/);
   assert.match(investorRoute, /kyc_documents/);
-  assert.match(investorApp, /Restricted access/);
+  assert.match(investorApp, /restricted\.title/);
+  assert.match(investorCopy, /Restricted access/);
   assert.match(profileScreen, /Brokerage agreement/);
   assert.match(profileScreen, /Review your documents/);
 });

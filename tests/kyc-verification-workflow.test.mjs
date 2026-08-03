@@ -23,7 +23,9 @@ test("investor onboarding captures email and the full institutional document set
     readInvestorFrontend(),
     read("app/api/investor/route.ts"),
   ]);
-  assert.match(investor, /label="Email address"/);
+  // The field label is localised; the English copy lives in the dictionary.
+  assert.match(investor, /label=\{t\("onboarding\.emailAddress"\)\}/);
+  assert.match(investor, /"onboarding\.emailAddress": "Email address"/);
   assert.match(investor, /Certificate of Incorporation/);
   assert.match(investor, /Article of Association/);
   assert.match(investor, /emailValid/);

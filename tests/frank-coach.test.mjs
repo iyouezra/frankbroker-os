@@ -161,7 +161,10 @@ test("all generated copy follows the Frank tone rules", () => {
 test("Frank Coach keeps the existing card structure and stylesheet", async () => {
   const home = await readFile(new URL("../features/investor/home/home-screen.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/investor/investor.module.css", import.meta.url), "utf8");
-  assert.match(home, /<Card className=\{styles\.coachCard\}><span><Icon name="bulb" size=\{20\} \/><\/span><div><small>FRANK COACH<\/small>/);
+  // The heading is localised, so the label itself is asserted in the dictionary.
+  assert.match(home, /<Card className=\{styles\.coachCard\}><span><Icon name="bulb" size=\{20\} \/><\/span><div><small>\{t\("home\.frankCoach"\)\}<\/small>/);
+  const copy = await readFile(new URL("../lib/i18n/en.ts", import.meta.url), "utf8");
+  assert.match(copy, /"home\.frankCoach": "FRANK COACH"/);
   assert.match(home, /sector: holding\.sector/);
   assert.doesNotMatch(home, /sector: investorStocks\.find/);
   assert.match(css, /\.coachCard \{ display: flex; gap: 12px;/);

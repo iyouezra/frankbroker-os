@@ -15,11 +15,16 @@ async function readFeatureTree(directory) {
 
 async function readPortalSource(portal) {
   const appFile = portal === "broker" ? "app/frankbroker-app.tsx" : "app/investor/investor-app.tsx";
-  const [app, features] = await Promise.all([
+  // Investor copy that has been localised no longer sits in the JSX — the English
+  // source strings live in the translation dictionary, so it counts as portal
+  // copy for the assertions that check which surfaces still ship.
+  const copyFiles = portal === "investor" ? ["lib/i18n/en.ts"] : [];
+  const [app, features, ...copy] = await Promise.all([
     readFile(new URL(`../${appFile}`, import.meta.url), "utf8"),
     readFeatureTree(new URL(`../features/${portal}/`, import.meta.url)),
+    ...copyFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), "utf8")),
   ]);
-  return `${app}\n${features}`;
+  return [app, features, ...copy].join("\n");
 }
 
 export const readBrokerFrontend = () => readPortalSource("broker");

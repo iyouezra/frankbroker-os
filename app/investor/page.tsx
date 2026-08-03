@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LocaleProvider } from "../../lib/i18n/context";
 import InvestorApp from "./investor-app";
 
 export const metadata: Metadata = {
@@ -12,5 +13,5 @@ export const metadata: Metadata = {
 };
 
 export default function InvestorPage() {
-  return <InvestorApp />;
+  return <LocaleProvider><InvestorApp /></LocaleProvider>;
 }
