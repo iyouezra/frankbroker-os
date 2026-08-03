@@ -193,7 +193,7 @@ export const initialTenants: TenantConfig[] = [
     id: "brk_blue_nile",
     name: "Addis Capital PLC",
     tradingName: "Addis Capital",
-    initials: "BN",
+    initials: "AC",
     licenseNumber: "ESCA-BR-011",
     status: "pilot",
     plan: "Growth",
@@ -270,8 +270,14 @@ export const initialAdminUsers: AdminUser[] = [
   { id: "usr_settlement", tenantId: "brk_abyssinia", employeeId: "ABS-0088", name: "Rahel Getachew", email: "rahel@frankbroker.et", jobTitle: "Settlement Officer", department: "Post-trade", role: "Settlement", status: "Active", mfa: false, lastActive: "Yesterday" },
   { id: "usr_relationship", tenantId: "brk_abyssinia", employeeId: "ABS-0164", name: "Kalkidan Alemu", email: "kalkidan@frankbroker.et", jobTitle: "Relationship Officer", department: "Client Services", role: "Relationship", status: "Active", mfa: false, lastActive: "2 days ago" },
   { id: "usr_service", tenantId: "brk_abyssinia", employeeId: "ABS-0171", name: "Bethel Tesfaye", email: "bethel@frankbroker.et", jobTitle: "Client Service Officer", department: "Client Services", role: "Client service", status: "Invited", mfa: false, lastActive: "Not yet" },
-  { id: "usr_blue_admin", tenantId: "brk_blue_nile", employeeId: "BNC-0001", name: "Samuel Kebede", email: "samuel@addiscapital.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Active", mfa: true, lastActive: "18 min ago" },
+  { id: "usr_blue_admin", tenantId: "brk_blue_nile", employeeId: "ADC-0001", name: "Samuel Kebede", email: "samuel@addiscapital.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Active", mfa: true, lastActive: "18 min ago" },
+  { id: "usr_blue_tenant_admin", tenantId: "brk_blue_nile", employeeId: "ADC-0002", name: "Mimi Solomon", email: "tenant.admin@addiscapital.example", jobTitle: "Tenant Administrator", department: "Operations", role: "Broker admin", status: "Active", mfa: true, lastActive: "8 min ago" },
+  { id: "usr_advisory_lead", tenantId: "brk_blue_nile", employeeId: "ADC-0101", name: "Saron Desta", email: "lead@addiscapital.example", jobTitle: "Advisory Lead", department: "Advisory", role: "Advisory lead", status: "Active", mfa: true, lastActive: "12 min ago" },
+  { id: "usr_advisory_analyst", tenantId: "brk_blue_nile", employeeId: "ADC-0102", name: "Nahom Bekele", email: "analyst@addiscapital.example", jobTitle: "Advisory Analyst", department: "Advisory", role: "Advisory analyst", status: "Active", mfa: true, lastActive: "21 min ago" },
   { id: "usr_sheba_admin", tenantId: "brk_sheba", employeeId: "SIS-0001", name: "Abel Yohannes", email: "abel@sheba.example", jobTitle: "Access Administrator", department: "Operations", role: "Access admin", status: "Suspended", mfa: true, lastActive: "9 days ago" },
+  { id: "usr_sheba_tenant_admin", tenantId: "brk_sheba", employeeId: "SIS-0002", name: "Eden Girma", email: "tenant.admin@sheba.example", jobTitle: "Tenant Administrator", department: "Advisory", role: "Broker admin", status: "Active", mfa: true, lastActive: "16 min ago" },
+  { id: "usr_sheba_advisory_lead", tenantId: "brk_sheba", employeeId: "SIS-0101", name: "Meron Tadesse", email: "lead@sheba.example", jobTitle: "Advisory Lead", department: "Advisory", role: "Advisory lead", status: "Active", mfa: true, lastActive: "23 min ago" },
+  { id: "usr_sheba_advisory_analyst", tenantId: "brk_sheba", employeeId: "SIS-0102", name: "Yared Alemu", email: "analyst@sheba.example", jobTitle: "Advisory Analyst", department: "Advisory", role: "Advisory analyst", status: "Active", mfa: true, lastActive: "34 min ago" },
 ];
 
 export const initialIntegrations: TenantIntegration[] = initialTenants.flatMap((tenant) => [

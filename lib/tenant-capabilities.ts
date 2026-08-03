@@ -23,6 +23,7 @@ export type TenantContext = {
   name: string;
   tradingName: string;
   licenseNumber: string;
+  primaryColor: string;
   businessType: BusinessType;
   licenses: Array<{ id: string; regulator: string; licenseType: string; licenseNumber: string; status: string; validFrom: string | null; validTo: string | null }>;
   entitlements: EntitlementKey[];
@@ -68,6 +69,7 @@ export async function resolveTenantContext(tenantId: string): Promise<TenantCont
     name: tenant.name,
     tradingName: tenant.settings?.tradingName ?? tenant.name,
     licenseNumber: tenant.licenseNumber,
+    primaryColor: tenant.settings?.primaryColor ?? "#0C8189",
     businessType,
     licenses: tenant.tenantLicenses.map((item) => ({
       id: item.id,

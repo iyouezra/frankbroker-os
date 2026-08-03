@@ -80,6 +80,16 @@ import {
   type OrderSubmissionOutcome,
 } from "../lib/order-submission-ux";
 
+type DemoTenantSummary = {
+  id: string;
+  tradingName: string;
+  licenseNumber: string;
+  primaryColor: string;
+  businessType: string;
+  modules: TenantModules;
+  availableRoles: Role[];
+};
+
 export default function FrankBrokerApp() {
   const demoTenantSwitcherEnabled = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_FRANK_DEMO_TENANT_SWITCHER === "true";
   const [view, setView] = useState<View>("dashboard");
@@ -94,7 +104,7 @@ export default function FrankBrokerApp() {
   const [modules, setModules] = useState<TenantModules>(fallbackModules);
   const [businessType, setBusinessType] = useState("securities_dealer");
   const [availableRoles, setAvailableRoles] = useState<Role[]>(Object.keys(roleLabels).filter((item) => item !== "super_admin" && item !== "advisory_lead" && item !== "advisory_analyst") as Role[]);
-  const [demoTenants, setDemoTenants] = useState<Array<{ id: string; tradingName: string; businessType: string; modules: TenantModules; availableRoles: Role[] }>>([]);
+  const [demoTenants, setDemoTenants] = useState<DemoTenantSummary[]>([]);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [clients, setClients] = useState<BrokerClient[]>(fallbackClients);
   const [selectedClientId, setSelectedClientId] = useState(fallbackClients[0].id);
@@ -138,11 +148,11 @@ export default function FrankBrokerApp() {
     if (!demoTenantSwitcherEnabled) return;
     void fetch("/api/demo/tenants")
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((data: { tenants?: Array<{ id: string; tradingName: string; businessType: string; modules: TenantModules; availableRoles: Role[] }> }) => setDemoTenants(data.tenants ?? []))
+      .then((data: { tenants?: DemoTenantSummary[] }) => setDemoTenants(data.tenants ?? []))
       .catch(() => setDemoTenants([
-        { id: "brk_abyssinia", tradingName: "Abyssinia Securities", businessType: "securities_dealer", modules: fallbackModules, availableRoles },
-        { id: "brk_blue_nile", tradingName: "Addis Capital", businessType: "investment_bank", modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, availableRoles: ["broker_admin", "trader", "operations", "compliance", "settlement", "advisory_lead", "advisory_analyst", "management"] },
-        { id: "brk_sheba", tradingName: "Sheba Advisory", businessType: "securities_investment_adviser", modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: true }, availableRoles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
+        { id: "brk_abyssinia", tradingName: "Abyssinia Securities", licenseNumber: "ESCA-BR-004", primaryColor: "#0C8189", businessType: "securities_dealer", modules: fallbackModules, availableRoles },
+        { id: "brk_blue_nile", tradingName: "Addis Capital", licenseNumber: "ESCA-BR-011", primaryColor: "#2277C8", businessType: "investment_bank", modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, availableRoles: ["broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "advisory_lead", "advisory_analyst", "management"] },
+        { id: "brk_sheba", tradingName: "Sheba Advisory", licenseNumber: "PILOT-023", primaryColor: "#0E9F5B", businessType: "securities_investment_adviser", modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: true }, availableRoles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
       ]));
     // The demo tenant catalogue is static for the browser session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,7 +167,7 @@ export default function FrankBrokerApp() {
       setModules(next.modules); setBusinessType(next.businessType); setAvailableRoles(next.availableRoles);
       if (!next.availableRoles.includes(role)) setRole(next.availableRoles.includes("advisory_lead") ? "advisory_lead" : next.availableRoles[0] ?? "broker_admin");
       setView(next.modules.dealer_operations ? "dashboard" : next.modules.issuer_advisory ? "advisory" : "dashboard");
-      setTenantInfo((current) => ({ ...current, name: next.tradingName }));
+      setTenantInfo({ name: next.tradingName, license: next.licenseNumber, primaryColor: next.primaryColor });
       notify(`Switched to ${next.tradingName}.`);
     }
   };
@@ -836,13 +846,21 @@ export default function FrankBrokerApp() {
             </div>;
           })}
         </nav>
-        <div className="sidebar-foot">{demoTenantSwitcherEnabled && demoTenants.length > 0 && <div className="demo-context-switch"><small>DEMO TENANT</small><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={tenantId} onChange={changeTenant} ariaLabel="Demo tenant" options={demoTenants.map((item) => ({ value: item.id, label: `${item.tradingName} — ${displayLabel(item.businessType)}` }))} /></div>}<div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={availableRoles.map((id) => ({ value: id, label: id === "broker_admin" && businessType !== "securities_dealer" ? "Tenant admin" : roleLabels[id] }))} /></div></div></div></div>
+        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={availableRoles.map((id) => ({ value: id, label: id === "broker_admin" && businessType !== "securities_dealer" ? "Tenant admin" : roleLabels[id] }))} /></div></div></div></div>
       </aside>
 
       <div className="workspace">
         <header className="topbar">
           <div className="mobile-brand"><img src="/frankscore-icon.png" alt="" /><b>FrankBroker</b></div>
-          <div className="tenant-chip" title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}><span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><small>TENANT</small><b>{tenantInfo.name}</b></div></div>
+          <div className={`tenant-chip${demoTenantSwitcherEnabled && demoTenants.length > 0 ? " demo-tenant-chip" : ""}`} title={`${tenantInfo.name}${tenantInfo.license ? ` · ${tenantInfo.license}` : ""}`}>
+            <span style={{ background: tenantInfo.primaryColor }}>{tenantInfo.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span>
+            <div className="tenant-chip-copy">
+              <small>{demoTenantSwitcherEnabled && demoTenants.length > 0 ? "DEMO TENANT" : "TENANT"}</small>
+              {demoTenantSwitcherEnabled && demoTenants.length > 0
+                ? <BrandSelect className="bselect-bare tenant-switcher" menuClassName="tenant-switcher-menu" value={tenantId} onChange={changeTenant} ariaLabel="Active demo tenant" options={demoTenants.map((item) => ({ value: item.id, label: item.tradingName }))} />
+                : <b>{tenantInfo.name}</b>}
+            </div>
+          </div>
           <UniversalSearch role={role} onSelect={navigateToTarget} />
           <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => {
             setBellOpen((value) => !value);

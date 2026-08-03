@@ -8,7 +8,7 @@ export type Actor = {
   brokerId: string;
 };
 
-const demoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
+const defaultDemoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
   access_admin: { id: "usr_access_admin", email: "access.admin@frankbroker.et" },
   broker_admin: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et" },
   trader: { id: "usr_trader", email: "dawit@frankbroker.et" },
@@ -21,6 +21,22 @@ const demoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
   advisory_lead: { id: "usr_advisory_lead", email: "lead@addiscapital.example" },
   advisory_analyst: { id: "usr_advisory_analyst", email: "analyst@addiscapital.example" },
   super_admin: { id: "usr_platform_admin", email: "platform.admin@frankmoney.et" },
+};
+
+const tenantDemoActors: Record<string, Partial<Record<Role, Omit<Actor, "role" | "brokerId">>>> = {
+  brk_blue_nile: {
+    broker_admin: { id: "usr_blue_tenant_admin", email: "tenant.admin@addiscapital.example" },
+    management: { id: "usr_blue_tenant_admin", email: "tenant.admin@addiscapital.example" },
+    advisory_lead: { id: "usr_advisory_lead", email: "lead@addiscapital.example" },
+    advisory_analyst: { id: "usr_advisory_analyst", email: "analyst@addiscapital.example" },
+  },
+  brk_sheba: {
+    broker_admin: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example" },
+    compliance: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example" },
+    management: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example" },
+    advisory_lead: { id: "usr_sheba_advisory_lead", email: "lead@sheba.example" },
+    advisory_analyst: { id: "usr_sheba_advisory_analyst", email: "analyst@sheba.example" },
+  },
 };
 
 const tenantAliases: Record<string, string> = {
@@ -39,15 +55,17 @@ export function resolveBrokerId(request: Request) {
 // server-side session before allowing real users or live brokerage data.
 export function resolveActor(request: Request): Actor {
   const requestedRole = request.headers.get("x-frank-demo-role") as Role | null;
-  if (requestedRole && !(requestedRole in demoActors)) {
+  if (requestedRole && !(requestedRole in defaultDemoActors)) {
     throw new Response("The requested demo role is not authorized.", { status: 403 });
   }
-  const role: Role = requestedRole && requestedRole in demoActors ? requestedRole : "broker_admin";
+  const role: Role = requestedRole && requestedRole in defaultDemoActors ? requestedRole : "broker_admin";
+  const brokerId = resolveBrokerId(request);
+  const demoActor = tenantDemoActors[brokerId]?.[role] ?? defaultDemoActors[role];
 
   return {
-    ...demoActors[role],
+    ...demoActor,
     role,
-    brokerId: resolveBrokerId(request),
+    brokerId,
   };
 }
 

@@ -11,6 +11,7 @@ import { GET as getReconciliation } from "../app/api/reconciliation/route.ts";
 import { GET as getAdvisory } from "../app/api/advisory/route.ts";
 import { GET as downloadDocument } from "../app/api/advisory/documents/[id]/download/route.ts";
 import { POST as uploadDocument } from "../app/api/advisory/documents/route.ts";
+import { resolveActor } from "../lib/server-auth.ts";
 
 const profile = ({ id, businessType, entitlements, modules }) => ({
   id,
@@ -75,6 +76,17 @@ test("the three demo tenants resolve the expected modules and available roles", 
   assert.deepEqual(adviser.modules, { dealer_operations: false, investor_servicing: false, issuer_advisory: true });
   assert.equal(adviser.availableRoles.includes("trader"), false);
   assert.equal(adviser.availableRoles.includes("advisory_analyst"), true);
+});
+
+test("demo actors resolve to users belonging to the selected tenant", () => {
+  const addisLead = resolveActor(request("brk_blue_nile", "advisory_lead"));
+  const addisAdmin = resolveActor(request("brk_blue_nile", "broker_admin"));
+  const shebaLead = resolveActor(request("brk_sheba", "advisory_lead"));
+
+  assert.equal(addisLead.id, "usr_advisory_lead");
+  assert.equal(addisAdmin.id, "usr_blue_tenant_admin");
+  assert.equal(shebaLead.id, "usr_sheba_advisory_lead");
+  assert.equal(shebaLead.brokerId, "brk_sheba");
 });
 
 test("module access requires entitlement, an enabled module, an available role, and permission", async (t) => {
