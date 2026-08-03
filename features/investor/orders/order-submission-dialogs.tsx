@@ -4,6 +4,20 @@ import { useState } from "react";
 import styles from "../../../app/investor/investor.module.css";
 import type { OrderSubmissionOutcome } from "../../../lib/order-submission-ux";
 import { Button, Icon } from "../shared/investor-foundation";
+import { useT } from "../../../lib/i18n/context";
+import type { TranslationKey } from "../../../lib/i18n/en";
+
+// The investor-facing outcome copy is generated in lib/order-submission-ux.ts,
+// which is shared with the broker portal and stays English. Mirroring it by
+// `kind` here lets the investor dialog translate without touching that module
+// or the broker's wording.
+const OUTCOME_COPY: Record<string, { title: TranslationKey; message: TranslationKey; nextStep: TranslationKey }> = {
+  submitted: { title: "outcome.submittedTitle", message: "outcome.submittedMessage", nextStep: "outcome.submittedNext" },
+  held: { title: "outcome.heldTitle", message: "outcome.heldMessage", nextStep: "outcome.heldNext" },
+  submission_uncertain: { title: "outcome.uncertainTitle", message: "outcome.uncertainMessage", nextStep: "outcome.uncertainNext" },
+  authorization_failed: { title: "outcome.authFailedTitle", message: "outcome.authFailedMessage", nextStep: "outcome.authFailedNext" },
+  submission_failed: { title: "outcome.failedTitle", message: "outcome.failedMessage", nextStep: "outcome.failedNext" },
+};
 
 export type InvestorOtpChallenge = {
   id: string;
@@ -23,6 +37,7 @@ export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onDelive
   onCancel: () => void;
   context?: "order" | "onboarding";
 }) {
+  const t = useT();
   const [code, setCode] = useState("");
   const onboarding = context === "onboarding";
   const expiry = challenge.expiresAt
@@ -32,22 +47,22 @@ export function InvestorOrderOtpDialog({ challenge, onVerify, onResend, onDelive
     <section className={`${styles.orderSheet} ${styles.otpSheet}`} role="dialog" aria-modal="true" aria-labelledby="investor-otp-title">
       <i className={styles.sheetHandle} />
       <div className={styles.dialogIcon} data-tone="secure"><Icon name="shield" size={22} /></div>
-      <span className={styles.dialogEyebrow}>{onboarding ? "SECURE APPLICANT CHECK" : "SECURE ORDER AUTHORIZATION"}</span>
-      <h2 id="investor-otp-title">{onboarding ? "Verify your mobile number" : "Enter your verification code"}</h2>
-      <p className={styles.otpIntro}>We sent a six-digit code by {challenge.deliveryChannel === "email" ? "email" : "text message"} to <b>{challenge.destinationHint}</b>. {onboarding ? "This confirms the contact number on your application." : "It authorizes only the order you just reviewed."}</p>
-      {onDeliveryChange && <div className={styles.deliveryChoice} aria-label="Verification delivery method">
-        <button type="button" aria-pressed={challenge.deliveryChannel === "sms"} disabled={challenge.busy} onClick={() => onDeliveryChange("sms")}>Text message</button>
-        <button type="button" aria-pressed={challenge.deliveryChannel === "email"} disabled={challenge.busy} onClick={() => onDeliveryChange("email")}>Email</button>
+      <span className={styles.dialogEyebrow}>{t(onboarding ? "otp.eyebrowApplicant" : "otp.eyebrowOrder")}</span>
+      <h2 id="investor-otp-title">{t(onboarding ? "otp.titleOnboarding" : "otp.titleOrder")}</h2>
+      <p className={styles.otpIntro}>{t("otp.introPrefix", { channel: t(challenge.deliveryChannel === "email" ? "otp.byEmail" : "otp.byText") })}<b>{challenge.destinationHint}</b>{t(onboarding ? "otp.introSuffixOnboarding" : "otp.introSuffixOrder")}</p>
+      {onDeliveryChange && <div className={styles.deliveryChoice} aria-label={t("otp.deliveryLabel")}>
+        <button type="button" aria-pressed={challenge.deliveryChannel === "sms"} disabled={challenge.busy} onClick={() => onDeliveryChange("sms")}>{t("otp.textMessage")}</button>
+        <button type="button" aria-pressed={challenge.deliveryChannel === "email"} disabled={challenge.busy} onClick={() => onDeliveryChange("email")}>{t("otp.email")}</button>
       </div>}
       <label className={styles.otpField}>
-        <span>Verification code</span>
+        <span>{t("otp.codeLabel")}</span>
         <input autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} aria-invalid={Boolean(challenge.error)} />
-        <small>{expiry ? `Code expires at ${expiry}.` : "The code expires shortly."}{challenge.demoCode ? ` Demo code: ${challenge.demoCode}` : ""}</small>
+        <small>{expiry ? t("otp.expiresAt", { time: expiry }) : t("otp.expiresShortly")}{challenge.demoCode ? t("otp.demoCode", { code: challenge.demoCode }) : ""}</small>
       </label>
-      {challenge.error && <div className={styles.otpError} role="alert"><b>Code not accepted</b><span>{challenge.error}</span></div>}
-      <button className={styles.resendButton} disabled={challenge.busy} onClick={onResend}>Send a new code by {challenge.deliveryChannel === "email" ? "email" : "text"}</button>
-      <div className={styles.dialogActions}><Button variant="secondary" disabled={challenge.busy} onClick={onCancel}>Cancel</Button><Button disabled={challenge.busy || code.length !== 6} onClick={() => onVerify(code)}>{challenge.busy ? "Verifying…" : onboarding ? "Verify and continue" : "Verify and submit"}</Button></div>
-      <p className={styles.otpSafety}>Frank will never ask you to share this code outside this secure verification screen.</p>
+      {challenge.error && <div className={styles.otpError} role="alert"><b>{t("otp.notAccepted")}</b><span>{challenge.error}</span></div>}
+      <button className={styles.resendButton} disabled={challenge.busy} onClick={onResend}>{t("otp.resend", { channel: t(challenge.deliveryChannel === "email" ? "otp.channelEmail" : "otp.channelText") })}</button>
+      <div className={styles.dialogActions}><Button variant="secondary" disabled={challenge.busy} onClick={onCancel}>{t("order.cancel")}</Button><Button disabled={challenge.busy || code.length !== 6} onClick={() => onVerify(code)}>{t(challenge.busy ? "otp.verifying" : onboarding ? "onboarding.verifyContinue" : "otp.verifySubmit")}</Button></div>
+      <p className={styles.otpSafety}>{t("otp.safety")}</p>
     </section>
   </div>;
 }
@@ -57,6 +72,8 @@ export function InvestorOrderOutcomeDialog({ outcome, onClose, onViewOrders }: {
   onClose: () => void;
   onViewOrders: () => void;
 }) {
+  const t = useT();
+  const copy = outcome.audience === "investor" ? OUTCOME_COPY[outcome.kind] : undefined;
   const positive = outcome.kind === "submitted";
   const held = outcome.kind === "held";
   const uncertain = outcome.kind === "submission_uncertain";
@@ -64,15 +81,15 @@ export function InvestorOrderOutcomeDialog({ outcome, onClose, onViewOrders }: {
   return <div className={styles.dialogBackdrop}>
     <section className={`${styles.confirmDialog} ${styles.outcomeDialog}`} role={positive ? "status" : "alertdialog"} aria-modal="true" aria-labelledby="order-outcome-title">
       <div className={styles.dialogIcon} data-tone={tone}><Icon name={positive ? "check" : "shield"} size={23} /></div>
-      <span className={styles.dialogEyebrow}>{positive ? "ORDER RECEIVED" : held ? "ACTION REQUIRED" : uncertain ? "CHECK BEFORE RETRYING" : "NOT SUBMITTED"}</span>
-      <h2 id="order-outcome-title">{outcome.title}</h2>
-      {outcome.orderId && <div className={styles.orderReference}><small>ORDER REFERENCE</small><b>{outcome.orderId}</b></div>}
-      <p>{outcome.message}</p>
+      <span className={styles.dialogEyebrow}>{t(positive ? "outcome.received" : held ? "outcome.actionRequired" : uncertain ? "outcome.checkBeforeRetry" : "outcome.notSubmitted")}</span>
+      <h2 id="order-outcome-title">{copy ? t(copy.title) : outcome.title}</h2>
+      {outcome.orderId && <div className={styles.orderReference}><small>{t("outcome.orderReference")}</small><b>{outcome.orderId}</b></div>}
+      <p>{copy ? t(copy.message) : outcome.message}</p>
       {outcome.detail && <div className={styles.outcomeDetail}>{outcome.detail}</div>}
-      <div className={styles.nextStep}><b>What happens next</b><span>{outcome.nextStep}</span></div>
+      <div className={styles.nextStep}><b>{t("onboarding.whatNext")}</b><span>{copy ? t(copy.nextStep) : outcome.nextStep}</span></div>
       <div className={styles.dialogActions}>
-        <Button variant="secondary" onClick={onClose}>{positive || held ? "Done" : "Back to order"}</Button>
-        {(positive || held || uncertain) && <Button onClick={onViewOrders}>View orders</Button>}
+        <Button variant="secondary" onClick={onClose}>{t(positive || held ? "outcome.done" : "outcome.backToOrder")}</Button>
+        {(positive || held || uncertain) && <Button onClick={onViewOrders}>{t("outcome.viewOrders")}</Button>}
       </div>
     </section>
   </div>;

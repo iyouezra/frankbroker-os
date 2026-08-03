@@ -2,6 +2,7 @@
 
 import styles from "../../../app/investor/investor.module.css";
 import { Button, Card, ScreenHeader } from "../shared/investor-foundation";
+import { useT } from "../../../lib/i18n/context";
 
 /**
  * Investor-facing conversation list. Deliberately plain: no priority, no
@@ -43,19 +44,20 @@ export function SupportScreen({
   onOpenThread: (threadId: string) => void;
   onNewRequest: () => void;
 }) {
+  const t = useT();
   return <div className={styles.screen}>
-    <ScreenHeader title="Messages & support" onBack={onBack} />
+    <ScreenHeader title={t("support.title")} onBack={onBack} />
     <Card className={styles.supportIntro}>
-      <b>Need a hand?</b>
-      <p>Ask your broker about an order, a payment, your documents, or anything else. You&apos;ll get a reply here.</p>
-      {officer && <span className={styles.supportOfficer}>Your point of contact is <b>{officer.name}</b>, {officer.role}.</span>}
-      <Button className={styles.full} onClick={onNewRequest}>New request</Button>
+      <b>{t("support.needHand")}</b>
+      <p>{t("support.intro")}</p>
+      {officer && <span className={styles.supportOfficer}>{t("support.officerPrefix")}<b>{officer.name}</b>{t("support.officerSuffix", { role: officer.role })}</span>}
+      <Button className={styles.full} onClick={onNewRequest}>{t("support.newRequest")}</Button>
     </Card>
 
     {loading ? (
-      <p className={styles.empty}>Loading your conversations…</p>
+      <p className={styles.empty}>{t("support.loading")}</p>
     ) : threads.length === 0 ? (
-      <Card><p className={styles.empty}>No conversations yet. Start a request and your broker will reply here.</p></Card>
+      <Card><p className={styles.empty}>{t("support.noConversations")}</p></Card>
     ) : (
       <Card className={styles.msgList}>
         {threads.map((thread) => (

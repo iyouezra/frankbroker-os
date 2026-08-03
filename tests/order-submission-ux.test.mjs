@@ -52,20 +52,24 @@ test("every broker entry channel has evidence and authorization guidance", () =>
 });
 
 test("investor order flow uses an in-app OTP dialog and explicit outcome screens", async () => {
-  const [app, dialogs] = await Promise.all([
+  const [app, dialogs, copy] = await Promise.all([
     readFile(new URL("../app/investor/investor-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../features/investor/orders/order-submission-dialogs.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/i18n/en.ts", import.meta.url), "utf8"),
   ]);
   const placeOrder = app.slice(app.indexOf("const placeOrder"), app.indexOf("// Support conversations"));
   assert.doesNotMatch(placeOrder, /window\.prompt/);
   assert.match(placeOrder, /request_order_otp/);
   assert.match(placeOrder, /submission_uncertain|failedOutcome/);
   assert.match(dialogs, /autoComplete="one-time-code"/);
-  assert.match(dialogs, /Send a new code/);
-  assert.match(dialogs, /Text message/);
-  assert.match(dialogs, /Email/);
+  assert.match(dialogs, /otp\.resend/);
+  assert.match(dialogs, /otp\.textMessage/);
+  assert.match(dialogs, /otp\.email/);
+  assert.match(copy, /"otp\.textMessage": "Text message"/);
+  assert.match(copy, /"otp\.email": "Email"/);
   assert.match(placeOrder, /deliveryChannel: "sms"/);
-  assert.match(dialogs, /View orders/);
+  assert.match(dialogs, /outcome\.viewOrders/);
+  assert.match(copy, /"outcome\.viewOrders": "View orders"/);
 });
 
 test("order authorization supports masked SMS and email delivery", async () => {

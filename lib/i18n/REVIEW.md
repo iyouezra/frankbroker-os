@@ -17,6 +17,14 @@ place. Nothing breaks.
   that language. This is expected, not a bug.
 - **Investor portal only.** The broker and admin portals are not translated and
   there is no plan to translate them.
+- **Demo scaffolding and the desktop marketing panel stay in English.** The whole
+  left-hand desktop story panel (`story.badge`, `story.headline`,
+  `story.welcomeFallback`, `story.cta`, `story.risk`), the "Platform demo" / 
+  "PLATFORM DEMO" labels (`entry.brand`), and the "Demo only" onboarding card
+  (`onboarding.demoOnly`, `onboarding.demoOnlyNote`) are deliberately English —
+  they frame the demo rather than being product UI a real investor uses. These
+  keys are simply **absent from `am.ts`** so the English-fallback layer renders
+  them; the English source still lives in `en.ts`. Do not re-add them to `am.ts`.
 - **Transliteration over guessing.** Where a term has no settled Amharic
   equivalent, the English word is written in Fidel rather than translated:
   ብሮከር (broker), ኦርደር (order), ሆልዲንግ (holdings), ፖርትፎሊዮ (portfolio),
@@ -122,6 +130,22 @@ Beyond the glossary, these specific strings are flagged as likely wrong:
 | `bond.confirmPrefix` / `confirmSubject*` / `confirmSuffix` | Same three-fragment pattern as above. |
 | `order.grossConsideration` | "Gross consideration" is technical. Drafted as ጠቅላላ ዋጋ (total value) — confirm that is how the fee is understood. |
 | `detail.franksTake` | Product voice ("FRANK'S TAKE"). Decide whether it should be translated at all or kept as branding. |
+| `cash.withdrawalNote` | Describes reserve → review → debit, and that rejection releases the reservation. The sequence and the release guarantee must both survive translation — this is what stops an investor thinking money already left. |
+| `cash.useInvestorName` | Deposit reference instruction. If this is unclear the broker cannot match the incoming transfer, so the deposit stalls. |
+| `cash.noApprovedBankNote` | References the "You" tab by name. If `nav.profile` is retranslated, this sentence must follow. Currently uses «እርስዎ». |
+| `status.*` | Short labels shown against real money movements. `status.notApproved` covers both `rejected` and `validation_failed` — keep it neutral, it is not always the investor's fault. |
+| `learn.orders.*` | The Learn lesson says **Stop-limit**, while the order sheet offers **Stop-loss**. These are genuinely different order types — do not unify them. |
+| `learn.dividends.notPromisedText` | "A company can lower, delay, or stop a dividend." This is an expectation-setting statement; it must not soften. |
+| `learn.disclaimer` | States external resources are not investment advice. Regulatory-adjacent — must not weaken. |
+| `otp.safety` | "Frank will never ask you to share this code…" — an anti-fraud warning. It must stay unambiguous; this is the line that protects against social engineering. |
+| `otp.introPrefix` / `introSuffix*` | Three-fragment sentence so the destination stays bold. English prefix carries the channel; the Amharic suffix carries the verb. Review together. |
+| `outcome.heldNext` / `outcome.uncertainNext` | Both say **do not resubmit / check first**. If that instruction weakens, an investor may place a duplicate order. Highest-risk strings in the outcome set. |
+| `outcome.submittedNext` | Must preserve "Submission does not mean the order has executed." Removing that caveat creates a false expectation of execution. |
+| `agreement.consent` | Legally operative — the investor accepting the brokerage agreement. |
+| `profile.license` | Licensing/membership disclaimer. Regulatory-adjacent; must not weaken. |
+| `profile.helpAmharic` | The menu item literally reads "Help in Amharic". Once the portal *is* in Amharic this label may need rethinking in **English** first. |
+| `banks.confirmRemove` | Rendered through `window.confirm`, which cannot be styled — check it reads well as a plain browser dialog. |
+| `activity.typeStopLoss` | "Stop-Loss" (capital L) on the activity screen vs `order.typeStopLoss` "Stop-loss" on the order sheet. This mismatch is pre-existing English, preserved deliberately. |
 
 ---
 
@@ -138,6 +162,13 @@ silently break the form. They are already separated from their labels in code:
 - `Steady`, `Growth`, `Balanced` — computed strategy names
 - `All`, `Banks`, `Telecom`, `Stocks`, `Bonds` — market filters
 - `Market`, `Limit`, `Stop-loss` — **order types submitted to the API**
+- `deposit`, `withdrawal` — **cash movement types submitted to the API**
+- `approved`, `pending`, `settled`, `validation_failed`, … — internal status
+  values; only their labels are translated, via `lib/i18n/status.ts`
+- `investing`, `orders`, `dividends`, `risk` — Learn lesson ids (accordion state)
+- `all`, `orders`, `trades`, `money` — activity filters
+- `general`, `order`, `cash`, `kyc`, `portfolio`, `call_request`, `complaint`,
+  `other` — **support request categories submitted to the API**
 - `Buy`, `Sell` — the order side
 - `order-v1` — the disclosure version recorded with each order
 - bank names, tickers, and client names
@@ -155,6 +186,17 @@ If you add a key, never translate a value that the code compares or submits.
    Blue Nile Trading PLC, ESX, KYC, ETB.
 3. **Delete rather than guess.** A deleted key renders English.
 4. Do not add keys that are not in `en.ts`.
+
+---
+
+## 4b. A visible mixed-language seam
+
+`thread.statusLabel` in the support list comes from the API (`lib/crm/status.ts`),
+so it renders **English** — while the same phrase ("Waiting for broker") renders
+**Amharic** in Cash and Activity, where it is generated client-side. Both are
+correct under the current rules, but an investor sees the same status in two
+languages on different screens. Fixing it properly means translating the CRM
+status labels server-side.
 
 ---
 

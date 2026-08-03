@@ -21,8 +21,10 @@ test("investor access explains trade and cash restrictions and exposes self-serv
   assert.match(investorRoute, /kyc_documents/);
   assert.match(investorApp, /restricted\.title/);
   assert.match(investorCopy, /Restricted access/);
-  assert.match(profileScreen, /Brokerage agreement/);
-  assert.match(profileScreen, /Review your documents/);
+  assert.match(profileScreen, /profile\.brokerageAgreement/);
+  assert.match(profileScreen, /kycSheet\.title/);
+  assert.match(investorCopy, /"profile\.brokerageAgreement": "Brokerage agreement"/);
+  assert.match(investorCopy, /"kycSheet\.title": "Review your documents"/);
 });
 
 test("broker restriction resolution is categorized, audited, and supports client document upload", () => {

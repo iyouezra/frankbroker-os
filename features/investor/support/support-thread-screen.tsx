@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import styles from "../../../app/investor/investor.module.css";
+import { useT } from "../../../lib/i18n/context";
 import { Button, Card, ScreenHeader } from "../shared/investor-foundation";
 import { statusTone } from "./support-screen";
 
@@ -41,11 +42,12 @@ export function SupportThreadScreen({
   onBack: () => void;
   onSend: (body: string, files: File[]) => Promise<boolean>;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
   if (!thread) {
-    return <div className={styles.screen}><ScreenHeader title="Conversation" onBack={onBack} /><p className={styles.empty}>Loading…</p></div>;
+    return <div className={styles.screen}><ScreenHeader title={t("support.conversation")} onBack={onBack} /><p className={styles.empty}>{t("support.loadingShort")}</p></div>;
   }
 
   const closed = thread.status === "closed";
@@ -57,11 +59,11 @@ export function SupportThreadScreen({
   };
 
   return <div className={styles.screen}>
-    <ScreenHeader title="Conversation" onBack={onBack} />
+    <ScreenHeader title={t("support.conversation")} onBack={onBack} />
     <Card className={styles.msgHeadCard}>
       <b>{thread.subject}</b>
       <span className={`${styles.msgStatus} ${statusTone(thread.status)}`}>{thread.statusLabel}</span>
-      {thread.relatedId && <small>About {thread.relatedId}</small>}
+      {thread.relatedId && <small>{t("support.about", { reference: thread.relatedId })}</small>}
     </Card>
 
     <div className={styles.msgThread}>
@@ -79,13 +81,13 @@ export function SupportThreadScreen({
     </div>
 
     {closed ? (
-      <Card><p className={styles.empty}>This conversation is closed. Start a new request if you still need help.</p></Card>
+      <Card><p className={styles.empty}>{t("support.closed")}</p></Card>
     ) : (
       <form className={styles.msgComposer} onSubmit={(event) => void submit(event)}>
-        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Write a reply…" aria-label="Your reply" />
+        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder={t("support.replyPlaceholder")} aria-label={t("support.replyLabel")} />
         <div className={styles.msgComposerFoot}>
-          <input type="file" multiple accept="application/pdf,image/png,image/jpeg" onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 5))} aria-label="Attach a document" />
-          <Button type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</Button>
+          <input type="file" multiple accept="application/pdf,image/png,image/jpeg" onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 5))} aria-label={t("support.attachLabel")} />
+          <Button type="submit" disabled={sending || !draft.trim()}>{t(sending ? "order.sending" : "support.send")}</Button>
         </div>
       </form>
     )}

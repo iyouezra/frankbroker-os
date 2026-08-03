@@ -56,7 +56,7 @@ test("Client 360 composes the shared conversation components rather than reimple
 });
 
 test("the investor portal reaches support without consuming a bottom-nav slot", () => {
-  assert.match(investor, /Messages &amp; support/);
+  assert.match(investor, /"profile\.messagesSupport": "Messages & support"/);
   assert.match(investor, /support_thread_create/);
   assert.match(investor, /support_thread_reply/);
   assert.match(investor, /support_thread_read/);
@@ -68,16 +68,20 @@ test("the investor portal reaches support without consuming a bottom-nav slot", 
   assert.doesNotMatch(investor, /id: "support", label:/);
 });
 
-test("investor support screens contain no broker-internal vocabulary at all", () => {
+test("investor support screens contain no broker-internal vocabulary at all", async () => {
   // Strip comments so the guard checks code and rendered copy, not prose about it.
   const stripComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  const supportSource = [supportScreen, supportThreadScreen, newRequestSheet].map(stripComments).join("\n");
+  // The rendered words now live in the English dictionary, so the guard reads it
+  // too - otherwise it would only be checking the components' variable names.
+  const investorCopy = await read("../lib/i18n/en.ts");
+  const supportSource = [supportScreen, supportThreadScreen, newRequestSheet, investorCopy].map(stripComments).join("\n");
   assert.doesNotMatch(supportSource, /internal/i, "investor screens must not mention internal notes");
   assert.doesNotMatch(supportSource, /assignedTo/);
   assert.doesNotMatch(supportSource, /priority/i);
   assert.doesNotMatch(supportSource, /escalat/i);
   assert.doesNotMatch(supportSource, /SLA/);
-  assert.match(supportThreadScreen, /This conversation is closed/);
+  assert.match(supportThreadScreen, /support\.closed/);
+  assert.match(investorCopy, /"support\.closed": "This conversation is closed/);
 });
 
 test("investor-facing status wording avoids broker operations terminology", async () => {
