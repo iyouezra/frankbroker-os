@@ -38,6 +38,16 @@ model Broker {
   complianceReports      ComplianceReport[]
   complianceEscalations  ComplianceEscalation[]
   clientScreenings       ClientScreening[]
+  tenantProfile          TenantProfile?
+  tenantLicenses         TenantLicense[]
+  tenantEntitlements     TenantEntitlement[]
+  tenantModules          TenantModule[]
+  tenantChecklistPacks   TenantChecklistPack[]
+  issuers                Issuer[]
+  advisoryDeals          AdvisoryDeal[]
+  dealDocuments          DealDocument[]
+  dealTasks              DealTask[]
+  dealSubmissions        DealSubmission[]
 
   @@map("brokers")
 }
@@ -327,6 +337,357 @@ model BrokerSettings {
   broker                 Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
 
   @@map("broker_settings")
+}
+
+/// Additive tenant vocabulary around the legacy Broker record. Existing broker
+/// services keep their brokerId boundary while new cross-product modules use
+/// tenantId and resolve through this profile.
+model TenantProfile {
+  tenantId     String   @id @map("tenant_id")
+  businessType String   @map("business_type")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  tenant       Broker   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_profiles")
+}
+
+model TenantLicense {
+  id            String    @id
+  tenantId      String    @map("tenant_id")
+  regulator     String    @default("ECMA")
+  licenseType   String    @map("license_type")
+  licenseNumber String    @map("license_number")
+  status        String    @default("active")
+  validFrom     DateTime? @map("valid_from") @db.Date
+  validTo       DateTime? @map("valid_to") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  tenant        Broker    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, licenseNumber])
+  @@index([tenantId, status])
+  @@map("tenant_licenses")
+}
+
+model TenantEntitlement {
+  id          String    @id
+  tenantId    String    @map("tenant_id")
+  activityKey String    @map("activity_key")
+  basis       String?
+  status      String    @default("active")
+  validFrom   DateTime? @map("valid_from") @db.Date
+  validTo     DateTime? @map("valid_to") @db.Date
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  tenant      Broker    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, activityKey])
+  @@index([tenantId, status])
+  @@map("tenant_entitlements")
+}
+
+model TenantModule {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  moduleKey String   @map("module_key")
+  enabled   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Broker   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, moduleKey])
+  @@index([tenantId, enabled])
+  @@map("tenant_modules")
+}
+
+model ChecklistTemplate {
+  id              String                  @id
+  code            String
+  version         String
+  transactionType String                  @map("transaction_type")
+  marketSegment   String                  @map("market_segment")
+  title           String
+  status          String                  @default("draft")
+  effectiveFrom   DateTime                @map("effective_from") @db.Date
+  sourceSet       Json                    @map("source_set")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  items           ChecklistTemplateItem[]
+  tenantPacks     TenantChecklistPack[]
+  deals           AdvisoryDeal[]
+
+  @@unique([code, version, marketSegment])
+  @@index([transactionType, marketSegment, status])
+  @@map("checklist_templates")
+}
+
+model ChecklistTemplateItem {
+  id               String            @id
+  templateId       String            @map("template_id")
+  itemCode         String            @map("item_code")
+  section          String
+  title            String
+  guidance         String
+  expectedEvidence String            @map("expected_evidence")
+  required         Boolean           @default(true)
+  sortOrder        Int               @map("sort_order")
+  sourceTitle      String            @map("source_title")
+  sourceUrl        String            @map("source_url")
+  sourceReference  String            @map("source_reference")
+  template         ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  dealItems        DealChecklistItem[]
+
+  @@unique([templateId, itemCode])
+  @@index([templateId, sortOrder])
+  @@map("checklist_template_items")
+}
+
+model TenantChecklistPack {
+  id         String            @id
+  tenantId   String            @map("tenant_id")
+  templateId String            @map("template_id")
+  enabled    Boolean           @default(true)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  tenant     Broker            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template   ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, templateId])
+  @@index([tenantId, enabled])
+  @@map("tenant_checklist_packs")
+}
+
+model Issuer {
+  id                 String         @id
+  tenantId           String         @map("tenant_id")
+  legalName          String         @map("legal_name")
+  tradingName        String?        @map("trading_name")
+  entityType         String         @map("entity_type")
+  registrationNumber String?        @map("registration_number")
+  tinReference       String?        @map("tin_reference")
+  sector             String?
+  contactName        String?        @map("contact_name")
+  contactEmail       String?        @map("contact_email")
+  contactPhone       String?        @map("contact_phone")
+  status             String         @default("active")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  tenant             Broker         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deals              AdvisoryDeal[]
+
+  @@unique([tenantId, registrationNumber])
+  @@index([tenantId, status, legalName])
+  @@map("issuers")
+}
+
+model AdvisoryDeal {
+  id                  String                @id
+  tenantId            String                @map("tenant_id")
+  issuerId            String                @map("issuer_id")
+  checklistTemplateId String                @map("checklist_template_id")
+  name                String
+  transactionType     String                @map("transaction_type")
+  marketSegment       String                @map("market_segment")
+  mandateReference    String?               @map("mandate_reference")
+  leadUserId          String?               @map("lead_user_id")
+  stage               String                @default("draft")
+  status              String                @default("active")
+  targetDate          DateTime?             @map("target_date") @db.Date
+  stageOverrideReason String?               @map("stage_override_reason")
+  createdByUserId     String?               @map("created_by_user_id")
+  version             Int                   @default(0)
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+  tenant              Broker                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  issuer              Issuer                @relation(fields: [issuerId], references: [id], onDelete: Restrict)
+  checklistTemplate   ChecklistTemplate     @relation(fields: [checklistTemplateId], references: [id], onDelete: Restrict)
+  parties             DealParty[]
+  checklistItems      DealChecklistItem[]
+  documents           DealDocument[]
+  tasks               DealTask[]
+  submissions         DealSubmission[]
+
+  @@unique([tenantId, mandateReference])
+  @@index([tenantId, stage, status])
+  @@index([tenantId, issuerId])
+  @@map("advisory_deals")
+}
+
+model DealParty {
+  id           String       @id
+  tenantId     String       @map("tenant_id")
+  dealId       String       @map("deal_id")
+  partyRole    String       @map("party_role")
+  organization String
+  contactName  String?      @map("contact_name")
+  email        String?
+  phone        String?
+  status       String       @default("active")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  deal         AdvisoryDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, dealId, partyRole])
+  @@map("deal_parties")
+}
+
+model DealChecklistItem {
+  id                   String                 @id
+  tenantId             String                 @map("tenant_id")
+  dealId               String                 @map("deal_id")
+  templateItemId       String?                @map("template_item_id")
+  itemCode             String                 @map("item_code")
+  section              String
+  title                String
+  guidance             String
+  expectedEvidence     String                 @map("expected_evidence")
+  required             Boolean                @default(true)
+  custom               Boolean                @default(false)
+  sortOrder            Int                    @map("sort_order")
+  sourceTitle          String?                @map("source_title")
+  sourceUrl            String?                @map("source_url")
+  sourceReference      String?                @map("source_reference")
+  ownerUserId          String?                @map("owner_user_id")
+  dueDate              DateTime?              @map("due_date") @db.Date
+  status               String                 @default("not_started")
+  notes                String?
+  preparedByUserId     String?                @map("prepared_by_user_id")
+  preparedAt           DateTime?              @map("prepared_at")
+  reviewedByUserId     String?                @map("reviewed_by_user_id")
+  reviewedAt           DateTime?              @map("reviewed_at")
+  reviewNote           String?                @map("review_note")
+  notApplicableReason  String?                @map("not_applicable_reason")
+  version              Int                    @default(0)
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+  deal                 AdvisoryDeal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  templateItem         ChecklistTemplateItem? @relation(fields: [templateItemId], references: [id], onDelete: SetNull)
+  documents            DealDocument[]
+  tasks                DealTask[]
+
+  @@unique([dealId, itemCode])
+  @@index([tenantId, dealId, status])
+  @@index([ownerUserId, status, dueDate])
+  @@map("deal_checklist_items")
+}
+
+model DealDocument {
+  id                    String                @id
+  tenantId              String                @map("tenant_id")
+  dealId                String                @map("deal_id")
+  checklistItemId       String?               @map("checklist_item_id")
+  title                 String
+  documentType          String                @map("document_type")
+  ownerUserId           String?               @map("owner_user_id")
+  expectedDate          DateTime?             @map("expected_date") @db.Date
+  status                String                @default("expected")
+  externalUrl           String?               @map("external_url")
+  currentVersionId      String?               @unique @map("current_version_id")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  tenant                Broker                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deal                  AdvisoryDeal          @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  checklistItem         DealChecklistItem?    @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+  versions              DealDocumentVersion[] @relation("DocumentVersions")
+  currentVersion        DealDocumentVersion?  @relation("CurrentDocumentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  tasks                 DealTask[]
+
+  @@index([tenantId, dealId, status])
+  @@map("deal_documents")
+}
+
+model DealDocumentVersion {
+  id           String               @id
+  documentId   String               @map("document_id")
+  versionNo    Int                  @map("version_no")
+  originalName String               @map("original_name")
+  mimeType     String               @map("mime_type")
+  sizeBytes    Int                  @map("size_bytes")
+  uploadedBy   String?              @map("uploaded_by")
+  uploadedAt   DateTime             @default(now()) @map("uploaded_at")
+  document     DealDocument         @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  currentFor   DealDocument?        @relation("CurrentDocumentVersion")
+  content      DealDocumentContent?
+
+  @@unique([documentId, versionNo])
+  @@index([documentId, uploadedAt])
+  @@map("deal_document_versions")
+}
+
+model DealDocumentContent {
+  versionId String              @id @map("version_id")
+  bytes     Bytes
+  version   DealDocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@map("deal_document_contents")
+}
+
+model DealTask {
+  id                String             @id
+  tenantId          String             @map("tenant_id")
+  dealId            String             @map("deal_id")
+  checklistItemId   String?            @map("checklist_item_id")
+  documentId        String?            @map("document_id")
+  title             String
+  description       String?
+  assignedToUserId  String?            @map("assigned_to_user_id")
+  createdByUserId   String?            @map("created_by_user_id")
+  dueDate           DateTime?          @map("due_date") @db.Date
+  priority          String             @default("normal")
+  status            String             @default("open")
+  completedAt       DateTime?          @map("completed_at")
+  completionNote    String?            @map("completion_note")
+  version           Int                @default(0)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  tenant            Broker             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deal              AdvisoryDeal       @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  checklistItem     DealChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+  document          DealDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, assignedToUserId, status])
+  @@map("deal_tasks")
+}
+
+model DealSubmission {
+  id               String            @id
+  tenantId         String            @map("tenant_id")
+  dealId           String            @map("deal_id")
+  authority        String
+  submissionType   String            @map("submission_type")
+  reference        String?
+  status           String            @default("preparing")
+  submittedAt      DateTime?         @map("submitted_at")
+  submittedBy      String?           @map("submitted_by")
+  responseDueAt    DateTime?         @map("response_due_at") @db.Date
+  notes            String?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  tenant           Broker            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deal             AdvisoryDeal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  regulatoryQueries RegulatoryQuery[]
+
+  @@index([tenantId, dealId, status])
+  @@map("deal_submissions")
+}
+
+model RegulatoryQuery {
+  id               String         @id
+  tenantId         String         @map("tenant_id")
+  submissionId     String         @map("submission_id")
+  reference        String?
+  question         String
+  ownerUserId      String?        @map("owner_user_id")
+  receivedAt       DateTime       @map("received_at")
+  dueDate          DateTime?      @map("due_date") @db.Date
+  status           String         @default("open")
+  responseSummary  String?        @map("response_summary")
+  respondedAt      DateTime?      @map("responded_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  submission       DealSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, dueDate])
+  @@map("regulatory_queries")
 }
 
 model LegalDocument {

@@ -6,7 +6,8 @@ export type AppTarget =
   | { view: "crm_cases"; entityId: string; entityType: "service_case" }
   | { view: "cash"; entityId: string; entityType: "cash_movement" }
   | { view: "settlement"; entityId: string; entityType: "settlement"; orderId?: string }
-  | { view: "reconciliation"; entityId: string; entityType: "reconciliation_exception" | "reconciliation_batch" };
+  | { view: "reconciliation"; entityId: string; entityType: "reconciliation_exception" | "reconciliation_batch" }
+  | { view: "advisory"; entityId: string; entityType: "advisory_deal" | "deal_task" | "deal_checklist_item" | "regulatory_query" };
 
 export type WorkItemKind =
   | "order"
@@ -17,7 +18,8 @@ export type WorkItemKind =
   | "conversation"
   | "task"
   | "case"
-  | "service_request";
+  | "service_request"
+  | "advisory";
 
 export type WorkItem = {
   id: string;

@@ -4,7 +4,7 @@ import type { DemoOrder } from "../../../lib/demo-data";
 import type { WorkItem } from "../../../lib/back-office";
 import { Icon, Metric, SectionHeader, auditTime, compactEtb, type AuditEntry } from "../shared/broker-foundation";
 
-const workIcon: Record<WorkItem["kind"], string> = { order: "orders", onboarding: "clients", cash: "cash", settlement: "settlement", reconciliation: "reconciliation", conversation: "conversations", task: "tasks", case: "complaints", service_request: "conversations" };
+const workIcon: Record<WorkItem["kind"], string> = { order: "orders", onboarding: "clients", cash: "cash", settlement: "settlement", reconciliation: "reconciliation", conversation: "conversations", task: "tasks", case: "complaints", service_request: "conversations", advisory: "advisory" };
 
 export function Dashboard({ orders, auditEntries, queue, settlementCycle, manualTradeCapture, onViewOrders, onNewOrder, onSettle, onOpenWork, onOpenStatus }: { orders: DemoOrder[]; auditEntries: AuditEntry[]; queue: WorkItem[]; settlementCycle: string; manualTradeCapture: boolean; onViewOrders: () => void; onNewOrder: () => void; onSettle: () => void; onOpenWork: (item: WorkItem) => void; onOpenStatus: (status: "all" | "review" | "executed" | "exceptions") => void }) {
   const pending = orders.filter((order) => order.status === "pending_broker_review");

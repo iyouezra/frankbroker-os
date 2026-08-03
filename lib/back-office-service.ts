@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { CRM_PERMISSIONS, hasPermission } from "./frank";
+import { ADVISORY_PERMISSIONS, CRM_PERMISSIONS, hasPermission } from "./frank";
 import type { Actor } from "./server-auth";
 import { sortWorkItems, type SearchResult, type WorkItem } from "./back-office";
 
@@ -20,7 +20,8 @@ export async function listWorkItems(actor: Actor): Promise<{ items: WorkItem[]; 
   const canCrm = hasPermission(actor.role, CRM_PERMISSIONS.view);
   const ownerWhere = management ? {} : { OR: [{ assignedToUserId: actor.id }, { assignedToUserId: null }] };
 
-  const [orders, clients, cash, settlements, exceptions, threads, tasks, cases, requests] = await Promise.all([
+  const canAdvisory = hasPermission(actor.role, ADVISORY_PERMISSIONS.view);
+  const [orders, clients, dealTasks, checklistApprovals, regulatoryQueries, cash, settlements, exceptions, threads, tasks, cases, requests] = await Promise.all([
     canApprove || management
       ? prisma.order.findMany({
           where: { brokerId: actor.brokerId, status: { in: ["pending_broker_review", "validation_failed"] } },
@@ -32,6 +33,9 @@ export async function listWorkItems(actor: Actor): Promise<{ items: WorkItem[]; 
     canClient || management
       ? prisma.client.findMany({ where: { brokerId: actor.brokerId, status: "pending_approval" }, orderBy: { createdAt: "desc" }, take: 100 })
       : [],
+    canAdvisory ? prisma.dealTask.findMany({ where: { tenantId: actor.brokerId, status: { not: "completed" }, ...(management ? {} : { OR: [{ assignedToUserId: actor.id }, { assignedToUserId: null }] }) }, include: { deal: { include: { issuer: true } } }, orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }], take: 100 }) : [],
+    canAdvisory ? prisma.dealChecklistItem.findMany({ where: { tenantId: actor.brokerId, status: "pending_approval" }, include: { deal: { include: { issuer: true } } }, orderBy: { updatedAt: "asc" }, take: 100 }) : [],
+    canAdvisory ? prisma.regulatoryQuery.findMany({ where: { tenantId: actor.brokerId, status: { in: ["open", "draft_response"] }, ...(management ? {} : { OR: [{ ownerUserId: actor.id }, { ownerUserId: null }] }) }, include: { submission: { include: { deal: { include: { issuer: true } } } } }, orderBy: [{ dueDate: "asc" }, { receivedAt: "desc" }], take: 100 }) : [],
     canAdjust || management
       ? prisma.cashMovement.findMany({
           where: { brokerId: actor.brokerId, status: { in: ["pending_verification", "pending_approval", "approved"] } },
@@ -238,6 +242,9 @@ export async function listWorkItems(actor: Actor): Promise<{ items: WorkItem[]; 
       readOnly: management,
       target: { view: "clients", entityType: "client", entityId: request.clientId, tab: "overview" },
     })),
+    ...dealTasks.map((task): WorkItem => ({ id: `deal-task:${task.id}`, kind: "advisory", urgency: task.dueDate && task.dueDate.toISOString().slice(0, 10) < today || task.priority === "urgent" ? "critical" : task.priority === "high" ? "high" : "normal", title: task.title, detail: `${task.deal.issuer.tradingName ?? task.deal.issuer.legalName} · ${task.deal.name}`, status: task.status, ownerId: task.assignedToUserId, ownerName: null, dueAt: task.dueDate?.toISOString().slice(0, 10) ?? null, createdAt: iso(task.createdAt), readOnly: management, target: { view: "advisory", entityType: "deal_task", entityId: task.id } })),
+    ...checklistApprovals.map((item): WorkItem => ({ id: `deal-checklist:${item.id}`, kind: "advisory", urgency: "high", title: "Checklist sign-off required", detail: `${item.deal.issuer.tradingName ?? item.deal.issuer.legalName} · ${item.title}`, status: item.status, ownerId: null, ownerName: null, dueAt: item.dueDate?.toISOString().slice(0, 10) ?? null, createdAt: iso(item.updatedAt), readOnly: management, target: { view: "advisory", entityType: "deal_checklist_item", entityId: item.id } })),
+    ...regulatoryQueries.map((query): WorkItem => ({ id: `regulatory-query:${query.id}`, kind: "advisory", urgency: query.dueDate && query.dueDate.toISOString().slice(0, 10) < today ? "critical" : "high", title: `${query.submission.authority} query awaiting response`, detail: `${query.submission.deal.issuer.tradingName ?? query.submission.deal.issuer.legalName} · ${query.reference ?? "Query"}`, status: query.status, ownerId: query.ownerUserId, ownerName: null, dueAt: query.dueDate?.toISOString().slice(0, 10) ?? null, createdAt: iso(query.receivedAt), readOnly: management, target: { view: "advisory", entityType: "regulatory_query", entityId: query.id } })),
   ].sort(sortWorkItems);
 
   const visible = management ? items.filter((item) => item.urgency === "critical" || item.urgency === "high") : items;

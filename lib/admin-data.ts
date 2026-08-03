@@ -1,6 +1,8 @@
 export type TenantStatus = "active" | "pilot" | "suspended";
 export type TenantPlan = "Enterprise" | "Growth" | "Pilot";
 export type FeatureKey = "investorPortal" | "selfDirected" | "bonds" | "recurringInvestments" | "institutionalAccounts" | "manualTradeCapture";
+export type AdminBusinessType = "securities_dealer" | "investment_bank" | "securities_investment_adviser";
+export type AdminModuleKey = "dealer_operations" | "investor_servicing" | "issuer_advisory";
 export type AdminFeeRule = {
   assetClass: "equity" | "bond";
   marketSegment: string;
@@ -42,6 +44,11 @@ export type TenantConfig = {
   ordersToday: number;
   assetsUnderAdministration: number;
   features: Record<FeatureKey, boolean>;
+  businessType: AdminBusinessType;
+  licenses: Array<{ id: string; regulator: string; licenseType: string; licenseNumber: string; status: string; validFrom: string | null; validTo: string | null }>;
+  entitlements: Array<"securities_dealing" | "transaction_advisory">;
+  modules: Record<AdminModuleKey, boolean>;
+  checklistPacks: Array<{ templateId: string; code: string; version: string; transactionType: string; marketSegment: string; title: string; enabled: boolean }>;
   controls: {
     makerChecker: boolean;
     approvalThreshold: number;
@@ -134,7 +141,7 @@ export type AdminUser = {
   email: string;
   jobTitle: string;
   department: string;
-  role: "Access admin" | "Broker admin" | "Trader" | "Operations" | "Compliance" | "Settlement" | "Relationship" | "Client service" | "Read only";
+  role: "Access admin" | "Broker admin" | "Trader" | "Operations" | "Compliance" | "Settlement" | "Relationship" | "Client service" | "Advisory lead" | "Advisory analyst" | "Read only";
   status: "Active" | "Invited" | "Suspended";
   mfa: boolean;
   lastActive: string;
@@ -173,6 +180,11 @@ export const initialTenants: TenantConfig[] = [
     ordersToday: 84,
     assetsUnderAdministration: 184_500_000,
     features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true },
+    businessType: "securities_dealer",
+    licenses: [{ id: "lic_aby_dealer", regulator: "ECMA", licenseType: "securities_dealer", licenseNumber: "ESCA-BR-004", status: "active", validFrom: "2025-01-01", validTo: null }],
+    entitlements: ["securities_dealing"],
+    modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: false },
+    checklistPacks: [],
     controls: { makerChecker: true, approvalThreshold: 250_000, clientDailyLimit: 2_500_000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit", "Stop-loss"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
     legalDocument: defaultLegalDocument("Abyssinia Securities"),
     feeSchedule: defaultFeeSchedule(.5, 25),
@@ -197,17 +209,22 @@ export const initialTenants: TenantConfig[] = [
     ordersToday: 21,
     assetsUnderAdministration: 46_800_000,
     features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: false, institutionalAccounts: true, manualTradeCapture: true },
+    businessType: "investment_bank",
+    licenses: [{ id: "lic_blue_ib", regulator: "ECMA", licenseType: "investment_bank", licenseNumber: "ESCA-BR-011", status: "active", validFrom: "2025-01-01", validTo: null }],
+    entitlements: ["securities_dealing", "transaction_advisory"],
+    modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true },
+    checklistPacks: [],
     controls: { makerChecker: true, approvalThreshold: 100_000, clientDailyLimit: 750_000, brokerageFeePct: .65, minimumFee: 30, settlementCycle: "T+2", allowedOrderTypes: ["Market", "Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
     legalDocument: defaultLegalDocument("Blue Nile Capital"),
     feeSchedule: defaultFeeSchedule(.65, 30),
   },
   {
     id: "brk_sheba",
-    name: "Sheba Investment Services S.C.",
-    tradingName: "Sheba Invest",
+    name: "Sheba Advisory S.C.",
+    tradingName: "Sheba Advisory",
     initials: "SI",
     licenseNumber: "PILOT-023",
-    status: "suspended",
+    status: "pilot",
     plan: "Pilot",
     domain: "sheba.frankbroker.demo",
     supportEmail: "operations@sheba.example",
@@ -221,6 +238,11 @@ export const initialTenants: TenantConfig[] = [
     ordersToday: 0,
     assetsUnderAdministration: 8_250_000,
     features: { investorPortal: false, selfDirected: true, bonds: false, recurringInvestments: false, institutionalAccounts: false, manualTradeCapture: true },
+    businessType: "securities_investment_adviser",
+    licenses: [{ id: "lic_sheba_adviser", regulator: "ECMA", licenseType: "securities_investment_adviser", licenseNumber: "PILOT-023", status: "active", validFrom: "2025-01-01", validTo: null }],
+    entitlements: ["transaction_advisory"],
+    modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: true },
+    checklistPacks: [],
     controls: { makerChecker: true, approvalThreshold: 50_000, clientDailyLimit: 250_000, brokerageFeePct: .75, minimumFee: 35, settlementCycle: "T+2", allowedOrderTypes: ["Limit"], requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12 },
     legalDocument: defaultLegalDocument("Sheba Invest"),
     feeSchedule: defaultFeeSchedule(.75, 35),
