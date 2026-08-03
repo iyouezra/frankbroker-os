@@ -38,6 +38,11 @@ place. Nothing breaks.
   Cost basis, Unrealized gain, Dividends this year, Today) plus the allocation
   and chart legends. They are left as whole blocks so a card never reads
   half-translated.
+- **Chart *descriptions* ARE translated, unlike chart *labels*.** The `chart.*`
+  keys are `aria-label` text read aloud by screen readers, never shown on screen
+  (`chart.sparkline`, `chart.priceChart`, `chart.portfolio`,
+  `chart.onboardingStep`). A screen-reader user in Amharic should not hit an
+  English wall, and translating them cannot affect the visual design.
 - **Order fees and costs ARE translated — a deliberate exception.** The fee
   breakdown on the order sheet (Gross consideration, Brokerage, Total estimated
   fees, Total order cost, Net proceeds) is not a market-data indicator: it is the
@@ -189,14 +194,17 @@ If you add a key, never translate a value that the code compares or submits.
 
 ---
 
-## 4b. A visible mixed-language seam
+## 4b. A known, accepted mixed-language seam
 
 `thread.statusLabel` in the support list comes from the API (`lib/crm/status.ts`),
 so it renders **English** — while the same phrase ("Waiting for broker") renders
-**Amharic** in Cash and Activity, where it is generated client-side. Both are
-correct under the current rules, but an investor sees the same status in two
-languages on different screens. Fixing it properly means translating the CRM
-status labels server-side.
+**Amharic** in Cash and Activity, where it is generated client-side. An investor
+therefore sees the same status in two languages on different screens.
+
+**This is accepted for now and deliberately not fixed.** Resolving it means
+translating the CRM status labels server-side, which is part of the wider
+"translate API content" work that is out of scope. Do not patch it client-side —
+that would put the same label in two places and let them drift.
 
 ---
 

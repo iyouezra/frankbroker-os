@@ -749,6 +749,13 @@ export const en = {
   "support.messagePlaceholder": "What can we help with?",
   "support.attachOptional": "Attach a document (optional)",
   "support.sendRequest": "Send request",
+
+  // Chart and progress descriptions. These are screen-reader only, so unlike the
+  // visible chart labels (Volume, Day range, the range tabs) they ARE translated.
+  "chart.sparkline": "{name} one day trend",
+  "chart.priceChart": "{name} {range} price and volume chart",
+  "chart.portfolio": "Portfolio value compared with net invested",
+  "chart.onboardingStep": "Onboarding step {step} of 4",
 } as const;
 
 export type TranslationKey = keyof typeof en;

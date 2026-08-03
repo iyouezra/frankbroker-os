@@ -707,4 +707,9 @@ export const am: Dictionary = {
   "support.messagePlaceholder": "በምን ልንረዳዎት እንችላለን?",
   "support.attachOptional": "ሰነድ ያያይዙ (አማራጭ)",
   "support.sendRequest": "ጥያቄ ይላኩ",
+
+  "chart.sparkline": "የ{name} የአንድ ቀን አዝማሚያ",
+  "chart.priceChart": "የ{name} የ{range} ዋጋና የግብይት መጠን ገበታ",
+  "chart.portfolio": "የፖርትፎሊዮ ዋጋ ከተጣራ ኢንቨስትመንት ጋር ሲነጻጸር",
+  "chart.onboardingStep": "የምዝገባ ደረጃ {step} ከ4",
 };

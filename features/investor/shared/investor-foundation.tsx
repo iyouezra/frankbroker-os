@@ -204,6 +204,7 @@ export function Delta({ value, pill = false }: { value: number; pill?: boolean }
 }
 
 export function MarketSparkline({ stock }: { stock: InvestorStock }) {
+  const t = useT();
   const session = getInvestorSession(stock);
   const width = 72;
   const height = 28;
@@ -231,7 +232,7 @@ export function MarketSparkline({ stock }: { stock: InvestorStock }) {
   const area = `${line} L${width},${baseline} L0,${baseline} Z`;
   return <span className={`${styles.marketSparkline} ${positive ? styles.microGain : styles.microLoss}`}>
     <small>1D</small>
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${stock.name} one day trend`}>
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("chart.sparkline", { name: stock.name })}>
       <line x1="0" y1={baseline} x2={width} y2={baseline} className={styles.microBaseline} />
       <path d={area} className={styles.microArea} />
       <path d={line} className={styles.microLine} />
@@ -245,6 +246,7 @@ const compactDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "num
 const chartDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 export function PriceChart({ stock, range }: { stock: InvestorStock; range: MarketRange }) {
+  const t = useT();
   const points = getInvestorHistory(stock)[range];
   const [activeIndex, setActiveIndex] = useState(points.length - 1);
   const gradientId = useId().replaceAll(":", "");
@@ -282,7 +284,7 @@ export function PriceChart({ stock, range }: { stock: InvestorStock; range: Mark
 
   return <div className={styles.priceChart}>
     <div className={styles.chartReadout}><span><b>{formatEtb(active.close)}</b><small>{chartDate.format(new Date(`${active.date}T12:00:00Z`))}</small></span><span><b className={positive ? styles.gain : styles.loss}>{positive ? "+" : "−"}{Math.abs(periodChange).toFixed(1)}%</b><small>{range} return</small></span></div>
-    <svg viewBox={`0 0 ${width} 170`} role="img" aria-label={`${stock.name} ${range} price and volume chart`} onPointerMove={(event) => updateActive(event.clientX, event.currentTarget)} onPointerDown={(event) => updateActive(event.clientX, event.currentTarget)} onPointerLeave={() => setActiveIndex(points.length - 1)}>
+    <svg viewBox={`0 0 ${width} 170`} role="img" aria-label={t("chart.priceChart", { name: stock.name, range })} onPointerMove={(event) => updateActive(event.clientX, event.currentTarget)} onPointerDown={(event) => updateActive(event.clientX, event.currentTarget)} onPointerLeave={() => setActiveIndex(points.length - 1)}>
       <defs><linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={stroke} stopOpacity=".2" /><stop offset="1" stopColor={stroke} stopOpacity="0" /></linearGradient></defs>
       {gridValues.map((value) => <g key={value}><line x1={plotLeft} y1={y(value)} x2={plotRight} y2={y(value)} className={styles.chartGrid} /><text x="334" y={y(value) + 3} textAnchor="end" className={styles.chartAxis}>{value.toLocaleString("en-US", { maximumFractionDigits: stock.price >= 1_000 ? 0 : 2 })}</text></g>)}
       <line x1={plotLeft} y1={y(points[0].close)} x2={plotRight} y2={y(points[0].close)} className={styles.chartBaseline} />
@@ -297,6 +299,7 @@ export function PriceChart({ stock, range }: { stock: InvestorStock; range: Mark
 }
 
 export function PortfolioChart({ total }: { total: number }) {
+  const t = useT();
   const investedEnd = total / 1.185;
   const invested = [0.76, 0.78, 0.79, 0.82, 0.84, 0.85, 0.88, 0.9, 0.92, 0.95, 0.97, 1].map((value) => value * investedEnd);
   const value = [0.76, 0.775, 0.768, 0.815, 0.834, 0.87, 0.862, 0.925, 0.948, 1.03, 1.105, 1.185].map((ratio) => ratio * investedEnd);
@@ -308,7 +311,7 @@ export function PortfolioChart({ total }: { total: number }) {
   const y = (amount: number) => height - ((amount - min) / (max - min)) * (height - 8) - 4;
   const path = (series: number[]) => series.map((amount, index) => `${index ? "L" : "M"}${x(index).toFixed(2)},${y(amount).toFixed(2)}`).join(" ");
   return <div className={styles.portfolioChart}>
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Portfolio value compared with net invested"><line x1="0" y1={height / 2} x2={width} y2={height / 2} className={styles.chartGrid} /><path d={path(invested)} className={styles.investedLine} /><path d={path(value)} className={styles.valueLine} /></svg>
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("chart.portfolio")}><line x1="0" y1={height / 2} x2={width} y2={height / 2} className={styles.chartGrid} /><path d={path(invested)} className={styles.investedLine} /><path d={path(value)} className={styles.valueLine} /></svg>
     <div className={styles.performanceLegend}><span><i />Portfolio value</span><span><i />Net invested</span></div>
     <div className={styles.chartDates}><span>Aug 2025</span><span>Today</span></div>
   </div>;
@@ -337,7 +340,8 @@ export function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: T
 }
 
 export function ProgressDots({ step }: { step: number }) {
-  return <div className={styles.progressDots} aria-label={`Onboarding step ${Math.min(step, 3) + 1} of 4`}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
+  const t = useT();
+  return <div className={styles.progressDots} aria-label={t("chart.onboardingStep", { step: Math.min(step, 3) + 1 })}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
 }
 
 export const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", email: "selam.mekonnen@example.et", faydaId: "1234567890123456", tin: "0012814908", address: "", proofOfAddressType: "Drivers License", proofOfAddressReference: "", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };
