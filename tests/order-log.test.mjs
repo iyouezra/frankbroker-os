@@ -60,6 +60,8 @@ test("order APIs expose paginated summaries, tenant-scoped detail, and filtered 
   assert.match(listRoute, /accountNumber/);
   assert.match(detailRoute, /brokerId: actor\.brokerId/);
   assert.match(detailRoute, /validations:/);
+  assert.match(detailRoute, /validation\.result === "passed"/);
+  assert.doesNotMatch(detailRoute, /validation\.result === "pass"/);
   assert.match(detailRoute, /captureReference: trade\.captureReference/);
   assert.match(detailRoute, /ledgerEntries:/);
 });
@@ -70,6 +72,8 @@ test("broker UI uses operational labels and requires an execution reference", as
   assert.match(app, /An order may be completed through one or more executions/);
   assert.match(app, />Technical details</);
   assert.match(app, /Cash and holdings movements/);
+  assert.match(app, /<th>Source<\/th>/);
+  assert.match(app, /displayLabel\(order\.source\)/);
   assert.match(app, /Execution reference<input required/);
   assert.match(app, /No executions yet\. This order has not been filled\./);
   assert.doesNotMatch(app, />Related trades</);

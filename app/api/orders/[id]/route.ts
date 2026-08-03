@@ -128,7 +128,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           id: validation.id,
           code: validation.ruleCode,
           label: validation.label,
-          passed: validation.result === "pass",
+          passed: validation.result === "passed",
           message: validation.message,
           checkedAt: validation.checkedAt.toISOString(),
         })),
