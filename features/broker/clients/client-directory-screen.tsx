@@ -10,6 +10,12 @@ import { RelationshipOfficerCard } from "../crm/relationship-officer-card";
 import { TaskCard } from "../crm/my-tasks-screen";
 import { isTaskClosed } from "../../../lib/crm/tasks";
 import {
+  evaluateRestorationControls,
+  inferRestrictionCategory,
+  restrictionCategoryLabels,
+  restrictionResolutionGuidance,
+} from "../../../lib/restriction-resolution";
+import {
   BROKER_TENANT_ID,
   EmptyState,
   Icon,
@@ -73,6 +79,11 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
   const [restrictionOpen, setRestrictionOpen] = useState(false);
   const [restrictionCategory, setRestrictionCategory] = useState("compliance_review");
   const [restrictionNote, setRestrictionNote] = useState("");
+  const [restorationOpen, setRestorationOpen] = useState(false);
+  const [restorationStep, setRestorationStep] = useState(0);
+  const [restorationOutcome, setRestorationOutcome] = useState("");
+  const [restorationEvidence, setRestorationEvidence] = useState("");
+  const [restorationConfirmed, setRestorationConfirmed] = useState(false);
   const [termsEvidenceOpen, setTermsEvidenceOpen] = useState(false);
   const [termsEvidence, setTermsEvidence] = useState("");
   const [screeningResult, setScreeningResult] = useState("clear");
@@ -287,6 +298,19 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
     ...(!model.legal.accepted ? ["Brokerage terms have not been accepted"] : []),
   ];
   const applicationReadyForApproval = approvalBlockers.length === 0;
+  const restorationCategory = inferRestrictionCategory(model.restrictions.reason);
+  const restorationGuidance = restrictionResolutionGuidance(restorationCategory);
+  const restoration = evaluateRestorationControls({
+    kycStatus: model.client.kycStatus,
+    screeningStatus: model.screenings[0]?.result ?? null,
+    expectedDocuments,
+    approvedDocuments: model.documents.kyc.filter((document) => document.status === "approved").flatMap((document) => document.type ? [document.type] : []),
+    consentReady: model.legal.accepted,
+  });
+  const restorationSubmissionReady = restoration.ready
+    && restorationOutcome.trim().length >= 10
+    && restorationEvidence.trim().length >= 5
+    && restorationConfirmed;
   const act = async (action: "approve_client" | "reject_client" | "restrict" | "restore" | "record_terms_acceptance" | "complete_kyc_review" | "resolve_request" | "approve_closure" | "reject_request" | "add_note", requestId?: string, decisionReason?: string, actionData: Record<string, unknown> = {}) => {
     const key = requestId ?? action;
     setBusy(key);
@@ -305,11 +329,12 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
           ...actionData,
         }),
       });
-      const result = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "Client action failed.");
+      const result = await response.json().catch(() => ({})) as { error?: string; blockers?: string[] };
+      if (!response.ok) throw new Error([result.error, ...(result.blockers ?? [])].filter(Boolean).join(" · ") || "Client action failed.");
       if (action === "add_note") setNoteText("");
       if (action === "approve_client" || action === "reject_client") setApplicationReviewOpen(false);
       if (action === "restrict") setRestrictionOpen(false);
+      if (action === "restore") setRestorationOpen(false);
       if (action === "record_terms_acceptance") setTermsEvidenceOpen(false);
       setRefreshKey((current) => current + 1);
       await onRefresh();
@@ -495,7 +520,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
           {(canApproveClient || canRejectClient) && <button className="btn primary" disabled={Boolean(busy)} onClick={() => { setApplicationReviewStep(0); setOnboardingRejectionReason(""); setApplicationReviewOpen(true); }}>Review application</button>}
           {!canApproveClient && !canRejectClient && <span>Your role can review this record but cannot make the onboarding decision.</span>}
         </div>
-      </div> : canAdjust && (canRestoreRestriction || canPlaceRestriction) && <div className="client-360-secondary-action">{canRestoreRestriction ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => void act("restore", undefined, "Restriction resolved after broker review")}>Restore account</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => { setRestrictionCategory("compliance_review"); setRestrictionNote(""); setRestrictionOpen(true); }}>Restrict account</button>}</div>}
+      </div> : canAdjust && (canRestoreRestriction || canPlaceRestriction) && <div className="client-360-secondary-action">{canRestoreRestriction ? <button className="btn secondary small" disabled={busy === "restore"} onClick={() => { setRestorationStep(0); setRestorationOutcome(""); setRestorationEvidence(""); setRestorationConfirmed(false); setRestorationOpen(true); }}>Resolve restriction</button> : <button className="btn secondary small" disabled={busy === "restrict"} onClick={() => { setRestrictionCategory("compliance_review"); setRestrictionNote(""); setRestrictionOpen(true); }}>Restrict account</button>}</div>}
     </section>
     <nav className="client-360-tabs" aria-label="Client 360 sections">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}{item.count !== undefined && <span>{item.count}</span>}</button>)}</nav>
     {message && <p className="control-message client-360-message">{message}</p>}
@@ -560,6 +585,47 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
           </div>}
         </div>
         <footer className="application-review-footer"><button className="btn secondary" disabled={applicationReviewStep === 0 || Boolean(busy)} onClick={() => setApplicationReviewStep((step) => Math.max(0, step - 1))}>Back</button><span>Step {applicationReviewStep + 1} of 4</span>{applicationReviewStep < 3 ? <button className="btn primary" disabled={Boolean(busy)} onClick={() => setApplicationReviewStep((step) => Math.min(3, step + 1))}>Continue</button> : <button className="btn secondary" disabled={Boolean(busy)} onClick={() => setApplicationReviewOpen(false)}>Close review</button>}</footer>
+      </section>
+    </div>}
+    {restorationOpen && <div className="application-review-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setRestorationOpen(false); }}>
+      <section className="application-review-dialog restriction-resolution-dialog" role="dialog" aria-modal="true" aria-labelledby="restriction-resolution-title">
+        <header className="application-review-head">
+          <div><span className="eyebrow">CONTROLLED ACCOUNT RESTORATION</span><h2 id="restriction-resolution-title">Resolve {model.client.name}&apos;s restriction</h2><p>Resolve the recorded cause, verify the account controls, and preserve the decision evidence.</p></div>
+          <button className="application-review-close" aria-label="Close restriction resolution" disabled={Boolean(busy)} onClick={() => setRestorationOpen(false)}>×</button>
+        </header>
+        <ol className="application-review-steps" aria-label="Restriction resolution progress">
+          {["Restriction", "Resolution checks", "Decision evidence"].map((label, index) => <li key={label} className={index === restorationStep ? "active" : index < restorationStep ? "complete" : ""}><button onClick={() => setRestorationStep(index)}><i>{index < restorationStep ? "✓" : index + 1}</i><span>{label}</span></button></li>)}
+        </ol>
+        <div className="application-review-body">
+          {restorationStep === 0 && <div className="application-review-section">
+            <div className="application-review-section-head"><span><small>STEP 1 OF 3</small><h3>Understand the restriction</h3><p>The account stays restricted until its recorded cause and all mandatory controls are resolved.</p></span><strong data-state="attention">Restricted</strong></div>
+            <dl className="application-review-details restriction-resolution-details">
+              <div><dt>Restriction type</dt><dd>{restrictionCategoryLabels[restorationCategory]}</dd></div>
+              <div><dt>Restricted at</dt><dd>{model.restrictions.restrictedAt ? new Date(model.restrictions.restrictedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "Not recorded"}</dd></div>
+              <div className="wide"><dt>Recorded reason</dt><dd>{model.restrictions.reason ?? "No detailed reason was recorded; treat this as an exception and document the investigation."}</dd></div>
+            </dl>
+            <div className="restriction-resolution-guidance"><small>REQUIRED RESOLUTION PATH</small><ol>{restorationGuidance.map((item) => <li key={item}>{item}</li>)}</ol></div>
+          </div>}
+          {restorationStep === 1 && <div className="application-review-section">
+            <div className="application-review-section-head"><span><small>STEP 2 OF 3</small><h3>Verify resolution controls</h3><p>These controls are recalculated from the client record and rechecked by the server when you restore.</p></span><strong data-state={restoration.ready ? "ready" : "attention"}>{restoration.ready ? "All controls pass" : `${restoration.blockers.length} outstanding`}</strong></div>
+            <div className="application-review-list restriction-control-list">
+              {restoration.controls.map((control) => <article className="application-review-item" key={control.key}>
+                <span className={`restriction-control-icon ${control.passed ? "pass" : "fail"}`}>{control.passed ? "✓" : "!"}</span>
+                <span><b>{control.label}</b><small>{control.detail}</small></span>
+                <strong data-status={control.passed ? "approved" : "rejected"}>{control.passed ? "Passed" : "Resolve"}</strong>
+              </article>)}
+            </div>
+            {!restoration.ready && <><ul className="application-review-blockers">{restoration.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul><div className="application-decision-actions"><button className="btn secondary" onClick={() => { setRestorationOpen(false); setTab("documents"); }}>Open documents &amp; controls</button></div></>}
+          </div>}
+          {restorationStep === 2 && <div className="application-review-section">
+            <div className="application-review-section-head"><span><small>STEP 3 OF 3</small><h3>Record the restoration decision</h3><p>Leave enough evidence for another reviewer to reconstruct why the restriction was removed.</p></span><strong data-state={restorationSubmissionReady ? "ready" : "attention"}>{restorationSubmissionReady ? "Ready to restore" : "Evidence required"}</strong></div>
+            <div className={`application-decision-summary ${restoration.ready ? "ready" : "attention"}`}><i>{restoration.ready ? "✓" : "!"}</i><span><b>{restoration.ready ? "Mandatory account controls pass" : "Restoration remains blocked"}</b><p>{restoration.ready ? `You are resolving a ${restrictionCategoryLabels[restorationCategory].toLowerCase()} restriction. The original reason remains in the audit trail.` : "Return to the resolution checks and clear every outstanding control before restoring the account."}</p></span></div>
+            <label className="application-rejection-field"><span>Resolution outcome <small>Minimum 10 characters</small></span><textarea rows={4} maxLength={1000} value={restorationOutcome} onChange={(event) => setRestorationOutcome(event.target.value)} placeholder="Explain what was investigated, corrected, or formally released" /></label>
+            <label className="application-rejection-field"><span>Evidence reference <small>Case, document, instruction or approval reference</small></span><textarea rows={2} maxLength={1000} value={restorationEvidence} onChange={(event) => setRestorationEvidence(event.target.value)} placeholder="For example, compliance case CMP-2041 approved on 4 Aug 2026" /></label>
+            <label className="restriction-resolution-confirm"><input type="checkbox" checked={restorationConfirmed} onChange={(event) => setRestorationConfirmed(event.target.checked)} /><span><b>I confirm the recorded restriction reason has been resolved.</b><small>Restoring re-enables account activity, subject to normal order and money-movement controls.</small></span></label>
+          </div>}
+        </div>
+        <footer className="application-review-footer"><button className="btn secondary" disabled={restorationStep === 0 || Boolean(busy)} onClick={() => setRestorationStep((step) => Math.max(0, step - 1))}>Back</button><span>Step {restorationStep + 1} of 3</span>{restorationStep < 2 ? <button className="btn primary" disabled={Boolean(busy)} onClick={() => setRestorationStep((step) => Math.min(2, step + 1))}>Continue</button> : <button className="btn primary" disabled={Boolean(busy) || !restorationSubmissionReady} onClick={() => void act("restore", undefined, restorationOutcome.trim(), { resolutionEvidence: restorationEvidence.trim(), resolutionConfirmed: restorationConfirmed })}>{busy === "restore" ? "Restoring…" : "Restore account"}</button>}</footer>
       </section>
     </div>}
     {evidenceRejection && <div className="evidence-rejection-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setEvidenceRejection(null); }}>

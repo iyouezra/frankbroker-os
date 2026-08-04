@@ -874,6 +874,20 @@ td b { display: block; color: var(--fx-text); font-size: 11.5px; } td small { di
 .broker-file-button { position: relative; cursor: pointer; }
 .broker-file-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .restriction-dialog .bselect { width: 100%; }
+.restriction-resolution-dialog .application-review-steps { grid-template-columns: repeat(3,1fr); }
+.restriction-resolution-details .wide { grid-column: 1 / -1; border-right: 0; }
+.restriction-resolution-guidance { margin-top: 16px; padding: 15px 17px; border: 1px solid var(--line); border-radius: 13px; background: var(--fx-sunken); }
+.restriction-resolution-guidance > small { color: var(--fx-teal); font-size: 8px; font-weight: 850; letter-spacing: .7px; }
+.restriction-resolution-guidance ol { display: grid; gap: 9px; margin: 11px 0 0; padding-left: 19px; }
+.restriction-resolution-guidance li { padding-left: 4px; color: var(--muted); font-size: 9.5px; line-height: 1.5; }
+.restriction-control-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 900; }
+.restriction-control-icon.pass { background: var(--mint); color: var(--fx-teal); }
+.restriction-control-icon.fail { background: var(--red-soft); color: var(--red); }
+.restriction-resolution-confirm { display: flex; align-items: flex-start; flex-direction: row; gap: 10px; margin-top: 16px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--fx-sunken); cursor: pointer; }
+.restriction-resolution-confirm input { margin-top: 2px; accent-color: var(--fx-teal); }
+.restriction-resolution-confirm span { display: flex; flex-direction: column; gap: 4px; }
+.restriction-resolution-confirm b { font-size: 9.5px; }
+.restriction-resolution-confirm small { color: var(--muted); font-size: 8.8px; line-height: 1.45; }
 .client-360-tabs { position: sticky; top: 72px; z-index: 9; display: flex; gap: 3px; margin: 13px 0 15px; padding: 4px; overflow-x: auto; border: 1px solid var(--line); border-radius: 13px; background: rgba(245,249,249,.92); backdrop-filter: blur(12px); box-shadow: 0 5px 17px rgba(8,62,71,.05); scrollbar-width: none; }
 [data-theme="dark"] .client-360-tabs { background: rgba(10,35,38,.9); }
 .client-360-tabs button { min-height: 35px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; font-size: 10.5px; font-weight: 750; white-space: nowrap; }

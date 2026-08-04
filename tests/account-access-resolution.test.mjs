@@ -8,6 +8,7 @@ const investorApp = await readFile(new URL("../app/investor/investor-app.tsx", i
 const investorCopy = await readFile(new URL("../lib/i18n/en.ts", import.meta.url), "utf8");
 const profileScreen = await readFile(new URL("../features/investor/profile/profile-screen.tsx", import.meta.url), "utf8");
 const clientAction = await readFile(new URL("../app/api/clients/[id]/action/route.ts", import.meta.url), "utf8");
+const restrictionResolution = await readFile(new URL("../lib/restriction-resolution.ts", import.meta.url), "utf8");
 const brokerDocuments = await readFile(new URL("../app/api/clients/[id]/documents/route.ts", import.meta.url), "utf8");
 const clientScreen = await readFile(new URL("../features/broker/clients/client-directory-screen.tsx", import.meta.url), "utf8");
 const brokerApp = await readFile(new URL("../app/frankbroker-app.tsx", import.meta.url), "utf8");
@@ -29,9 +30,13 @@ test("investor access explains trade and cash restrictions and exposes self-serv
 
 test("broker restriction resolution is categorized, audited, and supports client document upload", () => {
   for (const category of ["compliance_review", "kyc_overdue", "missing_documents", "suspicious_activity", "legal_regulatory", "client_request", "other"]) {
-    assert.match(clientAction, new RegExp(category));
+    assert.match(restrictionResolution, new RegExp(category));
   }
   assert.match(clientAction, /CLIENT_ACCOUNT_RESTRICTED/);
+  assert.match(clientAction, /CLIENT_ACCOUNT_RESTORED/);
+  assert.match(clientAction, /evaluateRestorationControls/);
+  assert.match(clientAction, /resolutionEvidence/);
+  assert.match(clientAction, /restrictionReason: originalRestriction/);
   assert.match(clientAction, /BROKER_RECORDED_TERMS_ACCEPTANCE/);
   assert.match(clientAction, /CLIENT_KYC_REVIEW_COMPLETED/);
   assert.match(brokerDocuments, /requirePermission\(request, "adjust"\)/);
@@ -39,6 +44,10 @@ test("broker restriction resolution is categorized, audited, and supports client
   assert.match(clientScreen, /Upload for client/);
   assert.match(clientScreen, /Record witnessed acceptance/);
   assert.match(clientScreen, /Complete KYC review/);
+  assert.match(clientScreen, /CONTROLLED ACCOUNT RESTORATION/);
+  assert.match(clientScreen, /Understand the restriction/);
+  assert.match(clientScreen, /Verify resolution controls/);
+  assert.match(clientScreen, /Record the restoration decision/);
 });
 
 test("broker theme hydrates consistently in light mode", () => {

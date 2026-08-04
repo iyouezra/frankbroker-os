@@ -4,11 +4,18 @@ import { requirePermission } from "../../../../../lib/server-auth";
 import { approveClient, rejectClient } from "../../../../../lib/client-service";
 import { expectedDocumentTypes } from "../../../../../lib/onboarding-evidence";
 import { completeServiceRequest } from "../../../../../lib/crm/service-request-service";
+import {
+  evaluateRestorationControls,
+  inferRestrictionCategory,
+  restrictionCategories,
+  restrictionCategoryLabels,
+  type RestrictionCategory,
+} from "../../../../../lib/restriction-resolution";
 
 export const runtime = "nodejs";
 
 type ClientAction = "approve_client" | "reject_client" | "restrict" | "restore" | "record_terms_acceptance" | "complete_kyc_review" | "resolve_request" | "approve_closure" | "reject_request" | "add_note";
-const restrictionCategories = new Set(["compliance_review", "kyc_overdue", "missing_documents", "suspicious_activity", "legal_regulatory", "client_request", "other"]);
+const restrictionCategorySet = new Set<string>(restrictionCategories);
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -22,6 +29,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       category?: string;
       restrictionCategory?: string;
       restrictionNote?: string;
+      resolutionEvidence?: string;
+      resolutionConfirmed?: boolean;
     };
     if (!payload.action) return Response.json({ error: "A client action is required." }, { status: 400 });
     const permission = payload.action === "approve_client" ? "approve" : payload.action === "reject_client" ? "reject" : "adjust";
@@ -134,19 +143,76 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (payload.action === "restrict" || payload.action === "restore") {
-      const client = await prisma.client.findFirst({ where: { id, brokerId: actor.brokerId }, include: { accounts: true } });
+      const client = await prisma.client.findFirst({
+        where: { id, brokerId: actor.brokerId },
+        include: {
+          accounts: true,
+          documents: true,
+          screenings: { orderBy: { screenedAt: "desc" }, take: 1 },
+          consents: true,
+          broker: {
+            include: {
+              legalDocuments: {
+                where: { documentType: "brokerage_terms", status: "published" },
+                orderBy: [{ effectiveAt: "desc" }, { publishedAt: "desc" }],
+                take: 1,
+              },
+            },
+          },
+        },
+      });
       if (!client) return Response.json({ error: "Client not found for this tenant." }, { status: 404 });
       const restrictionCategory = String(payload.restrictionCategory ?? "").trim();
       const restrictionNote = String(payload.restrictionNote ?? "").trim();
-      if (payload.action === "restrict" && !restrictionCategories.has(restrictionCategory)) {
+      if (payload.action === "restrict" && !restrictionCategorySet.has(restrictionCategory)) {
         return Response.json({ error: "Choose a restriction reason." }, { status: 400 });
       }
       if (payload.action === "restrict" && restrictionCategory === "other" && restrictionNote.length < 5) {
         return Response.json({ error: "Add a note explaining the other restriction reason." }, { status: 400 });
       }
-      const categoryLabel = restrictionCategory.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+      const originalRestriction = client.accounts.find((account) => account.restrictionReason)?.restrictionReason ?? null;
+      const originalRestrictedAt = client.accounts.find((account) => account.restrictedAt)?.restrictedAt ?? null;
+      const resolvedCategory = payload.action === "restrict"
+        ? restrictionCategory as RestrictionCategory
+        : inferRestrictionCategory(originalRestriction);
+      const categoryLabel = restrictionCategoryLabels[resolvedCategory];
       const recordedReason = payload.action === "restrict" ? `${categoryLabel}${restrictionNote ? ` — ${restrictionNote}` : ""}` : reason;
       const nextStatus = payload.action === "restrict" ? "restricted" : "active";
+
+      let resolutionEvidence = "";
+      if (payload.action === "restore") {
+        if (client.status !== "restricted" || !client.accounts.some((account) => account.status === "restricted")) {
+          return Response.json({ error: "Only a currently restricted account can be restored." }, { status: 409 });
+        }
+        if (reason.length < 10) {
+          return Response.json({ error: "Describe how the underlying restriction was resolved." }, { status: 400 });
+        }
+        resolutionEvidence = String(payload.resolutionEvidence ?? "").trim();
+        if (resolutionEvidence.length < 5 || resolutionEvidence.length > 1_000) {
+          return Response.json({ error: "Add a case, document, instruction or approval reference for the resolution." }, { status: 400 });
+        }
+        if (payload.resolutionConfirmed !== true) {
+          return Response.json({ error: "Confirm that the restriction reason has been resolved before restoration." }, { status: 400 });
+        }
+        const currentLegal = client.broker.legalDocuments[0] ?? null;
+        const consentReady = !currentLegal || client.consents.some((consent) => (
+          consent.legalDocumentId === currentLegal.id && consent.accepted && !consent.withdrawnAt
+        ));
+        const restoration = evaluateRestorationControls({
+          kycStatus: client.kycStatus,
+          screeningStatus: client.screenings[0]?.result ?? null,
+          expectedDocuments: expectedDocumentTypes(client.clientType),
+          approvedDocuments: client.documents.filter((document) => document.status === "approved").map((document) => document.documentType),
+          consentReady,
+        });
+        if (!restoration.ready) {
+          return Response.json({
+            error: "Resolve the outstanding account controls before restoration.",
+            blockers: restoration.blockers,
+          }, { status: 409 });
+        }
+      }
+
       await prisma.$transaction(async (tx) => {
         await tx.client.update({ where: { id }, data: { status: nextStatus } });
         await tx.account.updateMany({
@@ -164,8 +230,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           entityId: id,
           summary: `${client.fullName} ${payload.action === "restrict" ? "restricted" : "restored"}`,
           reason: recordedReason || null,
-          previousValue: JSON.stringify({ clientStatus: client.status, accountStatuses: client.accounts.map((account) => account.status) }),
-          newValue: JSON.stringify({ status: nextStatus, restrictionCategory: payload.action === "restrict" ? restrictionCategory : null, restrictionNote: payload.action === "restrict" ? restrictionNote || null : null }),
+          previousValue: JSON.stringify({
+            clientStatus: client.status,
+            accounts: client.accounts.map((account) => ({ id: account.id, status: account.status, restrictionReason: account.restrictionReason, restrictedAt: account.restrictedAt })),
+            restrictionCategory: payload.action === "restore" ? resolvedCategory : null,
+            restrictionReason: originalRestriction,
+            restrictedAt: originalRestrictedAt,
+          }),
+          newValue: JSON.stringify(payload.action === "restrict"
+            ? { status: nextStatus, restrictionCategory: resolvedCategory, restrictionNote: restrictionNote || null }
+            : {
+                status: nextStatus,
+                restrictionCategory: resolvedCategory,
+                resolution: { outcome: reason, evidenceReference: resolutionEvidence, confirmed: true },
+              }),
         } });
       });
       return Response.json({ ok: true, status: nextStatus });
