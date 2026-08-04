@@ -6,6 +6,7 @@ import { strFromU8, unzipSync } from "fflate";
 import {
   complaintRegulatoryStatus,
   assertPrescribedReportPeriod,
+  completedReportPeriod,
   ecmaInstrumentCategory,
   investorCategory,
   isDomesticInvestor,
@@ -82,6 +83,13 @@ test("complaint status and 24-hour clocks are deterministic", () => {
   assert.doesNotThrow(() => assertPrescribedReportPeriod("quarterly_complaints", new Date("2026-07-01T00:00:00.000Z"), new Date("2026-09-30T00:00:00.000Z")));
 });
 
+test("report preparation defaults to the latest completed prescribed period", () => {
+  const asOf = new Date("2026-08-04T09:00:00.000Z");
+  assert.deepEqual(completedReportPeriod("monthly_transactions", asOf), { from: "2026-07-01", to: "2026-07-31" });
+  assert.deepEqual(completedReportPeriod("quarterly_complaints", asOf), { from: "2026-04-01", to: "2026-06-30" });
+  assert.deepEqual(completedReportPeriod("monthly_transactions", new Date("2026-01-05T00:00:00.000Z")), { from: "2025-12-01", to: "2025-12-31" });
+});
+
 test("monthly transaction workbook preserves the prescribed table and profile cells", () => {
   const files = workbookFiles(monthlySnapshot);
   assert.ok(files["[Content_Types].xml"]);
@@ -122,13 +130,14 @@ test("broker compliance roles own regulatory controls, not the Frank platform ad
 
 test("the compliance persistence layer records evidence, approvals, and independent sign-off", async () => {
   const root = new URL("../", import.meta.url);
-  const [schema, migration, demoScreeningMigration, seed, reportsUi, clientsUi] = await Promise.all([
+  const [schema, migration, demoScreeningMigration, seed, reportsUi, clientsUi, complianceService] = await Promise.all([
     readFile(new URL("prisma/schema.prisma", root), "utf8"),
     readFile(new URL("prisma/migrations/20260802180000_compliance_reporting_controls/migration.sql", root), "utf8"),
     readFile(new URL("prisma/migrations/20260802183000_backfill_demo_screening_evidence/migration.sql", root), "utf8"),
     readFile(new URL("prisma/seed.ts", root), "utf8"),
     readFile(new URL("features/broker/oversight/reporting-screens.tsx", root), "utf8"),
     readFile(new URL("features/broker/clients/client-directory-screen.tsx", root), "utf8"),
+    readFile(new URL("lib/compliance-service.ts", root), "utf8"),
   ]);
   assert.match(schema, /model ComplianceReport/);
   assert.match(schema, /model ComplianceEscalation/);
@@ -142,6 +151,12 @@ test("the compliance persistence layer records evidence, approvals, and independ
   assert.match(seed, /Demonstration evidence only/);
   assert.match(reportsUi, /Regulatory returns/);
   assert.match(reportsUi, /24-hour escalations/);
+  assert.match(reportsUi, /View report/);
+  assert.match(reportsUi, /IMMUTABLE REPORT SNAPSHOT/);
+  assert.match(reportsUi, /response\.text\(\)/);
+  assert.match(complianceService, /snapshot: row\.snapshot/);
+  assert.match(complianceService, /reviewAvailable: row\.status === "prepared" && row\.preparedBy !== actor\.id/);
+  assert.match(complianceService, /Four-eyes control/);
   assert.match(clientsUi, /Sanctions and PEP check/);
   assert.match(clientsUi, /Account statement/);
 });

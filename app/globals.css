@@ -1326,7 +1326,9 @@ select option { background: var(--fx-card); color: var(--ink); }
 .report-preparer-form { display: grid; grid-template-columns: minmax(180px,1.2fr) minmax(130px,.8fr) minmax(130px,.8fr) auto; gap: 9px; align-items: end; }
 .report-preparer-form label, .screening-form label, .statement-period label, .crm-regulatory-control label, .recon-signoff label { color: var(--fx-text-2); font-size: 9px; font-weight: 750; }
 .report-preparer-form input, .screening-form input, .statement-period input, .crm-regulatory-control input, .recon-signoff input { display: block; width: 100%; height: 37px; margin-top: 5px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--fx-card); color: var(--ink); font: inherit; font-size: 11px; }
+.report-preparer-form input, .report-preparer-form .bselect-trigger, .report-preparer-form > .btn { height: 42px; min-height: 42px; border-radius: var(--radius-control); }
 .compliance-report-list, .escalation-list { margin-bottom: 15px; overflow: hidden; }
+.compliance-report-list > .panel-head > small { max-width: 260px; color: var(--fx-text-3); font-size: 9px; line-height: 1.45; text-align: right; }
 .compliance-report-list > article { display: grid; grid-template-columns: minmax(290px,1fr) minmax(210px,.7fr) auto; gap: 20px; align-items: center; padding: 17px 19px; border-top: 1px solid var(--soft-line); }
 .compliance-report-main h3, .escalation-list article h3 { margin: 7px 0 3px; font-size: 12.5px; }
 .compliance-report-main > p, .escalation-list article p { margin: 0; color: var(--fx-text-3); font-size: 10.5px; line-height: 1.45; }
@@ -1334,11 +1336,27 @@ select option { background: var(--fx-card); color: var(--ink); }
 .compliance-report-main details { margin-top: 9px; color: #9a4c3f; font-size: 9.5px; }
 .compliance-report-main summary { cursor: pointer; font-weight: 750; }
 .compliance-report-main details p { margin: 6px 0 0; }
+.compliance-report-main details.report-notices { color: #8a6815; }
 .compliance-report-evidence { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .compliance-report-evidence span { min-width: 0; padding: 10px; border-radius: 8px; background: var(--fx-sunken); }
 .compliance-report-evidence small, .screening-latest small { display: block; color: var(--fx-text-3); font-size: 8px; letter-spacing: .45px; }
 .compliance-report-evidence b { display: block; margin-top: 4px; overflow: hidden; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
 .compliance-report-actions { display: flex; flex-direction: column; gap: 7px; min-width: 130px; }
+.report-review-blocker { max-width: 150px; color: #8a6815; font-size: 8.5px; line-height: 1.4; text-align: center; }
+.report-preview-drawer { width: min(980px,100vw); }
+.report-preview-meta, .report-preview-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); overflow: hidden; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--fx-card); }
+.report-preview-meta span, .report-preview-summary span { min-width: 0; padding: 11px 13px; border-right: 1px solid var(--soft-line); }
+.report-preview-meta span:last-child, .report-preview-summary span:last-child { border-right: 0; }
+.report-preview-meta small, .report-preview-summary small { display: block; color: var(--fx-text-3); font-size: 8px; letter-spacing: .45px; text-transform: uppercase; }
+.report-preview-meta b, .report-preview-summary b { display: block; margin-top: 5px; overflow-wrap: anywhere; font-size: 10.5px; }
+.report-preview-summary { margin-top: 14px; background: var(--fx-teal-soft); }
+.report-preview-summary.complaints { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.report-preview-notice { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 9px; padding: 10px 12px; border: 1px solid #dcc77f; border-radius: 9px; background: var(--fx-amber-soft); color: var(--fx-text-2); font-size: 9.5px; line-height: 1.45; }
+.report-preview-notice b { flex: 0 0 auto; color: #8a6815; }
+.report-preview-table { max-height: calc(100vh - 355px); border: 1px solid var(--line); border-radius: 11px; background: var(--fx-card); }
+.report-preview-table table { min-width: 820px; }
+.report-preview-table th { position: sticky; top: 0; z-index: 1; background: var(--fx-sunken); }
+.report-preview-table td small { display: block; margin-top: 3px; color: var(--fx-text-3); font-size: 8.5px; }
 .escalation-list article { display: grid; grid-template-columns: auto minmax(260px,1fr) minmax(105px,auto) auto; gap: 13px; align-items: center; padding: 15px 19px; border-top: 1px solid var(--soft-line); }
 .escalation-list article.overdue { background: #fff9f8; }
 .escalation-list article > div small { display: block; margin-top: 6px; color: var(--fx-text-3); font-size: 9px; }
@@ -1377,6 +1395,8 @@ select option { background: var(--fx-card); color: var(--ink); }
   .escalation-list article { grid-template-columns: auto minmax(0,1fr) auto; }
   .escalation-list article > strong { grid-column: 2; text-align: left; }
   .escalation-list article > button { grid-column: 3; grid-row: 1 / span 2; }
+  .report-preview-meta, .report-preview-summary, .report-preview-summary.complaints { grid-template-columns: 1fr 1fr; }
+  .report-preview-meta span:nth-child(2), .report-preview-summary span:nth-child(2) { border-right: 0; }
 }
 @media (max-width: 540px) {
   .report-tabs { width: 100%; }
@@ -1387,6 +1407,11 @@ select option { background: var(--fx-card); color: var(--ink); }
   .compliance-report-list > article { grid-template-columns: 1fr; }
   .compliance-report-evidence, .compliance-report-actions { grid-column: auto; grid-row: auto; }
   .compliance-report-actions { flex-direction: row; flex-wrap: wrap; }
+  .compliance-report-list > .panel-head { align-items: flex-start; flex-direction: column; }
+  .compliance-report-list > .panel-head > small { text-align: left; }
+  .report-preview-meta, .report-preview-summary, .report-preview-summary.complaints { grid-template-columns: 1fr; }
+  .report-preview-meta span, .report-preview-summary span { border-right: 0; border-bottom: 1px solid var(--soft-line); }
+  .report-preview-meta span:last-child, .report-preview-summary span:last-child { border-bottom: 0; }
   .escalation-list article { grid-template-columns: auto minmax(0,1fr); }
   .escalation-list article > button { grid-column: 2; grid-row: auto; justify-self: start; }
   .screening-latest, .screening-form, .statement-period { grid-template-columns: 1fr; }

@@ -23,6 +23,21 @@ export const COMPLIANCE_ESCALATION_LABELS: Record<ComplianceEscalationType, stri
 
 export const SCREENING_RESULTS = ["clear", "potential_match", "confirmed_match"] as const;
 
+export function completedReportPeriod(type: ComplianceReportType, today = new Date()) {
+  const year = today.getUTCFullYear();
+  const month = today.getUTCMonth();
+  const periodEnd = type === "monthly_transactions"
+    ? new Date(Date.UTC(year, month, 0))
+    : new Date(Date.UTC(year, Math.floor(month / 3) * 3, 0));
+  const periodStart = type === "monthly_transactions"
+    ? new Date(Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth(), 1))
+    : new Date(Date.UTC(periodEnd.getUTCFullYear(), Math.floor(periodEnd.getUTCMonth() / 3) * 3, 1));
+  return {
+    from: periodStart.toISOString().slice(0, 10),
+    to: periodEnd.toISOString().slice(0, 10),
+  };
+}
+
 export function isComplianceReportType(value: unknown): value is ComplianceReportType {
   return typeof value === "string" && (COMPLIANCE_REPORT_TYPES as readonly string[]).includes(value);
 }

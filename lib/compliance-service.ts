@@ -102,6 +102,7 @@ export function serializeComplianceReport(row: ReportRow) {
     blockingIssues: validation.blocking?.length ?? 0,
     notices: validation.notices?.length ?? 0,
     validation: { blocking: validation.blocking ?? [], notices: validation.notices ?? [] },
+    snapshot: row.snapshot as unknown as ComplianceSnapshot,
     preparedBy: row.preparer.fullName,
     reviewedBy: row.reviewer?.fullName ?? null,
     submittedBy: row.submitter?.fullName ?? null,
@@ -261,7 +262,13 @@ export async function listComplianceReports(actor: Actor) {
     orderBy: { createdAt: "desc" },
     take: 50,
   });
-  return rows.map(serializeComplianceReport);
+  return rows.map((row) => ({
+    ...serializeComplianceReport(row),
+    reviewAvailable: row.status === "prepared" && row.preparedBy !== actor.id,
+    reviewBlocker: row.status === "prepared" && row.preparedBy === actor.id
+      ? "Four-eyes control: switch to a different authorized reviewer."
+      : null,
+  }));
 }
 
 export async function prepareComplianceReport(actor: Actor, input: { reportType?: unknown; periodStart?: unknown; periodEnd?: unknown }) {
