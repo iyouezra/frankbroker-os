@@ -385,6 +385,7 @@ export const en = {
   "order.ecmaFee": "ECMA fee",
   "order.esxFee": "ESX fee",
   "order.csdFee": "CSD fee",
+  "order.feesUnavailable": "Order entry is unavailable until your broker has an active Platform Admin fee schedule.",
   "order.totalEstimatedFees": "Total estimated fees",
   "order.totalCost": "Total order cost",
   "order.netProceedsEstimated": "Estimated net proceeds",

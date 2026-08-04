@@ -12,6 +12,16 @@ if (!connectionString) {
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 const dateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
+const seededPlatformFeeSchedule = {
+  id: "platform_fees_1_2",
+  name: "ESX market and regulatory fees",
+  version: "1.2",
+  effectiveFrom: "2026-08-04",
+  rules: [
+    { assetClass: "equity", marketSegment: "main", regulatorPct: 0.15, exchangePct: 0.36, csdPct: 0 },
+    { assetClass: "bond", marketSegment: "main", regulatorPct: 0.005, exchangePct: 0.021, csdPct: 0 },
+  ],
+};
 
 async function main() {
   await prisma.broker.createMany({
@@ -213,24 +223,37 @@ async function main() {
     skipDuplicates: true,
   });
 
-  await prisma.platformFeeSchedule.upsert({
-    where: { id: "platform_fees_1_0" },
-    update: { name: "ESX market and regulatory fees", status: "published", effectiveFrom: dateOnly("2026-07-14") },
-    create: {
-      id: "platform_fees_1_0",
-      name: "ESX market and regulatory fees",
-      version: "1.0",
+  await prisma.platformFeeSchedule.updateMany({
+    where: {
       status: "published",
-      effectiveFrom: dateOnly("2026-07-14"),
+      effectiveFrom: { lt: dateOnly(seededPlatformFeeSchedule.effectiveFrom) },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: dateOnly(seededPlatformFeeSchedule.effectiveFrom) } }],
+    },
+    data: { effectiveTo: dateOnly("2026-08-03") },
+  });
+  await prisma.platformFeeSchedule.upsert({
+    where: { id: seededPlatformFeeSchedule.id },
+    update: { name: seededPlatformFeeSchedule.name, status: "published", effectiveFrom: dateOnly(seededPlatformFeeSchedule.effectiveFrom), effectiveTo: null },
+    create: {
+      id: seededPlatformFeeSchedule.id,
+      name: seededPlatformFeeSchedule.name,
+      version: seededPlatformFeeSchedule.version,
+      status: "published",
+      effectiveFrom: dateOnly(seededPlatformFeeSchedule.effectiveFrom),
     },
   });
-  await prisma.platformFeeRule.createMany({
-    data: [
-      { id: "platform_fee_equity_main", platformFeeScheduleId: "platform_fees_1_0", assetClass: "equity", marketSegment: "main", regulatorPct: 0.15, exchangePct: 0.36, csdPct: 0 },
-      { id: "platform_fee_bond_main", platformFeeScheduleId: "platform_fees_1_0", assetClass: "bond", marketSegment: "main", regulatorPct: 0.005, exchangePct: 0.021, csdPct: 0 },
-    ],
-    skipDuplicates: true,
-  });
+  for (const rule of seededPlatformFeeSchedule.rules) {
+    const id = `platform_fee_${seededPlatformFeeSchedule.version.replaceAll(".", "_")}_${rule.assetClass}_${rule.marketSegment}`;
+    await prisma.platformFeeRule.upsert({
+      where: { platformFeeScheduleId_assetClass_marketSegment: {
+        platformFeeScheduleId: seededPlatformFeeSchedule.id,
+        assetClass: rule.assetClass,
+        marketSegment: rule.marketSegment,
+      } },
+      update: { regulatorPct: rule.regulatorPct, exchangePct: rule.exchangePct, csdPct: rule.csdPct },
+      create: { id, platformFeeScheduleId: seededPlatformFeeSchedule.id, ...rule },
+    });
+  }
   await prisma.clientConsent.createMany({
     data: [
       { id: "consent_investor_terms_1_0", clientId: "cli_investor_demo", legalDocumentId: "legal_brk_abyssinia_1_0", consentType: "brokerage_terms", version: "1.0", accepted: true, channel: "investor_portal", acceptedAt: new Date("2026-07-14T08:00:00Z"), metadata: { electronicDeliveryConsent: true } },

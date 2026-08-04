@@ -19,7 +19,7 @@ const profile = ({ id, businessType, entitlements, modules }) => ({
   licenseNumber: `${id}-LICENCE`,
   settings: { tradingName: id },
   tenantProfile: { businessType },
-  tenantLicenses: [],
+  tenantLicenses: [{ id: `lic_${id}`, regulator: "ECMA", licenseType: businessType, licenseNumber: `${id}-LICENCE`, status: "active", validFrom: new Date("2025-01-01T00:00:00.000Z"), validTo: null, createdAt: new Date("2025-01-01T00:00:00.000Z") }],
   tenantEntitlements: entitlements.map((activityKey) => ({ activityKey, status: "active" })),
   tenantModules: Object.entries(modules).map(([moduleKey, enabled]) => ({ moduleKey, enabled })),
   tenantChecklistPacks: [],

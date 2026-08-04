@@ -112,12 +112,12 @@ const defaultFeeSchedule = (brokeragePct: number, minimumFee: number) => ({
 
 export const initialPlatformFeeSchedule: PlatformFeeSchedule = {
   name: "ESX market and regulatory fees",
-  version: "1.0",
-  status: "published",
-  effectiveFrom: "2026-07-14",
+  version: "",
+  status: "draft",
+  effectiveFrom: "",
   rules: [
-    { assetClass: "equity", marketSegment: "main", regulatorPct: 0.15, exchangePct: 0.36, csdPct: 0 },
-    { assetClass: "bond", marketSegment: "main", regulatorPct: 0.005, exchangePct: 0.021, csdPct: 0 },
+    { assetClass: "equity", marketSegment: "main", regulatorPct: 0, exchangePct: 0, csdPct: 0 },
+    { assetClass: "bond", marketSegment: "main", regulatorPct: 0, exchangePct: 0, csdPct: 0 },
   ],
 };
 

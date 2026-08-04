@@ -632,14 +632,8 @@ export default function InvestorApp() {
     await refreshInvestor();
     notify(t("msg.kycSent"));
   };
-  const feePct = bootstrap?.tenant.brokerageFeePct ?? .5;
-  const minimumFee = bootstrap?.tenant.minimumFee ?? 25;
-  const equityFeeRule = bootstrap?.tenant.feeSchedule?.rules.find((rule) => rule.assetClass === "equity") ?? {
-    assetClass: "equity", marketSegment: "main", brokeragePct: feePct, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee, maximumFee: null,
-  };
-  const bondFeeRule = bootstrap?.tenant.feeSchedule?.rules.find((rule) => rule.assetClass === "bond") ?? {
-    assetClass: "bond", marketSegment: "main", brokeragePct: feePct, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee, maximumFee: null,
-  };
+  const equityFeeRule = bootstrap?.tenant.feeSchedule?.rules.find((rule) => rule.assetClass === "equity") ?? null;
+  const bondFeeRule = bootstrap?.tenant.feeSchedule?.rules.find((rule) => rule.assetClass === "bond") ?? null;
   const allowedOrderTypes = bootstrap?.tenant.allowedOrderTypes ?? ["Market", "Limit", "Stop-loss"];
   const enabledTickers = bootstrap ? bootstrap.instruments.map((instrument) => instrument.ticker) : null;
   const availableBonds = investorBonds.map((item) => mergeBondInstrument(item, bootstrap?.instruments.find((instrument) => instrument.ticker === item.ticker)));

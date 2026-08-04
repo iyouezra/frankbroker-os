@@ -3,6 +3,7 @@ import { resolveActor, resolveBrokerId } from "../../../lib/server-auth";
 import { toNum } from "../../../lib/money";
 import { apiError } from "../../../lib/api";
 import { resolveTenantContext } from "../../../lib/tenant-capabilities";
+import { composeFeeRules } from "../../../lib/fee-schedule-view";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,8 @@ export async function GET(request: Request) {
       orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
     }), resolveTenantContext(brokerId)]);
     if (!broker) return Response.json({ error: "Tenant not found." }, { status: 404 });
+    const marketFeesApply = Boolean(regulatoryFeeSchedule && broker.settings && tenantContext
+      && (tenantContext.modules.dealer_operations || tenantContext.modules.investor_servicing));
 
     return Response.json({
       tenant: {
@@ -52,19 +55,11 @@ export async function GET(request: Request) {
           makerChecker: broker.settings?.makerChecker ?? true,
           approvalThreshold: broker.settings ? toNum(broker.settings.approvalThreshold) : 0,
           clientDailyLimit: broker.settings ? toNum(broker.settings.clientDailyLimit) : 0,
-          feeRules: (broker.feeSchedules[0]?.rules ?? []).map((rule) => ({
-            assetClass: rule.assetClass,
-            marketSegment: rule.marketSegment,
-            brokeragePct: toNum(rule.brokeragePct),
-            regulatorPct: toNum(regulatoryFeeSchedule?.rules.find((item) => item.assetClass === rule.assetClass && item.marketSegment === rule.marketSegment)?.regulatorPct ?? rule.regulatorPct),
-            exchangePct: toNum(regulatoryFeeSchedule?.rules.find((item) => item.assetClass === rule.assetClass && item.marketSegment === rule.marketSegment)?.exchangePct ?? rule.exchangePct),
-            csdPct: toNum(regulatoryFeeSchedule?.rules.find((item) => item.assetClass === rule.assetClass && item.marketSegment === rule.marketSegment)?.csdPct ?? rule.csdPct),
-            minimumFee: toNum(rule.minimumFee),
-            maximumFee: rule.maximumFee ? toNum(rule.maximumFee) : null,
-          })),
+          feeRules: marketFeesApply ? composeFeeRules(broker.feeSchedules[0]?.rules ?? [], regulatoryFeeSchedule!.rules, broker.settings) : [],
           feeScheduleVersion: broker.feeSchedules[0]?.version ?? "legacy",
           feeScheduleEffectiveFrom: broker.feeSchedules[0]?.effectiveFrom.toISOString().slice(0, 10) ?? null,
-          regulatoryFeeScheduleVersion: regulatoryFeeSchedule?.version ?? "legacy",
+          regulatoryFeeScheduleVersion: regulatoryFeeSchedule?.version ?? "not-configured",
+          marketFeeScheduleConfigured: marketFeesApply,
         },
       },
       instruments: broker.instrumentAccess.map(({ instrument }) => ({

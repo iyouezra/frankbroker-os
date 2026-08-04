@@ -64,17 +64,23 @@ export async function resolveFeePolicy(
     ?? schedule?.rules[0];
   const regulatoryRule = regulatorySchedule?.rules.find((item) => item.assetClass === instrument.assetClass && item.marketSegment === instrument.marketSegment)
     ?? regulatorySchedule?.rules.find((item) => item.assetClass === instrument.assetClass);
+  if (!regulatorySchedule) {
+    throw new Response("The platform market-fee schedule is not configured. Publish it in Platform Admin before accepting orders.", { status: 409 });
+  }
+  if (!regulatoryRule) {
+    throw new Response(`No platform fee rule is configured for ${instrument.assetClass} / ${instrument.marketSegment}.`, { status: 409 });
+  }
   return {
     scheduleId: schedule?.id ?? null,
     scheduleVersion: schedule?.version ?? "legacy",
-    regulatoryScheduleId: regulatorySchedule?.id ?? null,
-    regulatoryScheduleVersion: regulatorySchedule?.version ?? "legacy",
+    regulatoryScheduleId: regulatorySchedule.id,
+    regulatoryScheduleVersion: regulatorySchedule.version,
     assetClass: instrument.assetClass,
     marketSegment: instrument.marketSegment,
     brokeragePct: rule?.brokeragePct ?? settings?.brokerageFeePct ?? D(0.5),
-    regulatorPct: regulatoryRule?.regulatorPct ?? rule?.regulatorPct ?? ZERO,
-    exchangePct: regulatoryRule?.exchangePct ?? rule?.exchangePct ?? ZERO,
-    csdPct: regulatoryRule?.csdPct ?? rule?.csdPct ?? ZERO,
+    regulatorPct: regulatoryRule.regulatorPct,
+    exchangePct: regulatoryRule.exchangePct,
+    csdPct: regulatoryRule.csdPct,
     minimumFee: rule?.minimumFee ?? settings?.minimumFee ?? ZERO,
     maximumFee: rule?.maximumFee ?? null,
   };

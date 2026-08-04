@@ -4,6 +4,7 @@ import test from "node:test";
 import { normalizeOrderType, parseDateOnly, parseOrderSide, parsePositiveFiniteNumber } from "../lib/order-input.ts";
 import { computeCumulativeFillAmounts, D, toNum } from "../lib/money.ts";
 import { computeConfiguredAmounts, computeCumulativeConfiguredFill, resolveFeePolicy, serializeFeeBreakdown } from "../lib/oms/fee-service.ts";
+import { composeFeeRules } from "../lib/fee-schedule-view.ts";
 import { orderPayloadHash } from "../lib/verification-service.ts";
 
 test("rejects malformed order inputs before Decimal accounting", () => {
@@ -80,10 +81,28 @@ test("itemizes broker, regulator, exchange, and CSD fees from a versioned rule",
 test("combines tenant brokerage with the platform-wide regulatory schedule", async () => {
   const policy = await resolveFeePolicy({
     feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "2.1", rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.65), regulatorPct: D(9), exchangePct: D(9), csdPct: D(9), minimumFee: D(30), maximumFee: null }] }) },
-    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(.15), exchangePct: D(.36), csdPct: D(.02) }] }) },
+    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(.15), exchangePct: D(.36), csdPct: D(0) }] }) },
   }, "brk_1", { assetClass: "equity", marketSegment: "main" }, { brokerageFeePct: D(.5), minimumFee: D(25) });
-  assert.deepEqual({ brokerage: toNum(policy.brokeragePct), regulator: toNum(policy.regulatorPct), exchange: toNum(policy.exchangePct), csd: toNum(policy.csdPct) }, { brokerage: .65, regulator: .15, exchange: .36, csd: .02 });
+  assert.deepEqual({ brokerage: toNum(policy.brokeragePct), regulator: toNum(policy.regulatorPct), exchange: toNum(policy.exchangePct), csd: toNum(policy.csdPct) }, { brokerage: .65, regulator: .15, exchange: .36, csd: 0 });
   assert.equal(policy.regulatoryScheduleVersion, "4.0");
+});
+
+test("rejects order pricing when Platform Admin has not published a market schedule", async () => {
+  await assert.rejects(() => resolveFeePolicy({
+    feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "1.0", rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), regulatorPct: D(0), exchangePct: D(0), csdPct: D(0), minimumFee: D(25), maximumFee: null }] }) },
+    platformFeeSchedule: { findFirst: async () => null },
+  }, "brk_1", { assetClass: "equity", marketSegment: "main" }, { brokerageFeePct: D(.5), minimumFee: D(25) }), (error) => error instanceof Response && error.status === 409);
+});
+
+test("composes Platform Admin fees for a future eligible tenant using broker defaults", () => {
+  const rules = composeFeeRules([], [
+    { assetClass: "equity", marketSegment: "main", regulatorPct: D(.15), exchangePct: D(.36), csdPct: D(0) },
+    { assetClass: "bond", marketSegment: "main", regulatorPct: D(.005), exchangePct: D(.021), csdPct: D(0) },
+  ], { brokerageFeePct: D(.7), minimumFee: D(40) });
+  assert.deepEqual(rules.map((rule) => ({ asset: rule.assetClass, brokerage: rule.brokeragePct, csd: rule.csdPct, minimum: rule.minimumFee })), [
+    { asset: "equity", brokerage: .7, csd: 0, minimum: 40 },
+    { asset: "bond", brokerage: .7, csd: 0, minimum: 40 },
+  ]);
 });
 
 test("applies the brokerage minimum once while accumulating component fees across fills", () => {

@@ -7,7 +7,7 @@ import { BrandSelect } from "../../shared/brand-select";
 import { BROKER_TENANT_ID, SectionHeader, etb } from "../shared/broker-foundation";
 
 type SettingsFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
-type SettingsControls = { brokerageFeePct: number; minimumFee: number; approvalThreshold: number; clientDailyLimit: number; makerChecker: boolean; allowedOrderTypes: string[]; settlementCycle: string; feeRules: SettingsFeeRule[]; feeScheduleVersion: string; feeScheduleEffectiveFrom: string | null; regulatoryFeeScheduleVersion: string };
+type SettingsControls = { brokerageFeePct: number; minimumFee: number; approvalThreshold: number; clientDailyLimit: number; makerChecker: boolean; allowedOrderTypes: string[]; settlementCycle: string; feeRules: SettingsFeeRule[]; feeScheduleVersion: string; feeScheduleEffectiveFrom: string | null; regulatoryFeeScheduleVersion: string; marketFeeScheduleConfigured: boolean };
 const STAFF_ROLES: Role[] = ["access_admin", "broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "management"];
 const PERMISSION_COLUMNS: [string, string][] = [["create", "Create"], ["approve", "Approve"], ["reject", "Reject"], ["trade", "Trade"], ["settle", "Settle"], ["adjust", "Adjust"], ["report", "Report"]];
 // Client-service rights are shown in their own matrix so neither table becomes too wide to scan.
@@ -25,7 +25,7 @@ export function SettingsPage() {
       .then((data: { tenant?: { tradingName?: string; name?: string; licenseNumber?: string; controls?: SettingsControls; features?: Record<string, boolean> } }) => {
         if (data.tenant) setTenant({ name: data.tenant.tradingName ?? data.tenant.name ?? "Abyssinia Securities", license: data.tenant.licenseNumber ?? "ESCA-BR-004", controls: data.tenant.controls ?? null, features: data.tenant.features ?? {} });
       })
-      .catch(() => setTenant({ name: "Abyssinia Securities", license: "ESCA-BR-004", controls: { brokerageFeePct: 0.5, minimumFee: 25, approvalThreshold: 250000, clientDailyLimit: 2500000, makerChecker: true, allowedOrderTypes: ["Market", "Limit"], settlementCycle: "T+2", feeScheduleVersion: "1.0", feeScheduleEffectiveFrom: "2026-07-14", regulatoryFeeScheduleVersion: "1.0", feeRules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: .5, regulatorPct: .15, exchangePct: .36, csdPct: 0, minimumFee: 25, maximumFee: null }, { assetClass: "bond", marketSegment: "main", brokeragePct: .5, regulatorPct: .005, exchangePct: .021, csdPct: 0, minimumFee: 25, maximumFee: null }] }, features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true } }));
+      .catch(() => setTenant({ name: "Abyssinia Securities", license: "ESCA-BR-004", controls: { brokerageFeePct: 0.5, minimumFee: 25, approvalThreshold: 250000, clientDailyLimit: 2500000, makerChecker: true, allowedOrderTypes: ["Market", "Limit"], settlementCycle: "T+2", feeScheduleVersion: "1.0", feeScheduleEffectiveFrom: "2026-07-14", regulatoryFeeScheduleVersion: "not-configured", marketFeeScheduleConfigured: false, feeRules: [] }, features: { investorPortal: true, selfDirected: true, bonds: true, recurringInvestments: true, institutionalAccounts: true, manualTradeCapture: true } }));
     return () => controller.abort();
   }, []);
   const controls = tenant?.controls;
@@ -48,7 +48,7 @@ export function SettingsPage() {
   };
   return <>
     <SectionHeader eyebrow="WORKSPACE" title="Settings" copy="Your tenant configuration and team. Platform-level controls are set by Frank." />
-    <div className="settings-banner"><span>SHARED CONTROL</span><p>Your brokerage manages its commission schedule. ECMA, ESX, and CSD charges remain platform-managed and apply consistently to every tenant.</p></div>
+    <div className="settings-banner"><span>SHARED CONTROL</span><p>Your brokerage manages its commission schedule. ECMA, ESX, and CSD charges come from the active Platform Admin schedule for tenants whose licence, entitlement, and enabled modules permit securities dealing.</p></div>
     <section className="panel"><div className="panel-head"><div><span className="eyebrow">TENANT POLICY</span><h2>Trading controls</h2></div></div>
       <dl className="detail-grid settings-grid">
         <div><dt>Trading name</dt><dd>{tenant?.name ?? "-"}</dd></div>

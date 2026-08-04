@@ -360,6 +360,7 @@ export const am: Dictionary = {
   "order.ecmaFee": "የECMA ክፍያ",
   "order.esxFee": "የESX ክፍያ",
   "order.csdFee": "የCSD ክፍያ",
+  "order.feesUnavailable": "ደላላዎ በፕላትፎርም አስተዳዳሪ ላይ የሚሰራ የክፍያ መርሃ ግብር እስኪኖረው ድረስ ትዕዛዝ ማስገባት አይቻልም።",
   "order.totalEstimatedFees": "ጠቅላላ የተገመተ ክፍያ",
   "order.totalCost": "ጠቅላላ የኦርደር ወጪ",
   "order.netProceedsEstimated": "የተገመተ የተጣራ ገቢ",

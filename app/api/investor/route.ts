@@ -1,6 +1,8 @@
 import { prisma } from "../../../lib/prisma";
+import { composeFeeRules } from "../../../lib/fee-schedule-view";
 import { toNum } from "../../../lib/money";
 import { resolveInvestorContext } from "../../../lib/server-auth";
+import { resolveTenantContext } from "../../../lib/tenant-capabilities";
 import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
@@ -29,10 +31,21 @@ import { getFrankCoachHoldingValue } from "../../../lib/frank-coach";
 
 export const runtime = "nodejs";
 
+async function requireInvestorPortalAccess(brokerId: string) {
+  const [context, settings] = await Promise.all([
+    resolveTenantContext(brokerId),
+    prisma.brokerSettings.findUnique({ where: { brokerId }, select: { features: true } }),
+  ]);
+  const features = (settings?.features ?? {}) as Record<string, unknown>;
+  if (!context?.modules.investor_servicing || features.investorPortal !== true) {
+    throw new Response("The investor portal is not enabled for this tenant's active registration, licence, and modules.", { status: 403 });
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const { brokerId, clientId } = resolveInvestorContext(request);
-    const [broker, client, regulatoryFeeSchedule] = await Promise.all([
+    const [broker, client, regulatoryFeeSchedule, tenantContext] = await Promise.all([
       prisma.broker.findUnique({
         where: { id: brokerId },
         include: {
@@ -78,8 +91,13 @@ export async function GET(request: Request) {
         include: { rules: true },
         orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
       }),
+      resolveTenantContext(brokerId),
     ]);
     if (!broker) return Response.json({ error: "Tenant not found." }, { status: 404 });
+    const tenantFeatures = (broker.settings?.features ?? {}) as Record<string, unknown>;
+    if (!tenantContext?.modules.investor_servicing || tenantFeatures.investorPortal !== true) {
+      return Response.json({ error: "The investor portal is not enabled for this tenant's active registration, licence, and modules." }, { status: 403 });
+    }
     const account = client?.accounts[0];
     const legalDocument = broker.legalDocuments[0] ?? null;
     const feeSchedule = broker.feeSchedules[0] ?? null;
@@ -200,25 +218,12 @@ export async function GET(request: Request) {
           content: legalDocument.content,
           effectiveAt: legalDocument.effectiveAt.toISOString().slice(0, 10),
         } : null,
-        feeSchedule: feeSchedule ? {
-          id: feeSchedule.id,
-          version: feeSchedule.version,
-          regulatoryVersion: regulatoryFeeSchedule?.version ?? "legacy",
-          effectiveFrom: feeSchedule.effectiveFrom.toISOString().slice(0, 10),
-          rules: feeSchedule.rules.map((rule) => {
-            const regulatoryRule = regulatoryFeeSchedule?.rules.find((item) => item.assetClass === rule.assetClass && item.marketSegment === rule.marketSegment)
-              ?? regulatoryFeeSchedule?.rules.find((item) => item.assetClass === rule.assetClass);
-            return {
-              assetClass: rule.assetClass,
-              marketSegment: rule.marketSegment,
-              brokeragePct: toNum(rule.brokeragePct),
-              regulatorPct: toNum(regulatoryRule?.regulatorPct ?? rule.regulatorPct),
-              exchangePct: toNum(regulatoryRule?.exchangePct ?? rule.exchangePct),
-              csdPct: toNum(regulatoryRule?.csdPct ?? rule.csdPct),
-              minimumFee: toNum(rule.minimumFee),
-              maximumFee: rule.maximumFee ? toNum(rule.maximumFee) : null,
-            };
-          }),
+        feeSchedule: regulatoryFeeSchedule && broker.settings ? {
+          id: feeSchedule?.id ?? `broker_settings_${broker.id}`,
+          version: feeSchedule?.version ?? "broker-settings",
+          regulatoryVersion: regulatoryFeeSchedule.version,
+          effectiveFrom: (feeSchedule?.effectiveFrom ?? regulatoryFeeSchedule.effectiveFrom).toISOString().slice(0, 10),
+          rules: composeFeeRules(feeSchedule?.rules ?? [], regulatoryFeeSchedule.rules, broker.settings),
         } : null,
       },
       profile: client ? {
@@ -314,6 +319,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { brokerId, clientId } = resolveInvestorContext(request);
+    await requireInvestorPortalAccess(brokerId);
     const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
     const formData = multipart ? await request.formData() : null;
     const payload = multipart

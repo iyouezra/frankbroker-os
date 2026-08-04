@@ -107,11 +107,12 @@ export type InvestorBootstrap = {
 };
 
 export function calculateInvestorFees(gross: number, rule: InvestorFeeRule) {
-  const brokerage = gross > 0 ? Math.min(rule.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(rule.minimumFee, gross * rule.brokeragePct / 100)) : 0;
-  const regulator = gross * rule.regulatorPct / 100;
-  const exchange = gross * rule.exchangePct / 100;
-  const csd = gross * rule.csdPct / 100;
-  return { brokerage, regulator, exchange, csd, total: brokerage + regulator + exchange + csd };
+  const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+  const brokerage = gross > 0 ? money(Math.min(rule.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(rule.minimumFee, gross * rule.brokeragePct / 100))) : 0;
+  const regulator = money(gross * rule.regulatorPct / 100);
+  const exchange = money(gross * rule.exchangePct / 100);
+  const csd = money(gross * rule.csdPct / 100);
+  return { brokerage, regulator, exchange, csd, total: money(brokerage + regulator + exchange + csd) };
 }
 
 export function mergeBondInstrument(bond: InvestorBond, instrument?: InvestorInstrument): InvestorBond {

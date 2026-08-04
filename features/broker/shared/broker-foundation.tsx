@@ -57,7 +57,7 @@ export type ReconBatch = { id: string; batchDate: string; fileName: string | nul
 export type AuditEntry = { id?: string; time: string; actor: string; action: string; detail: string; entity: string };
 export type BrokerInstrument = { id: string; symbol: string; name: string; asset: string; issuer: string; status: string; currency: string; lot: number; tick: number; cycle: string; price: number; coupon?: string; maturity?: string };
 export type TenantFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
-export type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[]; feeRules: TenantFeeRule[] };
+export type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[]; feeRules: TenantFeeRule[]; marketFeeScheduleConfigured: boolean };
 export type TenantFeatures = { manualTradeCapture: boolean; [key: string]: boolean };
 export type TenantModules = { dealer_operations: boolean; investor_servicing: boolean; issuer_advisory: boolean };
 export type TenantInfo = { name: string; license: string; primaryColor: string };
@@ -287,10 +287,8 @@ export const fallbackControls: TenantControls = {
   minimumFee: 25,
   settlementCycle: "T+2",
   allowedOrderTypes: ["Market", "Limit", "Stop-loss"],
-  feeRules: [
-    { assetClass: "equity", marketSegment: "main", brokeragePct: 0.5, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 25, maximumFee: null },
-    { assetClass: "bond", marketSegment: "main", brokeragePct: 0.5, regulatorPct: 0, exchangePct: 0, csdPct: 0, minimumFee: 25, maximumFee: null },
-  ],
+  feeRules: [],
+  marketFeeScheduleConfigured: false,
 };
 export const fallbackFeatures: TenantFeatures = { manualTradeCapture: true };
 export const fallbackModules: TenantModules = { dealer_operations: true, investor_servicing: true, issuer_advisory: false };
@@ -346,16 +344,17 @@ export function normalizedOrderType(value: string) {
 }
 
 export function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, price: number, feePct: number, minimumFee = 0, feeRule?: TenantFeeRule) {
+  const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
   const gross = quantity * price;
   const brokeragePct = feeRule?.brokeragePct ?? feePct;
   const brokerageMinimum = feeRule?.minimumFee ?? minimumFee;
-  const percentageFee = Math.round(gross * (brokeragePct / 100) * 100) / 100;
-  const brokerage = gross > 0 ? Math.min(feeRule?.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(brokerageMinimum, percentageFee)) : 0;
-  const regulator = gross * (feeRule?.regulatorPct ?? 0) / 100;
-  const exchange = gross * (feeRule?.exchangePct ?? 0) / 100;
-  const csd = gross * (feeRule?.csdPct ?? 0) / 100;
-  const fees = brokerage + regulator + exchange + csd;
-  const net = side === "buy" ? gross + fees : gross - fees;
+  const percentageFee = money(gross * (brokeragePct / 100));
+  const brokerage = gross > 0 ? money(Math.min(feeRule?.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(brokerageMinimum, percentageFee))) : 0;
+  const regulator = money(gross * (feeRule?.regulatorPct ?? 0) / 100);
+  const exchange = money(gross * (feeRule?.exchangePct ?? 0) / 100);
+  const csd = money(gross * (feeRule?.csdPct ?? 0) / 100);
+  const fees = money(brokerage + regulator + exchange + csd);
+  const net = money(side === "buy" ? gross + fees : gross - fees);
   return { gross, fees, net, brokerage, regulator, exchange, csd };
 }
 

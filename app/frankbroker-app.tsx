@@ -561,6 +561,7 @@ export default function FrankBrokerApp() {
     const owned = client && instrument ? client.holdings.find((holding) => holding.symbol === instrument.symbol)?.available ?? 0 : 0;
     const orderTypeAllowed = controls.allowedOrderTypes.some((item) => normalizedOrderType(item) === normalizedOrderType(newOrder.orderType));
     const results = [
+      { label: "Platform fee schedule", passed: Boolean(controls.marketFeeScheduleConfigured && controls.feeRules.some((rule) => rule.assetClass === assetClass)), message: controls.marketFeeScheduleConfigured ? "Active Platform Admin schedule applies to this tenant and asset class" : "Publish a Platform Admin schedule and confirm tenant licence, entitlement, and module eligibility" },
       { label: "Client and account", passed: Boolean(client), message: client ? `${client.code} · ${client.status}` : "Select an available client account" },
       { label: "KYC approved", passed: client?.kyc === "approved", message: client?.kyc.replaceAll("_", " ") ?? "Client unavailable" },
       { label: "Account active", passed: client?.status === "active", message: client?.status ?? "Client unavailable" },

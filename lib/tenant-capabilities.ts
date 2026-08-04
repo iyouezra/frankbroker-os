@@ -18,6 +18,12 @@ export const PROFILE_ROLES: Record<BusinessType, Role[]> = {
   securities_investment_adviser: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"],
 };
 
+const MODULE_LICENSE_TYPES: Record<TenantModuleKey, BusinessType[]> = {
+  dealer_operations: ["securities_dealer", "investment_bank"],
+  investor_servicing: ["securities_dealer", "investment_bank"],
+  issuer_advisory: ["investment_bank", "securities_investment_adviser"],
+};
+
 export type TenantContext = {
   id: string;
   name: string;
@@ -34,6 +40,8 @@ export type TenantContext = {
 
 const knownBusinessType = (value?: string | null): BusinessType =>
   value === "investment_bank" || value === "securities_investment_adviser" ? value : "securities_dealer";
+const recognizedLicenseType = (value: string): BusinessType | null =>
+  value === "securities_dealer" || value === "investment_bank" || value === "securities_investment_adviser" ? value : null;
 
 export async function resolveTenantContext(tenantId: string): Promise<TenantContext | null> {
   const tenant = await prisma.broker.findUnique({
@@ -58,10 +66,19 @@ export async function resolveTenantContext(tenantId: string): Promise<TenantCont
   if (!tenant.tenantProfile && tenant.tenantEntitlements.length === 0) entitlementSet.add("securities_dealing");
 
   const configured = new Map(tenant.tenantModules.map((item) => [item.moduleKey, item.enabled]));
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const activeLicenseTypes = new Set(tenant.tenantLicenses.filter((license) => (
+    license.status === "active"
+    && (!license.validFrom || license.validFrom <= today)
+    && (!license.validTo || license.validTo >= today)
+  )).map((license) => recognizedLicenseType(license.licenseType)).filter((licenseType): licenseType is BusinessType => Boolean(licenseType)));
+  const legacyLicenseDefault = !tenant.tenantProfile && tenant.tenantLicenses.length === 0;
   const modules = {} as Record<TenantModuleKey, boolean>;
   for (const key of Object.keys(MODULE_ENTITLEMENT) as TenantModuleKey[]) {
     const legacyDefault = !tenant.tenantProfile && (key === "dealer_operations" || key === "investor_servicing");
-    modules[key] = Boolean((configured.get(key) ?? legacyDefault) && entitlementSet.has(MODULE_ENTITLEMENT[key]));
+    const licensed = legacyLicenseDefault || MODULE_LICENSE_TYPES[key].some((licenseType) => activeLicenseTypes.has(licenseType));
+    modules[key] = Boolean((configured.get(key) ?? legacyDefault) && entitlementSet.has(MODULE_ENTITLEMENT[key]) && licensed);
   }
 
   return {

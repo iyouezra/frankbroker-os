@@ -425,7 +425,7 @@ export async function POST(request: Request) {
         await tx.platformFeeRule.createMany({ data: normalized.map((rule) => ({ id: crypto.randomUUID(), platformFeeScheduleId: id, ...rule })) });
         await tx.auditLog.create({ data: {
           id: crypto.randomUUID(), brokerId: null, actorId: null, action: "PLATFORM_FEE_SCHEDULE_PUBLISHED",
-          entityType: "platform_fee_schedule", entityId: id, summary: `Platform market and regulatory fee schedule version ${version} published for all tenants`,
+          entityType: "platform_fee_schedule", entityId: id, summary: `Platform market and regulatory fee schedule version ${version} published for eligible tenants`,
           newValue: JSON.stringify({ version, effectiveFrom, rules: normalized }),
         } });
       });
