@@ -12,8 +12,18 @@ const roleToUi: Record<string, string> = {
 };
 const title = (value: string) => value.split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 const dateOnly = (value: string) => new Date(`${value}T00:00:00.000Z`);
+const validDateOnly = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(dateOnly(value).getTime()) && dateOnly(value).toISOString().slice(0, 10) === value;
 const dayBefore = (value: Date) => new Date(value.getTime() - 24 * 60 * 60 * 1000);
 const initials = (value: string) => value.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+const businessTypes = ["securities_dealer", "investment_bank", "securities_investment_adviser"] as const;
+const tenantModules = ["dealer_operations", "investor_servicing", "issuer_advisory"] as const;
+const integrationDefaults = [
+  { key: "fayda", name: "Fayda eKYC", description: "Identity and consent verification" },
+  { key: "esx", name: "ESX order gateway", description: "Order routing and execution reports" },
+  { key: "csd", name: "CSD settlement", description: "Holdings and settlement instructions" },
+  { key: "bank", name: "Cash settlement bank", description: "Funding and cash confirmations" },
+  { key: "notify", name: "SMS and email", description: "Investor alerts and confirmations" },
+];
 
 function audit(brokerId: string | null, action: string, entityType: string, entityId: string, summary: string, previousValue?: unknown, newValue?: unknown) {
   return prisma.auditLog.create({ data: {
@@ -306,6 +316,110 @@ export async function POST(request: Request) {
     const payload = await request.json() as { entity?: string; data?: Record<string, unknown> };
     if (!payload.data) return Response.json({ error: "Configuration data is required." }, { status: 400 });
     const data = payload.data;
+    if (payload.entity === "tenant") {
+      const tenantCode = String(data.tenantCode ?? "").trim().toLowerCase();
+      const brokerId = `brk_${tenantCode}`;
+      const name = String(data.name ?? "").trim();
+      const tradingName = String(data.tradingName ?? "").trim();
+      const licenseNumber = String(data.licenseNumber ?? "").trim().toUpperCase();
+      const businessType = String(data.businessType ?? "");
+      const licenseValidFrom = String(data.licenseValidFrom ?? "");
+      const supportEmail = String(data.supportEmail ?? "").trim().toLowerCase();
+      const domain = String(data.domain ?? "").trim().toLowerCase();
+      const plan = String(data.plan ?? "Pilot");
+      const entitlements = Array.isArray(data.entitlements) ? [...new Set(data.entitlements.map(String))] : [];
+      const modules = (data.modules ?? {}) as Record<string, unknown>;
+      const features = (data.features ?? {}) as Record<string, unknown>;
+      const controls = (data.controls ?? {}) as Record<string, unknown>;
+      if (!/^[a-z0-9][a-z0-9_]{2,29}$/.test(tenantCode)) return Response.json({ error: "Tenant code must be 3–30 lowercase letters, numbers, or underscores." }, { status: 400 });
+      if (name.length < 3 || tradingName.length < 2 || licenseNumber.length < 4) return Response.json({ error: "Legal name, trading name, and primary licence number are required." }, { status: 400 });
+      if (!businessTypes.includes(businessType as typeof businessTypes[number])) return Response.json({ error: "Select a supported regulated business profile." }, { status: 400 });
+      if (!validDateOnly(licenseValidFrom)) return Response.json({ error: "Enter the licence valid-from date." }, { status: 400 });
+      if (supportEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail)) return Response.json({ error: "Enter a valid support email." }, { status: 400 });
+      if (domain && !/^[a-z0-9.-]+$/.test(domain)) return Response.json({ error: "Enter a valid portal domain without a protocol or path." }, { status: 400 });
+      if (!["Enterprise", "Growth", "Pilot"].includes(plan)) return Response.json({ error: "Select a supported tenant plan." }, { status: 400 });
+      if ((modules.dealer_operations === true || modules.investor_servicing === true) && !entitlements.includes("securities_dealing")) return Response.json({ error: "Dealer operations and investor servicing require the securities dealing entitlement." }, { status: 400 });
+      if (modules.issuer_advisory === true && !entitlements.includes("transaction_advisory")) return Response.json({ error: "Issuer advisory requires the transaction advisory entitlement." }, { status: 400 });
+      if (businessType === "securities_investment_adviser" && (modules.dealer_operations === true || modules.investor_servicing === true)) return Response.json({ error: "An investment-adviser licence cannot enable dealer operations or investor servicing." }, { status: 400 });
+      const numericControls = {
+        approvalThreshold: Number(controls.approvalThreshold ?? 250000),
+        clientDailyLimit: Number(controls.clientDailyLimit ?? 2500000),
+        brokerageFeePct: Number(controls.brokerageFeePct ?? .5),
+        minimumFee: Number(controls.minimumFee ?? 25),
+      };
+      const settlementCycle = String(controls.settlementCycle ?? "T+2");
+      const allowedOrderTypes = Array.isArray(controls.allowedOrderTypes) ? controls.allowedOrderTypes.map(String) : ["Limit"];
+      if (Object.values(numericControls).some((value) => !Number.isFinite(value) || value < 0)) return Response.json({ error: "Tenant limits and brokerage defaults must be valid non-negative numbers." }, { status: 400 });
+      if (!['T+1', 'T+2', 'T+3'].includes(settlementCycle) || !allowedOrderTypes.length || allowedOrderTypes.some((item) => !['Market', 'Limit', 'Stop-loss'].includes(item))) return Response.json({ error: "Select valid settlement and order-type defaults." }, { status: 400 });
+      const duplicate = await prisma.broker.findFirst({ where: { OR: [{ id: brokerId }, { licenseNumber }] }, select: { id: true, licenseNumber: true } });
+      if (duplicate) return Response.json({ error: duplicate.id === brokerId ? "That tenant code is already in use." : "That primary licence number is already assigned to a tenant." }, { status: 409 });
+      if (domain) {
+        const duplicateDomain = await prisma.brokerSettings.findFirst({ where: { domain }, select: { brokerId: true } });
+        if (duplicateDomain) return Response.json({ error: "That investor portal domain is already assigned to a tenant." }, { status: 409 });
+      }
+      await prisma.$transaction(async (tx) => {
+        await tx.broker.create({ data: { id: brokerId, name, licenseNumber, status: "pilot", baseCurrency: "ETB" } });
+        await tx.brokerSettings.create({ data: {
+          id: `set_${brokerId}`, brokerId, tradingName, plan, domain: domain || null, supportEmail: supportEmail || null,
+          primaryColor: String(data.primaryColor ?? "#0C8189"), welcomeMessage: String(data.welcomeMessage ?? ""), timezone: "Africa/Addis_Ababa",
+          businessDate: dateOnly(String(data.businessDate ?? new Date().toISOString().slice(0, 10))), features: features as Prisma.InputJsonValue,
+          makerChecker: controls.makerChecker !== false, approvalThreshold: numericControls.approvalThreshold, clientDailyLimit: numericControls.clientDailyLimit,
+          brokerageFeePct: numericControls.brokerageFeePct, minimumFee: numericControls.minimumFee,
+          settlementCycle, allowedOrderTypes: allowedOrderTypes as Prisma.InputJsonValue,
+          requireTermsAcceptance: true, discrepancyWindowDays: 10, kycReviewMonths: 12,
+        } });
+        await tx.tenantProfile.create({ data: { tenantId: brokerId, businessType } });
+        await tx.tenantLicense.create({ data: { id: `lic_${brokerId}`, tenantId: brokerId, regulator: "ECMA", licenseType: businessType, licenseNumber, status: "active", validFrom: dateOnly(licenseValidFrom) } });
+        if (entitlements.length) await tx.tenantEntitlement.createMany({ data: entitlements.map((activityKey) => ({ id: crypto.randomUUID(), tenantId: brokerId, activityKey, basis: licenseNumber, status: "active" })) });
+        await tx.tenantModule.createMany({ data: tenantModules.map((moduleKey) => ({ id: crypto.randomUUID(), tenantId: brokerId, moduleKey, enabled: modules[moduleKey] === true })) });
+        await tx.tenantIntegration.createMany({ data: integrationDefaults.map((item) => ({ id: `${brokerId}-${item.key}`, brokerId, ...item, status: "not_connected", mode: "manual" })) });
+        await tx.auditLog.create({ data: { id: crypto.randomUUID(), brokerId, actorId: null, action: "TENANT_CREATED", entityType: "broker", entityId: brokerId, summary: `${tradingName} created in pilot status`, newValue: JSON.stringify({ tenantCode, name, tradingName, licenseNumber, businessType, entitlements, modules, plan }) } });
+      });
+      return Response.json({ tenant: { id: brokerId } }, { status: 201 });
+    }
+    if (payload.entity === "instrument") {
+      const symbol = String(data.symbol ?? "").trim().toUpperCase();
+      const id = `ins_${symbol.toLowerCase().replaceAll(/[^a-z0-9]+/g, "_")}`;
+      const name = String(data.name ?? "").trim();
+      const issuer = String(data.issuer ?? "").trim();
+      const assetClass = String(data.assetClass ?? "");
+      const marketSegment = String(data.marketSegment ?? "main").trim().toLowerCase();
+      const tradingStatus = String(data.status ?? "halted").trim().toLowerCase();
+      const lotSize = Number(data.lotSize);
+      const tickSize = Number(data.tickSize);
+      const lastPrice = Number(data.lastPrice);
+      const settlementCycle = String(data.settlementCycle ?? "T+2");
+      const enabledTenantIds = Array.isArray(data.enabledTenantIds) ? [...new Set(data.enabledTenantIds.map(String))] : [];
+      if (!/^[A-Z0-9][A-Z0-9.-]{1,15}$/.test(symbol)) return Response.json({ error: "Symbol must be 2–16 uppercase letters, numbers, dots, or hyphens." }, { status: 400 });
+      if (name.length < 2 || issuer.length < 2) return Response.json({ error: "Instrument name and issuer are required." }, { status: 400 });
+      if (!['equity', 'bond'].includes(assetClass) || !/^[a-z0-9_-]{2,30}$/.test(marketSegment)) return Response.json({ error: "Select a supported asset class and market segment." }, { status: 400 });
+      if (!['halted', 'tradable'].includes(tradingStatus) || !['T+1', 'T+2', 'T+3'].includes(settlementCycle)) return Response.json({ error: "Select a valid initial status and settlement cycle." }, { status: 400 });
+      if (!Number.isInteger(lotSize) || lotSize <= 0 || !Number.isFinite(tickSize) || tickSize <= 0 || !Number.isFinite(lastPrice) || lastPrice <= 0) return Response.json({ error: "Lot size, tick size, and reference price must be positive numbers." }, { status: 400 });
+      const faceValue = data.faceValue === "" || data.faceValue === null || data.faceValue === undefined ? null : Number(data.faceValue);
+      const couponRate = data.couponRate === "" || data.couponRate === null || data.couponRate === undefined ? null : Number(data.couponRate);
+      const maturityDate = String(data.maturityDate ?? "");
+      const couponFrequency = String(data.couponFrequency ?? "semi_annual");
+      if (assetClass === "bond" && ((!Number.isFinite(faceValue) || (faceValue ?? 0) <= 0) || !validDateOnly(maturityDate) || !Number.isFinite(couponRate) || (couponRate ?? -1) < 0 || !['annual', 'semi_annual', 'quarterly'].includes(couponFrequency))) return Response.json({ error: "Bonds require a positive face value, maturity date, non-negative coupon rate, and supported coupon frequency." }, { status: 400 });
+      const duplicate = await prisma.instrument.findFirst({ where: { OR: [{ id }, { symbol }] }, select: { id: true } });
+      if (duplicate) return Response.json({ error: "That instrument symbol is already in the master catalogue." }, { status: 409 });
+      if (enabledTenantIds.length) {
+        const tenantCount = await prisma.broker.count({ where: { id: { in: enabledTenantIds } } });
+        if (tenantCount !== enabledTenantIds.length) return Response.json({ error: "One or more selected tenants no longer exist." }, { status: 400 });
+      }
+      await prisma.$transaction(async (tx) => {
+        await tx.instrument.create({ data: {
+          id, symbol, name, issuer, assetClass, sector: String(data.sector ?? "").trim() || null, marketSegment,
+          tradingStatus, currency: "ETB", lotSize, tickSize, settlementCycle, lastPrice,
+          faceValue: assetClass === "bond" ? faceValue : null,
+          maturityDate: assetClass === "bond" ? dateOnly(maturityDate) : null,
+          couponRate: assetClass === "bond" ? couponRate : null,
+          couponFrequency: assetClass === "bond" ? couponFrequency : null,
+        } });
+        if (enabledTenantIds.length) await tx.brokerInstrument.createMany({ data: enabledTenantIds.map((brokerId) => ({ id: `bri_${brokerId}_${id}`, brokerId, instrumentId: id, enabled: true })) });
+        await tx.auditLog.create({ data: { id: crypto.randomUUID(), brokerId: null, actorId: null, action: "INSTRUMENT_CREATED", entityType: "instrument", entityId: id, summary: `${symbol} added to the instrument master in ${tradingStatus} status`, newValue: JSON.stringify({ symbol, name, issuer, assetClass, marketSegment, tradingStatus, lotSize, tickSize, settlementCycle, enabledTenantIds }) } });
+      });
+      return Response.json({ instrument: { id } }, { status: 201 });
+    }
     if (payload.entity === "legal_document") {
       const brokerId = String(data.brokerId ?? "");
       const version = String(data.version ?? "").trim();

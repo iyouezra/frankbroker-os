@@ -129,7 +129,7 @@ export type AdminInstrument = {
   status: "Tradable" | "Halted";
   lotSize: number;
   tickSize: number;
-  settlementCycle: "T+2";
+  settlementCycle: "T+1" | "T+2" | "T+3";
   enabledTenantIds: string[];
 };
 

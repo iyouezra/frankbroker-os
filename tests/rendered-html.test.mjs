@@ -80,6 +80,9 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(investorStyles, /@media \(max-width: 900px\)/);
   assert.match(adminApp, /Platform overview/);
   assert.match(adminApp, /Instrument master/);
+  assert.match(adminApp, /Add and configure tenant/);
+  assert.match(adminApp, /Add instrument/);
+  assert.match(adminApp, /Create pilot tenant/);
   assert.match(adminApp, /CAPABILITY FLAGS/);
   assert.match(adminApp, /Maker-checker approval/);
   assert.doesNotMatch(adminData, /fractionalOrders/);
@@ -99,6 +102,8 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(investorApi, /faydaLast7/);
   assert.doesNotMatch(investorApi, /taxId:\s*tin/);
   assert.match(adminApi, /TENANT_CONFIGURATION_UPDATED/);
+  assert.match(adminApi, /TENANT_CREATED/);
+  assert.match(adminApi, /INSTRUMENT_CREATED/);
   assert.match(adminApi, /brokerInstrument\.upsert/);
   assert.match(tenantApi, /issuer: instrument\.issuer/);
   assert.match(tenantApi, /settlementCycle: instrument\.settlementCycle/);
