@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.escalationManage);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.escalationManage);
     const { id } = await context.params;
     return Response.json({ ok: true, ...(await actOnComplianceEscalation(actor, id, await request.json() as Record<string, unknown>)) });
   } catch (error) {

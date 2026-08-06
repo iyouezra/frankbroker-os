@@ -14,15 +14,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (action === "status") {
       // Completing is a distinct right from merely progressing a task.
       const permission = payload.status === "completed" ? CRM_PERMISSIONS.taskComplete : CRM_PERMISSIONS.taskCreate;
-      const actor = requirePermission(request, permission);
+      const actor = await requirePermission(request, permission);
       return Response.json({ ok: true, ...(await changeTaskStatus(actor, id, String(payload.status ?? ""), payload.completionNote)) });
     }
     if (action === "assign") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.taskAssign);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.taskAssign);
       return Response.json({ ok: true, ...(await assignTask(actor, id, payload.assignedToUserId ? String(payload.assignedToUserId) : null)) });
     }
     if (action === "escalate") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.taskAssign);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.taskAssign);
       return Response.json({ ok: true, ...(await escalateTask(actor, id, payload.escalated !== false)) });
     }
 

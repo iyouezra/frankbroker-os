@@ -112,7 +112,7 @@ export async function resolveTenantContext(tenantId: string): Promise<TenantCont
 }
 
 export async function requireTenantModule(request: Request, moduleKey: TenantModuleKey, permission?: string) {
-  const actor = resolveActor(request);
+  const actor = await resolveActor(request);
   const context = await resolveTenantContext(actor.brokerId);
   if (!context) throw new Response("Tenant not found.", { status: 404 });
   if (!context.modules[moduleKey]) throw new Response("This module is not enabled for the tenant.", { status: 403 });

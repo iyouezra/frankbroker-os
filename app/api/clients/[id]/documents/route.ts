@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, "adjust");
+    const actor = await requirePermission(request, "adjust");
     const { id } = await context.params;
     const formData = await request.formData();
     const documentType = String(formData.get("documentType") ?? "") as ClientDocumentType;

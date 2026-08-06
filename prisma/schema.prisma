@@ -150,6 +150,7 @@ model Client {
   rejectionReason              String?                 @map("rejection_reason")
   onboardingChannel            String                  @default("in_person") @map("onboarding_channel")
   externalClientReference      String?                 @map("external_client_reference")
+  portalAuthSubject            String?                 @map("portal_auth_subject")
   dateOfBirth                  DateTime?               @map("date_of_birth") @db.Date
   nationality                  String?
   countryOfResidence           String?                 @map("country_of_residence")
@@ -185,6 +186,7 @@ model Client {
   screenings                   ClientScreening[]
 
   @@unique([brokerId, identityReference])
+  @@unique([brokerId, portalAuthSubject])
   @@index([brokerId])
   @@index([status, kycStatus])
   @@map("clients")
@@ -940,6 +942,7 @@ model VerificationChallenge {
   order           Order?
 
   @@index([clientId, purpose, status])
+  @@index([clientId, purpose, createdAt])
   @@index([expiresAt, status])
   @@map("verification_challenges")
 }

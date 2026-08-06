@@ -86,14 +86,14 @@ test("CRM permissions are granted per role, and read-only roles cannot act", () 
   assert.equal(hasPermission("service_officer", CRM_PERMISSIONS.assign), true);
 });
 
-test("the server rejects unauthorized roles at the permission gate", () => {
+test("the server rejects unauthorized roles at the permission gate", async () => {
   const request = (role) => new Request("http://localhost/api/crm/threads", { headers: { "x-frank-demo-role": role } });
-  assert.equal(requirePermission(request("service_officer"), CRM_PERMISSIONS.reply).role, "service_officer");
-  assert.throws(
+  assert.equal((await requirePermission(request("service_officer"), CRM_PERMISSIONS.reply)).role, "service_officer");
+  await assert.rejects(
     () => requirePermission(request("management"), CRM_PERMISSIONS.reply),
     (error) => error instanceof Response && error.status === 403,
   );
-  assert.throws(
+  await assert.rejects(
     () => requirePermission(request("trader"), CRM_PERMISSIONS.assign),
     (error) => error instanceof Response && error.status === 403,
   );

@@ -9,7 +9,7 @@ import { resolveInvestorContext } from "../../../../lib/server-auth";
 
 export async function POST(request: Request) {
   try {
-    const { brokerId, clientId } = resolveInvestorContext(request);
+    const { brokerId, clientId } = await resolveInvestorContext(request);
     const payload = await request.json() as { bankName?: string; accountNumber?: string; accountHolderName?: string };
     const client = await prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { linkedBankAccounts: true } });
     if (!client) return Response.json({ error: "Investor profile not found." }, { status: 404 });
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { brokerId, clientId } = resolveInvestorContext(request);
+    const { brokerId, clientId } = await resolveInvestorContext(request);
     const id = new URL(request.url).searchParams.get("id")?.trim();
     if (!id) return Response.json({ error: "Choose a linked bank account to remove." }, { status: 400 });
     const bank = await prisma.linkedBankAccount.findFirst({ where: { id, clientId, brokerId } });

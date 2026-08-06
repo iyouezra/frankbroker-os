@@ -12,19 +12,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const action = String(payload.action ?? "");
 
     if (action === "status") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.caseManage);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.caseManage);
       return Response.json({ ok: true, ...(await changeCaseStatus(actor, id, String(payload.status ?? ""), payload.resolutionSummary)) });
     }
     if (action === "assign") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.caseManage);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.caseManage);
       return Response.json({ ok: true, ...(await assignCase(actor, id, payload.assignedToUserId ? String(payload.assignedToUserId) : null)) });
     }
     if (action === "findings") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.caseManage);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.caseManage);
       return Response.json(await recordCaseFindings(actor, id, payload.findings));
     }
     if (action === "regulatory_status") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.caseManage);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.caseManage);
       return Response.json({ ok: true, ...(await recordCaseRegulatoryStatus(actor, id, payload.status, payload.comment)) });
     }
 

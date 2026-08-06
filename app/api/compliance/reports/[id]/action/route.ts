@@ -10,11 +10,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { id } = await context.params;
     const payload = await request.json() as Record<string, unknown>;
     if (payload.action === "review") {
-      const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.reportReview);
+      const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.reportReview);
       return Response.json({ report: await reviewComplianceReport(actor, id) });
     }
     if (payload.action === "submit") {
-      const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.reportSubmit);
+      const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.reportSubmit);
       return Response.json({ report: await recordComplianceSubmission(actor, id, payload.submissionReference, payload.note) });
     }
     return Response.json({ error: "Unsupported report action." }, { status: 400 });

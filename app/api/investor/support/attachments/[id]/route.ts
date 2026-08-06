@@ -13,7 +13,7 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const investor = resolveInvestorContext(request);
+    const investor = await resolveInvestorContext(request);
     const { id } = await context.params;
     const attachment = await getAttachmentForInvestor(investor, id);
     return attachmentResponse(attachment, request.url);

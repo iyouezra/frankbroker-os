@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     const challenge = await createOtpChallenge({
       brokerId: actor.brokerId, clientId: account.clientId, accountId: account.id,
       purpose: "order_instruction", source, deliveryChannel, createdBy: actor.id,
+      destination,
       destinationHint: otpDestinationHint(deliveryChannel, destination),
       payloadHash: orderPayloadHash({
         accountId, instrumentId: String(payload.instrumentId ?? ""), side: String(payload.side ?? ""),

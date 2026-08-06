@@ -77,7 +77,7 @@ test("market permissions separate read-only viewing from order linkage", () => {
   assert.equal(hasPermission("trader", MARKET_PERMISSIONS.orderLink), true);
 });
 
-test("market endpoints enforce tenant entitlement, roles, supported ranges, and production-safe provider selection", async () => {
+test("market endpoints enforce tenant entitlement, roles, supported ranges, and demo-ready provider selection", async () => {
   const [route, provider, orderRoute] = await Promise.all([
     readFile(new URL("../app/api/market/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/market-data/provider.ts", import.meta.url), "utf8"),
@@ -87,8 +87,8 @@ test("market endpoints enforce tenant entitlement, roles, supported ranges, and 
   assert.match(route, /brokerId, enabled: true/);
   assert.match(route, /!permitted\.includes\(instrumentId\)/);
   assert.match(route, /MARKET_RANGES\.includes/);
-  assert.match(provider, /process\.env\.NODE_ENV !== "production"/);
-  assert.match(provider, /process\.env\.MARKET_DATA_PROVIDER === "demo"/);
+  assert.match(provider, /return new DevelopmentMockMarketDataProvider\(\)/);
+  assert.doesNotMatch(provider, /process\.env\.NODE_ENV !== "production"/);
   assert.match(provider, /UnavailableMarketDataProvider/);
   assert.match(orderRoute, /eligibleForMarket/);
   assert.match(orderRoute, /remainingQuantity: \{ gt: 0 \}/);

@@ -92,7 +92,8 @@ const demoPersonas = [
 
 export default function InvestorApp() {
   const { t } = useLocale();
-  const [phase, setPhase] = useState<InvestorPhase>("select");
+  const insecureDemoUiEnabled = true;
+  const [phase, setPhase] = useState<InvestorPhase>(insecureDemoUiEnabled ? "select" : "app");
   const [activeClientId, setActiveClientId] = useState(INVESTOR_CLIENT_ID);
   const [onboardingType, setOnboardingType] = useState<InvestorKyc["accountType"]>("retail");
   const [submittedApplication, setSubmittedApplication] = useState<SubmittedApplication | null>(null);
@@ -339,7 +340,7 @@ export default function InvestorApp() {
         deliveryChannel: challenge.deliveryChannel ?? "sms",
         destinationHint: challenge.destinationHint ?? t("msg.mobileEnding", { digits: phone.replace(/\D/g, "").slice(-4) }),
         expiresAt: challenge.expiresAt,
-        demoCode: challenge.demoCode ?? "246810",
+        demoCode: challenge.demoCode,
         busy: false,
         error: "",
       });
@@ -375,7 +376,7 @@ export default function InvestorApp() {
         ...current,
         id: challenge.id!,
         expiresAt: challenge.expiresAt,
-        demoCode: challenge.demoCode ?? "246810",
+        demoCode: challenge.demoCode,
         destinationHint: challenge.destinationHint ?? current.destinationHint,
         busy: false,
         error: "",
@@ -663,7 +664,7 @@ export default function InvestorApp() {
       <span className={styles.licenseBadge}>{t("story.badge")}</span>
       <h1>{t("story.headline")}</h1>
       <p>{bootstrap?.tenant.welcomeMessage ?? t("story.welcomeFallback")}</p>
-      <Button onClick={() => setPhase("select")}>{t("story.cta")}</Button>
+      {insecureDemoUiEnabled && <Button onClick={() => setPhase("select")}>{t("story.cta")}</Button>}
       <div className={styles.desktopTickers}>{featured.map((item) => <span key={item.ticker}><b>{item.ticker}</b><small>{formatEtb(item.price)}</small><Delta value={item.delta} /></span>)}</div>
       <small className={styles.riskCopy}>{t("story.risk")}</small>
     </section>

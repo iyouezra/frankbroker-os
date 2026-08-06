@@ -51,17 +51,24 @@ npm run db:studio
 
 1. Import the GitHub repository as a new Vercel project.
 2. In the project’s **Storage** tab, create and connect a Prisma Postgres database. This supplies `DATABASE_URL` to the deployment.
-3. Apply all checked-in migrations with `npm run db:deploy` against that database.
-4. Run `npm run db:seed` once if you want the fictional MVP records.
-5. Deploy or redeploy the project. Standard Next.js settings require no framework overrides.
+3. Deploy or redeploy the project.
 
-The schema is in `prisma/schema.prisma`; the repeatable demonstration seed is in `prisma/seed.ts`. The seed includes three tenants, tenant policies, instrument entitlements, integrations, broker users, and a fictional investor account.
+That is all. Vercel uses the checked-in build command to apply migrations, run the repeatable demo seed, and build the app automatically. No authentication or demo-mode environment variables are required.
+
+The schema is in `prisma/schema.prisma`; the repeatable demonstration seed is in `prisma/seed.ts`. The seed includes three tenants, tenant policies, instrument entitlements, integrations, broker users, Selam Mekonnen, and Blue Nile Trading PLC.
+
+Every local and Vercel deployment is currently a demo/test environment:
+
+- `/` exposes the broker role and tenant switchers.
+- `/investor` exposes Selam Mekonnen and Blue Nile Trading PLC.
+- `/admin` exposes the platform administration demo.
+- OTP is fixed to `246810` unless `FRANK_DEMO_OTP_CODE` overrides it.
+
+The server marks the deployment `insecure-demo` and asks search engines not to index it. Do not connect this build to live customer, investor, financial, or employee data.
 
 ## Roles
 
-The MVP exposes a non-operational Broker access admin plus Broker admin, Trader/dealer, Operations, Compliance, Settlement, Relationship, Client service, Management, and Frank super-admin views. Frank bootstraps up to two broker access administrators; those administrators manage ordinary employee invitations, roles, password-reset requests, suspensions, and restorations inside their tenant. The role selector and `x-frank-demo-role` header are demonstration controls, not production authentication.
-
-Keep any public deployment protected until verified server-side authentication and user provisioning are implemented. Before live brokerage use, also complete threat modeling, penetration testing, segregation-of-duties controls, configurable fees and limits, secrets management, backup and recovery procedures, regulatory review, and independent ledger/reconciliation validation.
+The MVP exposes a non-operational Broker access admin plus Broker admin, Trader/dealer, Operations, Compliance, Settlement, Relationship, Client service, Management, and Frank super-admin views. Frank bootstraps up to two broker access administrators; those administrators manage ordinary employee invitations, roles, password-reset requests, suspensions, and restorations inside their tenant. The role, tenant, and investor selectors are demonstration controls and are available in every deployment. Authentication and real user provisioning are intentionally deferred.
 
 ## Current boundaries
 
@@ -70,7 +77,8 @@ Keep any public deployment protected until verified server-side authentication a
 - Contract notes are printable HTML and can be saved as PDF.
 - Fee schedules, limits, instrument access, and feature switches are tenant-configurable; the seeded values are illustrative and are not regulatory tariffs.
 - Fayda and TIN values entered in the demo are not stored raw. The server retains masked endings and an opaque reference only; production identity verification still needs an Ethiopia-resident provider and formal compliance review.
-- Demo role and tenant headers are not production authentication. Replace them with verified sessions and server-derived tenant membership before handling real users.
+- Role, tenant, and investor identities are browser-selectable demo controls, not authentication.
+- Before any live use, implement authentication, server-derived membership, MFA, threat modeling, penetration testing, secrets management, backup/recovery procedures, and regulatory review.
 - This MVP is not production-certified brokerage software.
 
 Future ESX and CSD adapters can implement the contracts in `lib/integrations.ts` without replacing the order, trade, and settlement domain model.

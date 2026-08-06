@@ -31,7 +31,7 @@ function view(user: {
 
 export async function GET(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const actor = await resolveActor(request);
     if (!allowedReader(actor.role)) return Response.json({ error: "Broker access administration is required." }, { status: 403 });
     const users = await prisma.user.findMany({ where: { brokerId: actor.brokerId }, orderBy: [{ status: "asc" }, { fullName: "asc" }] });
     return Response.json({ users: users.map(view), canManage: actor.role === "access_admin" });
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const actor = await resolveActor(request);
     if (actor.role !== "access_admin") return Response.json({ error: "Broker access administrator access is required." }, { status: 403 });
     const data = await request.json() as Record<string, unknown>;
     const employeeId = clean(data.employeeId).toUpperCase();
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const actor = await resolveActor(request);
     if (actor.role !== "access_admin") return Response.json({ error: "Broker access administrator access is required." }, { status: 403 });
     const data = await request.json() as Record<string, unknown>;
     const id = clean(data.id);

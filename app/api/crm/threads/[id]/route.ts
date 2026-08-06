@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.view);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.view);
     const { id } = await context.params;
     const url = new URL(request.url);
     const result = await getThread(

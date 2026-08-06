@@ -35,7 +35,7 @@ function audit(brokerId: string | null, action: string, entityType: string, enti
 
 export async function GET(request: Request) {
   try {
-    requirePlatformAdmin(request);
+    await requirePlatformAdmin(request);
     const start = new Date();
     start.setUTCHours(0, 0, 0, 0);
     const [brokers, instruments, auditRows, platformFeeSchedule, checklistTemplates] = await Promise.all([
@@ -220,7 +220,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    requirePlatformAdmin(request);
+    await requirePlatformAdmin(request);
     const payload = await request.json() as { entity?: string; id?: string; tenantId?: string; data?: Record<string, unknown> };
     if (!payload.entity || !payload.id || !payload.data) return Response.json({ error: "entity, id, and data are required." }, { status: 400 });
 
@@ -229,36 +229,60 @@ export async function PATCH(request: Request) {
       const current = await prisma.broker.findUnique({ where: { id: tenantId }, include: { settings: true } });
       if (!current) return Response.json({ error: "Tenant not found." }, { status: 404 });
       const data = payload.data;
-      const controls = data.controls as Record<string, unknown>;
+      const controls = (data.controls ?? {}) as Record<string, unknown>;
       const modules = (data.modules ?? {}) as Record<string, unknown>;
       const entitlements = Array.isArray(data.entitlements) ? data.entitlements.map(String) : [];
+      const businessType = String(data.businessType ?? "");
+      const status = String(data.status ?? "");
+      const businessDate = String(data.businessDate ?? "");
+      const numericControls = {
+        approvalThreshold: Number(controls.approvalThreshold),
+        clientDailyLimit: Number(controls.clientDailyLimit),
+        brokerageFeePct: Number(controls.brokerageFeePct),
+        minimumFee: Number(controls.minimumFee),
+        discrepancyWindowDays: Number(controls.discrepancyWindowDays),
+        kycReviewMonths: Number(controls.kycReviewMonths),
+      };
+      const settlementCycle = String(controls.settlementCycle ?? "");
+      const allowedOrderTypes = Array.isArray(controls.allowedOrderTypes) ? controls.allowedOrderTypes.map(String) : [];
+      if (!businessTypes.includes(businessType as typeof businessTypes[number]) || !["active", "pilot", "suspended"].includes(status) || !validDateOnly(businessDate)) {
+        return Response.json({ error: "Select a valid tenant profile, status, and business date." }, { status: 400 });
+      }
+      if (Object.values(numericControls).some((value) => !Number.isFinite(value) || value < 0)
+        || !Number.isInteger(numericControls.discrepancyWindowDays) || numericControls.discrepancyWindowDays > 365
+        || !Number.isInteger(numericControls.kycReviewMonths) || numericControls.kycReviewMonths < 1 || numericControls.kycReviewMonths > 120) {
+        return Response.json({ error: "Tenant limits, fees, and review periods must be valid non-negative values." }, { status: 400 });
+      }
+      if (!['T+1', 'T+2', 'T+3'].includes(settlementCycle) || !allowedOrderTypes.length || allowedOrderTypes.some((item) => !['Market', 'Limit', 'Stop-loss'].includes(item))) {
+        return Response.json({ error: "Select valid settlement and order-type controls." }, { status: 400 });
+      }
       if ((modules.dealer_operations === true || modules.investor_servicing === true) && !entitlements.includes("securities_dealing")) return Response.json({ error: "Dealer operations and investor servicing require the securities dealing entitlement." }, { status: 400 });
       if (modules.issuer_advisory === true && !entitlements.includes("transaction_advisory")) return Response.json({ error: "Issuer advisory requires the transaction advisory entitlement." }, { status: 400 });
       await prisma.$transaction(async (tx) => {
         await tx.broker.update({ where: { id: tenantId }, data: {
-          name: String(data.name), licenseNumber: String(data.licenseNumber), status: String(data.status), baseCurrency: String(data.baseCurrency ?? "ETB"),
+          name: String(data.name), licenseNumber: String(data.licenseNumber), status, baseCurrency: "ETB",
         } });
         await tx.brokerSettings.upsert({ where: { brokerId: tenantId }, update: {
           tradingName: String(data.tradingName), plan: String(data.plan), domain: String(data.domain ?? ""), supportEmail: String(data.supportEmail ?? ""),
-          primaryColor: String(data.primaryColor), welcomeMessage: String(data.welcomeMessage ?? ""), timezone: String(data.timezone), businessDate: dateOnly(String(data.businessDate)),
-          features: data.features as Prisma.InputJsonValue, makerChecker: Boolean(controls.makerChecker), approvalThreshold: Number(controls.approvalThreshold),
-          clientDailyLimit: Number(controls.clientDailyLimit), brokerageFeePct: Number(controls.brokerageFeePct), minimumFee: Number(controls.minimumFee),
-          settlementCycle: String(controls.settlementCycle), allowedOrderTypes: controls.allowedOrderTypes as Prisma.InputJsonValue,
+          primaryColor: String(data.primaryColor), welcomeMessage: String(data.welcomeMessage ?? ""), timezone: String(data.timezone), businessDate: dateOnly(businessDate),
+          features: data.features as Prisma.InputJsonValue, makerChecker: Boolean(controls.makerChecker), approvalThreshold: numericControls.approvalThreshold,
+          clientDailyLimit: numericControls.clientDailyLimit, brokerageFeePct: numericControls.brokerageFeePct, minimumFee: numericControls.minimumFee,
+          settlementCycle, allowedOrderTypes: allowedOrderTypes as Prisma.InputJsonValue,
           requireTermsAcceptance: Boolean(controls.requireTermsAcceptance),
-          discrepancyWindowDays: Number(controls.discrepancyWindowDays),
-          kycReviewMonths: Number(controls.kycReviewMonths),
+          discrepancyWindowDays: numericControls.discrepancyWindowDays,
+          kycReviewMonths: numericControls.kycReviewMonths,
         }, create: {
           id: `set_${tenantId}`, brokerId: tenantId, tradingName: String(data.tradingName), plan: String(data.plan), domain: String(data.domain ?? ""),
           supportEmail: String(data.supportEmail ?? ""), primaryColor: String(data.primaryColor), welcomeMessage: String(data.welcomeMessage ?? ""),
-          timezone: String(data.timezone), businessDate: dateOnly(String(data.businessDate)), features: data.features as Prisma.InputJsonValue,
-          makerChecker: Boolean(controls.makerChecker), approvalThreshold: Number(controls.approvalThreshold), clientDailyLimit: Number(controls.clientDailyLimit),
-          brokerageFeePct: Number(controls.brokerageFeePct), minimumFee: Number(controls.minimumFee), settlementCycle: String(controls.settlementCycle),
-          allowedOrderTypes: controls.allowedOrderTypes as Prisma.InputJsonValue,
+          timezone: String(data.timezone), businessDate: dateOnly(businessDate), features: data.features as Prisma.InputJsonValue,
+          makerChecker: Boolean(controls.makerChecker), approvalThreshold: numericControls.approvalThreshold, clientDailyLimit: numericControls.clientDailyLimit,
+          brokerageFeePct: numericControls.brokerageFeePct, minimumFee: numericControls.minimumFee, settlementCycle,
+          allowedOrderTypes: allowedOrderTypes as Prisma.InputJsonValue,
           requireTermsAcceptance: Boolean(controls.requireTermsAcceptance),
-          discrepancyWindowDays: Number(controls.discrepancyWindowDays),
-          kycReviewMonths: Number(controls.kycReviewMonths),
+          discrepancyWindowDays: numericControls.discrepancyWindowDays,
+          kycReviewMonths: numericControls.kycReviewMonths,
         } });
-        await tx.tenantProfile.upsert({ where: { tenantId }, update: { businessType: String(data.businessType ?? "securities_dealer") }, create: { tenantId, businessType: String(data.businessType ?? "securities_dealer") } });
+        await tx.tenantProfile.upsert({ where: { tenantId }, update: { businessType }, create: { tenantId, businessType } });
         await tx.tenantLicense.deleteMany({ where: { tenantId } });
         const licenses = Array.isArray(data.licenses) ? data.licenses as Array<Record<string, unknown>> : [];
         if (licenses.length) await tx.tenantLicense.createMany({ data: licenses.map((item) => ({ id: String(item.id ?? crypto.randomUUID()), tenantId, regulator: String(item.regulator ?? "ECMA"), licenseType: String(item.licenseType ?? ""), licenseNumber: String(item.licenseNumber ?? ""), status: String(item.status ?? "active"), validFrom: item.validFrom ? dateOnly(String(item.validFrom)) : null, validTo: item.validTo ? dateOnly(String(item.validTo)) : null })) });
@@ -274,7 +298,9 @@ export async function PATCH(request: Request) {
 
     if (payload.entity === "instrument") {
       if (typeof payload.data.status === "string") {
-        await prisma.instrument.update({ where: { id: payload.id }, data: { tradingStatus: payload.data.status.toLowerCase() } });
+        const tradingStatus = payload.data.status.toLowerCase();
+        if (!["tradable", "halted", "disabled"].includes(tradingStatus)) return Response.json({ error: "Select a valid instrument status." }, { status: 400 });
+        await prisma.instrument.update({ where: { id: payload.id }, data: { tradingStatus } });
       }
       if (payload.tenantId && typeof payload.data.enabled === "boolean") {
         await prisma.brokerInstrument.upsert({
@@ -312,7 +338,7 @@ export async function PATCH(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    requirePlatformAdmin(request);
+    await requirePlatformAdmin(request);
     const payload = await request.json() as { entity?: string; data?: Record<string, unknown> };
     if (!payload.data) return Response.json({ error: "Configuration data is required." }, { status: 400 });
     const data = payload.data;
@@ -425,7 +451,8 @@ export async function POST(request: Request) {
       const version = String(data.version ?? "").trim();
       const titleText = String(data.title ?? "").trim();
       const content = String(data.content ?? "").trim();
-      if (!brokerId || !version || !titleText || content.length < 40) {
+      const effectiveAt = String(data.effectiveAt ?? "");
+      if (!brokerId || !version || !titleText || content.length < 40 || !validDateOnly(effectiveAt)) {
         return Response.json({ error: "Tenant, version, title, and complete legal text are required." }, { status: 400 });
       }
       const id = String(data.id ?? `legal_${brokerId}_${version.replaceAll(".", "_")}`);
@@ -443,7 +470,7 @@ export async function POST(request: Request) {
             summary: String(data.summary ?? ""),
             content,
             status: "published",
-            effectiveAt: dateOnly(String(data.effectiveAt)),
+            effectiveAt: dateOnly(effectiveAt),
             publishedAt: new Date(),
             requiresReacceptance: data.requiresReacceptance !== false,
           },
@@ -457,7 +484,7 @@ export async function POST(request: Request) {
             summary: String(data.summary ?? ""),
             content,
             status: "published",
-            effectiveAt: dateOnly(String(data.effectiveAt)),
+            effectiveAt: dateOnly(effectiveAt),
             publishedAt: new Date(),
             requiresReacceptance: data.requiresReacceptance !== false,
           },
@@ -474,27 +501,37 @@ export async function POST(request: Request) {
       const brokerId = String(data.brokerId ?? "");
       const version = String(data.version ?? "").trim();
       const rules = Array.isArray(data.rules) ? data.rules as Array<Record<string, unknown>> : [];
-      if (!brokerId || !version || !rules.length) return Response.json({ error: "Tenant, version, and at least one fee rule are required." }, { status: 400 });
+      const effectiveFrom = String(data.effectiveFrom ?? "");
+      const normalized = rules.map((rule) => ({
+        assetClass: String(rule.assetClass ?? ""),
+        marketSegment: String(rule.marketSegment ?? "main"),
+        brokeragePct: Number(rule.brokeragePct ?? 0),
+        regulatorPct: Number(rule.regulatorPct ?? 0),
+        exchangePct: Number(rule.exchangePct ?? 0),
+        csdPct: Number(rule.csdPct ?? 0),
+        minimumFee: Number(rule.minimumFee ?? 0),
+        maximumFee: rule.maximumFee === null || rule.maximumFee === "" || rule.maximumFee === undefined ? null : Number(rule.maximumFee),
+      }));
+      if (!brokerId || !version || !validDateOnly(effectiveFrom) || !normalized.length) return Response.json({ error: "Tenant, version, effective date, and at least one fee rule are required." }, { status: 400 });
+      if (normalized.some((rule) => !["equity", "bond"].includes(rule.assetClass)
+        || !/^[a-z0-9_-]{2,30}$/.test(rule.marketSegment)
+        || [rule.brokeragePct, rule.regulatorPct, rule.exchangePct, rule.csdPct, rule.minimumFee].some((value) => !Number.isFinite(value) || value < 0)
+        || (rule.maximumFee !== null && (!Number.isFinite(rule.maximumFee) || rule.maximumFee < rule.minimumFee)))) {
+        return Response.json({ error: "Fee rules must use supported assets and valid non-negative rates and limits." }, { status: 400 });
+      }
       const id = String(data.id ?? `fees_${brokerId}_${version.replaceAll(".", "_")}`);
       await prisma.$transaction(async (tx) => {
         await tx.feeSchedule.updateMany({ where: { brokerId, status: "published", id: { not: id } }, data: { status: "archived" } });
         await tx.feeSchedule.upsert({
           where: { id },
-          update: { name: String(data.name ?? "Standard fee schedule"), version, status: "published", effectiveFrom: dateOnly(String(data.effectiveFrom)), effectiveTo: null },
-          create: { id, brokerId, name: String(data.name ?? "Standard fee schedule"), version, status: "published", effectiveFrom: dateOnly(String(data.effectiveFrom)) },
+          update: { name: String(data.name ?? "Standard fee schedule"), version, status: "published", effectiveFrom: dateOnly(effectiveFrom), effectiveTo: null },
+          create: { id, brokerId, name: String(data.name ?? "Standard fee schedule"), version, status: "published", effectiveFrom: dateOnly(effectiveFrom) },
         });
         await tx.feeRule.deleteMany({ where: { feeScheduleId: id } });
-        await tx.feeRule.createMany({ data: rules.map((rule) => ({
+        await tx.feeRule.createMany({ data: normalized.map((rule) => ({
           id: crypto.randomUUID(),
           feeScheduleId: id,
-          assetClass: String(rule.assetClass),
-          marketSegment: String(rule.marketSegment ?? "main"),
-          brokeragePct: Number(rule.brokeragePct ?? 0),
-          regulatorPct: Number(rule.regulatorPct ?? 0),
-          exchangePct: Number(rule.exchangePct ?? 0),
-          csdPct: Number(rule.csdPct ?? 0),
-          minimumFee: Number(rule.minimumFee ?? 0),
-          maximumFee: rule.maximumFee === null || rule.maximumFee === "" || rule.maximumFee === undefined ? null : Number(rule.maximumFee),
+          ...rule,
         })) });
         await tx.auditLog.create({ data: {
           id: crypto.randomUUID(), brokerId, actorId: null, action: "FEE_SCHEDULE_PUBLISHED",

@@ -7,7 +7,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const payload = await request.json() as { action?: string; reason?: string };
     const action = payload.action === "approve" ? "approve" : payload.action === "reject" ? "reject" : null;
     if (!action) return Response.json({ error: "Choose approve or reject." }, { status: 400 });
-    const actor = requirePermission(request, action);
+    const actor = await requirePermission(request, action);
     const { id, documentId } = await context.params;
     const reason = String(payload.reason ?? "").trim();
     if (action === "reject" && reason.length < 5) {

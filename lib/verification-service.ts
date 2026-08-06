@@ -1,6 +1,7 @@
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import type { Prisma } from "../app/generated/prisma/client";
 import { prisma } from "./prisma";
+import { isInsecureDemoMode } from "./deployment-mode";
 
 export const ORDER_SOURCES = ["digital", "in_person", "neway", "phone", "investor_portal"] as const;
 export type OrderSource = typeof ORDER_SOURCES[number];
@@ -43,7 +44,13 @@ export function otpDestinationHint(channel: OtpDeliveryChannel, destination: str
 }
 
 function codeHash(code: string, salt: string) {
-  return createHash("sha256").update(`${salt}:${code}`).digest("hex");
+  const secret = process.env.FRANK_OTP_HASH_SECRET?.trim();
+  if (process.env.NODE_ENV === "production" && !isInsecureDemoMode() && (!secret || secret.length < 32)) {
+    throw new Response("OTP hashing is not configured.", { status: 503 });
+  }
+  return createHmac("sha256", secret || "explicit-demo-otp-hash-secret-not-for-live-data")
+    .update(`${salt}:${code}`)
+    .digest("hex");
 }
 
 function resolveDemoOtpCode() {
@@ -54,20 +61,75 @@ function resolveDemoOtpCode() {
   return configured || "246810";
 }
 
+async function deliverOtp(input: { challengeId: string; channel: OtpDeliveryChannel; destination: string; code: string }) {
+  const endpoint = process.env.FRANK_OTP_DELIVERY_URL?.trim();
+  const token = process.env.FRANK_OTP_DELIVERY_TOKEN?.trim();
+  if (!endpoint || !token) throw new Response("OTP delivery is not configured.", { status: 503 });
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Response("OTP delivery is not configured.", { status: 503 });
+  }
+  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
+    throw new Response("OTP delivery must use HTTPS.", { status: 503 });
+  }
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        challengeId: input.challengeId,
+        channel: input.channel,
+        destination: input.destination,
+        code: input.code,
+        expiresInSeconds: 300,
+      }),
+      signal: AbortSignal.timeout(5_000),
+      cache: "no-store",
+    });
+  } catch {
+    throw new Response("OTP delivery is temporarily unavailable.", { status: 503 });
+  }
+  if (!response.ok) throw new Response("OTP delivery is temporarily unavailable.", { status: 503 });
+}
+
 export async function createOtpChallenge(input: {
   brokerId: string; clientId: string; accountId?: string; purpose: "kyc_phone" | "order_instruction";
-  source: string; payloadHash: string; destinationHint?: string; deliveryChannel?: OtpDeliveryChannel; createdBy?: string | null;
+  source: string; payloadHash: string; destination: string; destinationHint?: string; deliveryChannel?: OtpDeliveryChannel; createdBy?: string | null;
 }) {
   const deliveryChannel = input.deliveryChannel ?? "sms";
   const demoCode = resolveDemoOtpCode();
   const code = demoCode ?? String(randomInt(100000, 1000000));
   const salt = randomBytes(16).toString("hex");
+  const challengeId = `VER-${crypto.randomUUID().slice(0, 10).toUpperCase()}`;
+  const now = new Date();
+  const recentSince = new Date(now.getTime() - 10 * 60_000);
+  const [latest, recentCount] = await Promise.all([
+    prisma.verificationChallenge.findFirst({
+      where: { brokerId: input.brokerId, clientId: input.clientId, purpose: input.purpose },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+    prisma.verificationChallenge.count({
+      where: { brokerId: input.brokerId, clientId: input.clientId, purpose: input.purpose, createdAt: { gte: recentSince } },
+    }),
+  ]);
+  if (latest && now.getTime() - latest.createdAt.getTime() < 30_000) {
+    throw new Response("Wait before requesting another verification code.", { status: 429 });
+  }
+  if (recentCount >= 5) throw new Response("Too many verification codes requested. Try again later.", { status: 429 });
+  await prisma.verificationChallenge.updateMany({
+    where: { brokerId: input.brokerId, clientId: input.clientId, purpose: input.purpose, status: { in: ["pending", "verified"] }, consumedAt: null },
+    data: { status: "superseded" },
+  });
   const challenge = await prisma.verificationChallenge.create({ data: {
-    id: `VER-${crypto.randomUUID().slice(0, 10).toUpperCase()}`,
+    id: challengeId,
     brokerId: input.brokerId, clientId: input.clientId, accountId: input.accountId,
     purpose: input.purpose, source: input.source, method: `${deliveryChannel}_otp`, destinationHint: input.destinationHint,
     payloadHash: input.payloadHash, codeHash: codeHash(code, salt), salt,
-    expiresAt: new Date(Date.now() + 5 * 60_000), createdBy: input.createdBy ?? null,
+    expiresAt: new Date(now.getTime() + 5 * 60_000), createdBy: input.createdBy ?? null,
   } });
   await prisma.auditLog.create({ data: {
     id: crypto.randomUUID(), brokerId: input.brokerId, actorId: input.createdBy ?? null,
@@ -75,6 +137,14 @@ export async function createOtpChallenge(input: {
     summary: `${input.purpose} verification requested by ${deliveryChannel} via ${input.source}`,
     newValue: JSON.stringify({ purpose: input.purpose, source: input.source, deliveryChannel, expiresAt: challenge.expiresAt }),
   } });
+  if (!demoCode) {
+    try {
+      await deliverOtp({ challengeId, channel: deliveryChannel, destination: input.destination, code });
+    } catch (error) {
+      await prisma.verificationChallenge.update({ where: { id: challengeId }, data: { status: "delivery_failed" } });
+      throw error;
+    }
+  }
   return { id: challenge.id, expiresAt: challenge.expiresAt, destinationHint: challenge.destinationHint, deliveryChannel, demoCode: demoCode ?? undefined };
 }
 

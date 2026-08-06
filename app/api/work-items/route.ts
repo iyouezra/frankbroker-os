@@ -1,12 +1,12 @@
 import { apiError } from "../../../lib/api";
 import { listWorkItems } from "../../../lib/back-office-service";
-import { resolveActor } from "../../../lib/server-auth";
+import { requirePermission } from "../../../lib/server-auth";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    return Response.json(await listWorkItems(resolveActor(request)));
+    return Response.json(await listWorkItems(await requirePermission(request, "report")));
   } catch (error) {
     return apiError(error);
   }

@@ -34,7 +34,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     };
     if (!payload.action) return Response.json({ error: "A client action is required." }, { status: 400 });
     const permission = payload.action === "approve_client" ? "approve" : payload.action === "reject_client" ? "reject" : "adjust";
-    const actor = requirePermission(request, permission);
+    const actor = await requirePermission(request, permission);
     const reason = String(payload.reason ?? payload.resolutionNotes ?? "").trim();
     if (reason.length > 1_000) return Response.json({ error: "The reason is too long." }, { status: 400 });
 

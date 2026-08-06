@@ -44,7 +44,7 @@ async function requireInvestorPortalAccess(brokerId: string) {
 
 export async function GET(request: Request) {
   try {
-    const { brokerId, clientId } = resolveInvestorContext(request);
+    const { brokerId, clientId } = await resolveInvestorContext(request);
     const [broker, client, regulatoryFeeSchedule, tenantContext] = await Promise.all([
       prisma.broker.findUnique({
         where: { id: brokerId },
@@ -318,7 +318,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { brokerId, clientId } = resolveInvestorContext(request);
+    const { brokerId, clientId } = await resolveInvestorContext(request);
     await requireInvestorPortalAccess(brokerId);
     const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
     const formData = multipart ? await request.formData() : null;
@@ -332,7 +332,11 @@ export async function POST(request: Request) {
       if (payload.action === "confirm_otp") {
         return Response.json(await confirmOtpChallenge({ id: String(payload.verificationId ?? ""), brokerId, clientId, code: String(payload.code ?? "") }));
       }
-      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: client.accounts[0]?.id, purpose: "kyc_phone", source: "investor_portal", payloadHash: String(payload.phone ?? "").replace(/\D/g, ""), destinationHint: `mobile ending ${String(payload.phone ?? "").replace(/\D/g, "").slice(-4)}` });
+      const phone = String(payload.phone ?? "");
+      if (!/^\+?\d{9,15}$/.test(phone.replace(/[\s()-]/g, ""))) {
+        return Response.json({ error: "Enter a valid mobile number before requesting verification." }, { status: 400 });
+      }
+      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: client.accounts[0]?.id, purpose: "kyc_phone", source: "investor_portal", payloadHash: phone.replace(/\D/g, ""), destination: phone, destinationHint: `mobile ending ${phone.replace(/\D/g, "").slice(-4)}` });
       return Response.json(challenge, { status: 201 });
     }
 
@@ -347,7 +351,7 @@ export async function POST(request: Request) {
       if (!OTP_DELIVERY_CHANNELS.includes(deliveryChannel)) return Response.json({ error: "Choose SMS or email for the verification code." }, { status: 400 });
       const destination = deliveryChannel === "email" ? client.email : client.phone;
       if (!destination) return Response.json({ error: `No registered ${deliveryChannel === "email" ? "email address" : "mobile number"} is available for this account.` }, { status: 409 });
-      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", deliveryChannel, destinationHint: otpDestinationHint(deliveryChannel, destination), payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
+      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", deliveryChannel, destination, destinationHint: otpDestinationHint(deliveryChannel, destination), payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
       return Response.json(challenge, { status: 201 });
     }
 

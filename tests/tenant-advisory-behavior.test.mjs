@@ -78,10 +78,10 @@ test("the three demo tenants resolve the expected modules and available roles", 
   assert.equal(adviser.availableRoles.includes("advisory_analyst"), true);
 });
 
-test("demo actors resolve to users belonging to the selected tenant", () => {
-  const addisLead = resolveActor(request("brk_blue_nile", "advisory_lead"));
-  const addisAdmin = resolveActor(request("brk_blue_nile", "broker_admin"));
-  const shebaLead = resolveActor(request("brk_sheba", "advisory_lead"));
+test("demo actors resolve to users belonging to the selected tenant", async () => {
+  const addisLead = await resolveActor(request("brk_blue_nile", "advisory_lead"));
+  const addisAdmin = await resolveActor(request("brk_blue_nile", "broker_admin"));
+  const shebaLead = await resolveActor(request("brk_sheba", "advisory_lead"));
 
   assert.equal(addisLead.id, "usr_advisory_lead");
   assert.equal(addisAdmin.id, "usr_blue_tenant_admin");

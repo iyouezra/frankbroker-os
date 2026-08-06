@@ -29,35 +29,35 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     // Each branch names its own permission literal so the gate is explicit and
     // auditable per action rather than derived from a shared lookup.
     if (action === "reply") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.reply);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.reply);
       const attachments = formData ? await prepareAttachments(formData) : [];
       return Response.json({ ok: true, ...(await postBrokerMessage(actor, id, payload.body, attachments)) });
     }
     if (action === "note") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.note);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.note);
       const attachments = formData ? await prepareAttachments(formData) : [];
       return Response.json({ ok: true, ...(await addInternalNote(actor, id, payload.body, attachments)) });
     }
     if (action === "assign") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.assign);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.assign);
       const assignee = payload.assignedToUserId ? String(payload.assignedToUserId) : null;
       return Response.json({ ok: true, ...(await assignThread(actor, id, assignee)) });
     }
     if (action === "status") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.status);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.status);
       const reason = payload.reason ? String(payload.reason).slice(0, 500) : undefined;
       return Response.json({ ok: true, ...(await changeThreadStatus(actor, id, String(payload.status ?? ""), reason)) });
     }
     if (action === "priority") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.priority);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.priority);
       return Response.json({ ok: true, ...(await changeThreadPriority(actor, id, payload.priority)) });
     }
     if (action === "read") {
-      const actor = requirePermission(request, CRM_PERMISSIONS.view);
+      const actor = await requirePermission(request, CRM_PERMISSIONS.view);
       return Response.json(await markThreadReadByBroker(actor, id));
     }
     if (action === "service_request") {
-      const actor = requirePermission(request, "adjust");
+      const actor = await requirePermission(request, "adjust");
       const decision = String(payload.decision ?? "");
       if (!["resolve", "reject", "approve_closure"].includes(decision)) {
         return Response.json({ error: "Choose a supported request decision." }, { status: 400 });

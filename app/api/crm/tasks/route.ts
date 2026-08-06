@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.taskView);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.taskView);
     const url = new URL(request.url);
     return Response.json(await listTasks(actor, {
       page: boundedInteger(url.searchParams.get("page"), 1, 1, 100_000),
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.taskCreate);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.taskCreate);
     const payload = (await request.json()) as Record<string, unknown>;
     const task = await createTask(actor, {
       clientId: String(payload.clientId ?? ""),

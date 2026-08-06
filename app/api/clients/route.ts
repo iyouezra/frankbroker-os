@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, "report");
+    const actor = await requirePermission(request, "report");
     const [rows, currentLegal] = await Promise.all([
       prisma.client.findMany({
         where: { brokerId: actor.brokerId },
@@ -119,7 +119,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, "create");
+    const actor = await requirePermission(request, "create");
     const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
     const formData = multipart ? await request.formData() : null;
     const payload = multipart

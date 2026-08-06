@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.view);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.view);
     return Response.json({ escalations: await listComplianceEscalations(actor) });
   } catch (error) {
     return apiError(error);
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.escalationCreate);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.escalationCreate);
     return Response.json({ escalation: await createComplianceEscalation(actor, await request.json() as Record<string, unknown>) }, { status: 201 });
   } catch (error) {
     return apiError(error);

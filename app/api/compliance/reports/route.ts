@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.view);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.view);
     return Response.json({ reports: await listComplianceReports(actor) });
   } catch (error) {
     return apiError(error);
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.reportPrepare);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.reportPrepare);
     const payload = await request.json() as Record<string, unknown>;
     return Response.json({ report: await prepareComplianceReport(actor, payload) }, { status: 201 });
   } catch (error) {

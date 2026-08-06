@@ -1,5 +1,5 @@
 import { prisma } from "../../../lib/prisma";
-import { resolveActor, resolveInvestorContext } from "../../../lib/server-auth";
+import { resolveAuthContext } from "../../../lib/server-auth";
 import { roleMatches } from "../../../lib/oms/notification-service";
 import { apiError } from "../../../lib/api";
 
@@ -19,13 +19,13 @@ type NotificationRow = {
 };
 
 // Resolve which notifications belong to the caller's portal + identity.
-function resolveScope(request: Request) {
-  const clientId = request.headers.get("x-frank-client-id")?.trim();
-  if (clientId || request.headers.get("x-frank-client-id") !== null) {
-    const context = resolveInvestorContext(request);
+async function resolveScope(request: Request) {
+  const auth = await resolveAuthContext(request);
+  if (auth.kind === "investor") {
+    const context = auth.investor;
     return { kind: "investor" as const, where: { scope: "investor", brokerId: context.brokerId, clientId: context.clientId } };
   }
-  const actor = resolveActor(request);
+  const actor = auth.actor;
   if (actor.role === "super_admin") {
     return { kind: "platform" as const, where: { scope: "platform" } };
   }
@@ -48,7 +48,7 @@ function serialize(rows: NotificationRow[]) {
 
 export async function GET(request: Request) {
   try {
-    const scope = resolveScope(request);
+    const scope = await resolveScope(request);
     const rows = await prisma.notification.findMany({
       where: scope.where,
       orderBy: { createdAt: "desc" },
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const payload = (await request.json().catch(() => ({}))) as { id?: string; all?: boolean };
-    const scope = resolveScope(request);
+    const scope = await resolveScope(request);
     const now = new Date();
 
     if (scope.kind === "broker") {

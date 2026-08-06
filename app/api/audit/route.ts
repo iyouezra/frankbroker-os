@@ -1,12 +1,12 @@
 import { prisma } from "../../../lib/prisma";
 import { apiError } from "../../../lib/api";
-import { resolveActor } from "../../../lib/server-auth";
+import { requirePermission } from "../../../lib/server-auth";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const actor = await requirePermission(request, "report");
     const rows = await prisma.auditLog.findMany({
       where: { brokerId: actor.brokerId },
       include: { actor: true },

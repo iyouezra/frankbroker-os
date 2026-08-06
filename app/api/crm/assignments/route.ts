@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.view);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.view);
     const clientId = new URL(request.url).searchParams.get("clientId");
     if (clientId) {
       const [current, history] = await Promise.all([
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.relationshipAssign);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.relationshipAssign);
     const payload = (await request.json()) as Record<string, unknown>;
     const primaryOfficerId = payload.primaryOfficerId ? String(payload.primaryOfficerId) : null;
 

@@ -24,10 +24,10 @@ const readyClient = {
   restrictionReason: null,
 };
 
-test("broker and read-only users can view Client 360, while unknown roles are rejected", () => {
-  assert.equal(requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "broker_admin" } }), "report").role, "broker_admin");
-  assert.equal(requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "management" } }), "report").role, "management");
-  assert.throws(
+test("broker and read-only users can view Client 360, while unknown roles are rejected", async () => {
+  assert.equal((await requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "broker_admin" } }), "report")).role, "broker_admin");
+  assert.equal((await requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "management" } }), "report")).role, "management");
+  await assert.rejects(
     () => requirePermission(new Request("http://localhost/api/clients/cli_meron", { headers: { "x-frank-demo-role": "unauthorized" } }), "report"),
     (error) => error instanceof Response && error.status === 403,
   );

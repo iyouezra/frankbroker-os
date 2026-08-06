@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string; documentId: string }> }) {
   try {
-    const actor = requirePermission(request, "report");
+    const actor = await requirePermission(request, "report");
     const { id, documentId } = await context.params;
     const document = await prisma.clientDocument.findFirst({
       where: { id: documentId, clientId: id, brokerId: actor.brokerId },

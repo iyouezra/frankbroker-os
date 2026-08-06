@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.screeningRecord);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.screeningRecord);
     const { id } = await context.params;
     return Response.json({ screening: await recordClientScreening(actor, id, await request.json() as Record<string, unknown>) }, { status: 201 });
   } catch (error) {

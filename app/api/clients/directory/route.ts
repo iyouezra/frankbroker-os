@@ -18,7 +18,7 @@ function boundedInteger(value: string | null, fallback: number, minimum: number,
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, "report");
+    const actor = await requirePermission(request, "report");
     const url = new URL(request.url);
     const page = boundedInteger(url.searchParams.get("page"), 1, 1, 100_000);
     const pageSize = boundedInteger(url.searchParams.get("pageSize"), 25, 10, 100);

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.view);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.view);
     const url = new URL(request.url);
     const result = await listThreads(actor, {
       page: boundedInteger(url.searchParams.get("page"), 1, 1, 100_000),
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.create);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.create);
     const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
     const formData = multipart ? await request.formData() : null;
     const payload = multipart

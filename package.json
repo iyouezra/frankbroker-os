@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "prisma generate && next build --webpack",
+    "vercel-build": "prisma generate && prisma migrate deploy && prisma db seed && next build --webpack",
     "start": "next start",
     "postinstall": "prisma generate",
     "test": "npm run build && tsx --test tests/*.test.mjs",

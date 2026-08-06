@@ -15,7 +15,7 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request) {
   try {
-    const investor = resolveInvestorContext(request);
+    const investor = await resolveInvestorContext(request);
     const url = new URL(request.url);
     const threadId = url.searchParams.get("threadId");
     const page = boundedInteger(url.searchParams.get("page"), 1, 1, 100_000);

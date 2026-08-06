@@ -24,7 +24,7 @@ function latestDate(values: Array<Date | null | undefined>) {
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, "report");
+    const actor = await requirePermission(request, "report");
     const { id } = await context.params;
     const client = await prisma.client.findFirst({
       where: { id, brokerId: actor.brokerId },

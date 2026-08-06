@@ -91,7 +91,8 @@ type DemoTenantSummary = {
 };
 
 export default function FrankBrokerApp() {
-  const demoTenantSwitcherEnabled = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_FRANK_DEMO_TENANT_SWITCHER === "true";
+  const insecureDemoUiEnabled = true;
+  const demoTenantSwitcherEnabled = insecureDemoUiEnabled;
   const [view, setView] = useState<View>("dashboard");
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [selectedId, setSelectedId] = useState<string>(initialOrders[0].id);
@@ -99,7 +100,7 @@ export default function FrankBrokerApp() {
   const [orderDetails, setOrderDetails] = useState<Record<string, DemoOrder>>({});
   const [orderRefreshKey, setOrderRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
-  const [role, setRole] = useState<Role>("broker_admin");
+  const [role, setRole] = useState<Role>(insecureDemoUiEnabled ? "broker_admin" : "management");
   const [tenantId, setTenantId] = useState("brk_abyssinia");
   const [modules, setModules] = useState<TenantModules>(fallbackModules);
   const [businessType, setBusinessType] = useState("securities_dealer");
@@ -847,7 +848,10 @@ export default function FrankBrokerApp() {
             </div>;
           })}
         </nav>
-        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role"><BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Active role" options={availableRoles.map((id) => ({ value: id, label: id === "broker_admin" && businessType !== "securities_dealer" ? "Tenant admin" : roleLabels[id] }))} /></div></div></div></div>
+        <div className="sidebar-foot"><div className="sidebar-user"><span className="su-avatar">{initials(roleNames[role])}</span><div><b>{roleNames[role]}</b><div className="su-role">{insecureDemoUiEnabled
+          ? <BrandSelect className="bselect-bare" menuClassName="role-switcher-menu" value={role} onChange={(next) => changeRole(next as Role)} ariaLabel="Demo role" options={availableRoles.map((id) => ({ value: id, label: id === "broker_admin" && businessType !== "securities_dealer" ? "Tenant admin" : roleLabels[id] }))} />
+          : <span>{roleLabels[role]}</span>}
+        </div></div></div></div>
       </aside>
 
       <div className="workspace">

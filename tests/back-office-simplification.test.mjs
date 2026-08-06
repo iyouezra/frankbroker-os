@@ -59,9 +59,9 @@ test("hybrid routing uses specialist, relationship, least-load, inheritance, and
   assert.match(threadService, /auditAutomaticRouting/);
 });
 
-test("work and search endpoints derive tenant and role from the actor", () => {
-  assert.match(workRoute, /resolveActor\(request\)/);
-  assert.match(searchRoute, /resolveActor\(request\)/);
+test("work and search endpoints derive tenant and role from an authorized actor", () => {
+  assert.match(workRoute, /requirePermission\(request, "report"\)/);
+  assert.match(searchRoute, /requirePermission\(request, "report"\)/);
   assert.doesNotMatch(workRoute + searchRoute, /searchParams\.get\("brokerId"\)|payload\.brokerId/);
   for (const model of ["order", "client", "cashMovement", "settlement", "reconciliationException", "communicationThread", "crmTask", "serviceCase", "clientServiceRequest"]) {
     assert.ok(workService.includes(`prisma.${model}`), `work service should include ${model}`);

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.statementExport);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.statementExport);
     const { id } = await context.params;
     const url = new URL(request.url);
     const report = await buildClientStatement(actor, id, url.searchParams.get("from"), url.searchParams.get("to"));

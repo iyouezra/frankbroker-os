@@ -1,5 +1,6 @@
 import { prisma } from "../../../lib/prisma";
-import { resolveActor, resolveBrokerId } from "../../../lib/server-auth";
+import { requirePermission, resolveActor } from "../../../lib/server-auth";
+import { hasPermission } from "../../../lib/frank";
 import { toNum } from "../../../lib/money";
 import { apiError } from "../../../lib/api";
 import { resolveTenantContext } from "../../../lib/tenant-capabilities";
@@ -9,7 +10,28 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const brokerId = resolveBrokerId(request);
+    const actor = await resolveActor(request);
+    const { brokerId } = actor;
+    if (actor.role === "access_admin") {
+      const broker = await prisma.broker.findUnique({ where: { id: brokerId }, include: { settings: true } });
+      if (!broker) return Response.json({ error: "Tenant not found." }, { status: 404 });
+      return Response.json({
+        tenant: {
+          id: broker.id,
+          tradingName: broker.settings?.tradingName ?? broker.name,
+          licenseNumber: broker.licenseNumber,
+          primaryColor: broker.settings?.primaryColor ?? "#0C8189",
+          currentRole: actor.role,
+          availableRoles: [actor.role],
+          modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: false },
+        },
+        instruments: [],
+      });
+    }
+    if (actor.role === "super_admin") {
+      return Response.json({ error: "Broker tenant access is required." }, { status: 403 });
+    }
+    if (!hasPermission(actor.role, "report")) return Response.json({ error: "This role is not permitted to view tenant operations." }, { status: 403 });
     const [broker, regulatoryFeeSchedule, tenantContext] = await Promise.all([prisma.broker.findUnique({
       where: { id: brokerId },
       include: {
@@ -47,6 +69,7 @@ export async function GET(request: Request) {
         modules: tenantContext?.modules ?? { dealer_operations: true, investor_servicing: true, issuer_advisory: false },
         checklistPacks: tenantContext?.checklistPacks ?? [],
         availableRoles: tenantContext?.availableRoles ?? [],
+        currentRole: actor.role,
         controls: {
           brokerageFeePct: broker.settings ? toNum(broker.settings.brokerageFeePct) : 0.5,
           minimumFee: broker.settings ? toNum(broker.settings.minimumFee) : 0,
@@ -83,7 +106,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const actor = resolveActor(request);
+    const actor = await requirePermission(request, "adjust");
     if (actor.role !== "broker_admin") return Response.json({ error: "Broker administrator access is required." }, { status: 403 });
     const payload = await request.json() as { action?: string; version?: string; effectiveFrom?: string; rules?: Array<Record<string, unknown>> };
     if (payload.action !== "brokerage_fee_schedule") return Response.json({ error: "Unsupported tenant configuration action." }, { status: 400 });

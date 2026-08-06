@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = requirePermission(request, COMPLIANCE_PERMISSIONS.view);
+    const actor = await requirePermission(request, COMPLIANCE_PERMISSIONS.view);
     const { id } = await context.params;
     const report = await getComplianceReport(actor, id);
     if (report.reportType === "client_statement" && !hasPermission(actor.role, COMPLIANCE_PERMISSIONS.statementExport)) {

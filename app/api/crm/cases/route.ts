@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.caseView);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.caseView);
     const url = new URL(request.url);
     return Response.json(await listCases(actor, {
       page: boundedInteger(url.searchParams.get("page"), 1, 1, 100_000),
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 /** Opens a case from an existing conversation; the thread stays intact and linked. */
 export async function POST(request: Request) {
   try {
-    const actor = requirePermission(request, CRM_PERMISSIONS.caseManage);
+    const actor = await requirePermission(request, CRM_PERMISSIONS.caseManage);
     const payload = (await request.json()) as Record<string, unknown>;
     const threadId = String(payload.threadId ?? "");
     if (!threadId) return Response.json({ error: "A conversation is required to open a case." }, { status: 400 });
