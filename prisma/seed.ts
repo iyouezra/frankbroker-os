@@ -112,9 +112,33 @@ async function main() {
       update: { bytes: seededDocument },
     });
   }
+  // Resolve the canonical demo bank by its ownership key rather than assuming
+  // an older demo database still maps a hard-coded ID to the same investor.
+  const investorCbeBank = await prisma.linkedBankAccount.upsert({
+    where: {
+      clientId_bankName_accountNumber: {
+        clientId: "cli_investor_demo",
+        bankName: "Commercial Bank of Ethiopia",
+        accountNumber: "100057894108",
+      },
+    },
+    create: {
+      id: "BANK-SELAM-CBE-DEMO",
+      brokerId: "brk_abyssinia",
+      clientId: "cli_investor_demo",
+      bankName: "Commercial Bank of Ethiopia",
+      accountNumber: "100057894108",
+      accountHolderName: "Selam Mekonnen",
+      source: "investor_portal",
+      status: "approved",
+      reviewedBy: "usr_compliance",
+      reviewedAt: new Date("2026-07-14T09:00:00Z"),
+    },
+    update: {},
+  });
+
   await prisma.linkedBankAccount.createMany({
     data: [
-      { id: "BANK-INVESTOR-CBE", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057894108", accountHolderName: "Selam Mekonnen", source: "investor_portal", status: "approved", reviewedBy: "usr_compliance", reviewedAt: new Date("2026-07-14T09:00:00Z") },
       { id: "BANK-INVESTOR-AWASH", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", bankName: "Awash Bank", accountNumber: "0132098765432", accountHolderName: "Selam Mekonnen", source: "investor_portal", status: "approved", reviewedBy: "usr_compliance", reviewedAt: new Date("2026-07-14T09:05:00Z") },
       { id: "BANK-PENDING-CBE", brokerId: "brk_abyssinia", clientId: "cli_pending_demo", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057890077", accountHolderName: "Hana Tesfaye", source: "in_person", status: "pending_review" },
       { id: "BANK-PENDING-READY-CBE", brokerId: "brk_abyssinia", clientId: "cli_pending_ready", bankName: "Commercial Bank of Ethiopia", accountNumber: "100057890082", accountHolderName: "Rahel Desta", source: "digital", status: "approved", reviewedBy: "usr_compliance", reviewedAt: new Date("2026-07-16T09:12:00Z") },
@@ -169,7 +193,7 @@ async function main() {
   await prisma.cashMovement.createMany({
     data: [
       { id: "MOV-DEMO-DEP-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-FUND-001", movementType: "deposit", amount: 15_000, status: "pending_verification", bankReference: "CBE-FT-908231", proofReference: "mobile-transfer-receipt", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-16T08:42:00Z"), notes: "Awaiting independent bank evidence match" },
-      { id: "MOV-DEMO-WDR-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", linkedBankAccountId: "BANK-INVESTOR-CBE", submissionReference: "INV-DEMO-WITHDRAW-001", movementType: "withdrawal", amount: 25_000, status: "completed", destinationBankName: "Commercial Bank of Ethiopia", destinationAccountName: "Selam Mekonnen", destinationAccountMasked: "•••••• 894108", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-12T07:30:00Z"), reviewedAt: new Date("2026-07-12T08:15:00Z"), completedAt: new Date("2026-07-12T11:20:00Z") },
+      { id: "MOV-DEMO-WDR-001", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", linkedBankAccountId: investorCbeBank.id, submissionReference: "INV-DEMO-WITHDRAW-001", movementType: "withdrawal", amount: 25_000, status: "completed", destinationBankName: "Commercial Bank of Ethiopia", destinationAccountName: "Selam Mekonnen", destinationAccountMasked: "•••••• 894108", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-12T07:30:00Z"), reviewedAt: new Date("2026-07-12T08:15:00Z"), completedAt: new Date("2026-07-12T11:20:00Z") },
       { id: "MOV-DEMO-DEP-000", brokerId: "brk_abyssinia", clientId: "cli_investor_demo", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", submissionReference: "INV-DEMO-FUND-000", movementType: "deposit", amount: 160_869.84, status: "completed", bankReference: "CBE-FT-612704", proofReference: "bank-transfer-receipt", requestedByChannel: "investor_portal", submittedAt: new Date("2026-07-03T06:45:00Z"), reviewedAt: new Date("2026-07-03T08:10:00Z"), completedAt: new Date("2026-07-03T09:05:00Z") },
     ],
     skipDuplicates: true,
