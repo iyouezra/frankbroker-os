@@ -140,10 +140,9 @@ export const workflowPermissions: Record<Role, string[]> = {
 };
 
 /**
- * Broker commission rate applied to gross consideration. Shared by the
- * display-only {@link calculateOrderAmounts} here and the authoritative
- * Decimal `computeAmounts` in `lib/money.ts` so estimates never drift from
- * what is stored. TODO(Tier 2): move to a configurable per-broker FeeSchedule.
+ * Default commission used only when no versioned broker fee rule is supplied.
+ * Shared by the display estimate and Decimal money helpers so their fallback
+ * calculations stay aligned.
  */
 export const FEE_RATE = 0.005;
 
