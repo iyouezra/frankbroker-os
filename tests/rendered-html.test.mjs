@@ -44,6 +44,10 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(app, /Pre-trade validation/);
   assert.match(app, /PRINTABLE CONTRACT NOTE/);
   assert.match(app, /Upload trade confirmations/);
+  assert.match(app, /Investor questions, requests and complaints\./);
+  assert.match(app, /Formal cases raised from client conversations\./);
+  assert.match(app, /Control client deposits and withdrawals\./);
+  assert.match(app, /Import external confirmations, and resolve cash or securities inconsistencies\./);
   assert.match(app, /Four-eyes control/);
   assert.match(app, /TELE/);
   assert.match(app, /controls\.allowedOrderTypes/);

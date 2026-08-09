@@ -163,7 +163,7 @@ export function ComplaintsPage({ role, focusId, onNotify, onOpenThread }: { role
   };
 
   return <>
-    <SectionHeader eyebrow="COMPLAINTS &amp; SERVICE CASES" title="Complaints" copy="Formal cases raised from investor conversations, with an owner, a target date, and a written outcome." />
+    <SectionHeader eyebrow="COMPLAINTS &amp; SERVICE CASES" title="Complaints" copy="Formal cases raised from client conversations." />
     <section className="metric-grid crm-metrics">
       <Metric label="Open cases" value={String(facets.open)} note="Not yet resolved" tone={facets.open ? "warning" : "success"} />
       <Metric label="Overdue" value={String(facets.overdue)} note="Past target resolution" tone={facets.overdue ? "danger" : "success"} />

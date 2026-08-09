@@ -67,7 +67,7 @@ export function CrmInboxPage({
     <SectionHeader
       eyebrow="CLIENT CONVERSATIONS"
       title={clientName ? `Conversations · ${clientName}` : "Conversations"}
-      copy="Investor questions, requests, and complaints in one queue - with internal notes your team can see but investors cannot."
+      copy="Investor questions, requests and complaints."
       action={hasPermission(role, CRM_PERMISSIONS.create) ? <button className="btn primary" onClick={onNewThread}>+ New conversation</button> : undefined}
     />
     <section className="metric-grid crm-metrics">
