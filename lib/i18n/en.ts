@@ -196,7 +196,6 @@ export const en = {
   "onboarding.emailError": "Enter a valid email address.",
   "onboarding.emailHint": "We’ll use this for confirmations and account notices.",
   "onboarding.demoOnly": "Demo only",
-  "onboarding.demoOnlyNote": "This creates a new applicant record. It does not change Selam or Blue Nile.",
   "onboarding.continue": "Continue",
 
   // Onboarding — identity, tax and documents

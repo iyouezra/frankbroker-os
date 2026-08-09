@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import styles from "../../../app/investor/investor.module.css";
 import { BrandSelect } from "../../shared/brand-select";
+import { LanguageSwitcher } from "../shared/language-switcher";
 import {
   Button,
   Card,
@@ -51,6 +52,7 @@ export function ProfileScreen({ notify, name, profile, accountNumber, orders, re
     <ScreenHeader title={t("nav.profile")} />
     <Card className={styles.profileCard}><span>{initials}</span><div><b>{name}</b><small>{t("profile.accountLine", { status: profile?.kycStatus ?? "pending" })}</small></div><em>{profile?.proofOfAddressStatus ?? t("profile.demoChecked")}</em></Card>
     <Card className={styles.complianceCard}><div className={styles.cardHeader}><h2>{t("profile.accountRecords")}</h2><span className={styles.badge}>{termsCurrent ? t("profile.termsVersion", { version: profile?.termsAcceptedVersion ?? "" }) : t("profile.termsPending")}</span></div><dl><div><dt>{t("onboarding.accountNumber")}</dt><dd>{accountNumber ?? t("profile.pendingActivation")}</dd></div><button className={styles.recordLink} onClick={() => setAgreementOpen(true)}><span><dt>{t("profile.brokerageAgreement")}</dt><small>{t(termsCurrent ? "profile.accepted" : "profile.reviewRequired")}</small></span><dd>{legalDocument?.title ?? t("profile.brokerageTerms")} <Icon name="chevron" size={14} /></dd></button><button className={styles.recordLink} onClick={() => setKycOpen(true)}><span><dt>{t("profile.kycReview")}</dt><small>{profile?.kycStatus?.replaceAll("_", " ")}</small></span><dd>{profile?.kycReviewDueAt ? new Date(profile.kycReviewDueAt).toLocaleDateString("en-GB") : t("profile.viewDocuments")} <Icon name="chevron" size={14} /></dd></button><div><dt>{t("onboarding.fieldAddressEvidence")}</dt><dd>{profile?.proofOfAddressStatus ?? t("profile.pending")}</dd></div></dl></Card>
+    <LanguageSwitcher variant="row" />
     <Card className={styles.menuCard}>
       <button onClick={onOpenSupport}><span>{t("profile.messagesSupport")}</span>{supportUnread > 0 && <em className={styles.menuBadge}>{supportUnread}</em>}<Icon name="chevron" size={18} /></button>
       <button onClick={() => setLinkedBanksOpen(true)}><span>{t("profile.linkedBanks")}</span><Icon name="chevron" size={18} /></button>

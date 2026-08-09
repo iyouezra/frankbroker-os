@@ -779,7 +779,7 @@
 .languageOptions button:hover { color: var(--investor-teal-700); }
 .languageOptions button:focus-visible { outline: 3px solid rgba(12,129,137,.25); outline-offset: 2px; }
 .languageOptions .languageActive { background: var(--investor-teal-800); color: white; }
-.languageRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 13px 15px; border: 1px solid var(--investor-ink-200); border-radius: 15px; background: white; }
+.languageRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; padding: 13px 15px; border: 1px solid var(--investor-ink-200); border-radius: 15px; background: white; }
 .languageRowLabel { color: var(--investor-ink-900); font-size: 12px; font-weight: 700; }
 
 /* --- Ethiopic (Ge'ez) typography ----------------------------------------- */

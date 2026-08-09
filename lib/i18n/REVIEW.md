@@ -21,7 +21,7 @@ place. Nothing breaks.
   left-hand desktop story panel (`story.badge`, `story.headline`,
   `story.welcomeFallback`, `story.cta`, `story.risk`), the "Platform demo" / 
   "PLATFORM DEMO" labels (`entry.brand`), and the "Demo only" onboarding card
-  (`onboarding.demoOnly`, `onboarding.demoOnlyNote`) are deliberately English —
+  (`onboarding.demoOnly`) is deliberately English —
   they frame the demo rather than being product UI a real investor uses. These
   keys are simply **absent from `am.ts`** so the English-fallback layer renders
   them; the English source still lives in `en.ts`. Do not re-add them to `am.ts`.

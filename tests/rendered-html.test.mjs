@@ -64,6 +64,9 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(investorApp, /Demo journey/);
   assert.match(investorApp, /Use an existing account/);
   assert.match(investorApp, /Open a new account/);
+  assert.match(investorApp, /<LanguageSwitcher variant="row" \/>/);
+  assert.doesNotMatch(investorApp, /onboarding\.demoOnlyNote/);
+  assert.doesNotMatch(investorApp, /It does not change Selam or Blue Nile/);
   assert.match(investorApp, /Restricted access/);
   assert.match(investorApp, /Approval required/);
   assert.match(investorApp, /Verify and continue/);
