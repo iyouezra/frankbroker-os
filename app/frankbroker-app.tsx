@@ -125,6 +125,7 @@ export default function FrankBrokerApp() {
   const [bellOpen, setBellOpen] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
+  const [currentUserName, setCurrentUserName] = useState("");
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
   const [orderFocus, setOrderFocus] = useState<OrderFocus | null>(null);
   // A dashboard metric card can deep-link into the order log at a status tab.
@@ -161,6 +162,7 @@ export default function FrankBrokerApp() {
 
   const changeTenant = (nextTenantId: string) => {
     const next = demoTenants.find((item) => item.id === nextTenantId);
+    setCurrentUserName("");
     setDemoBrokerTenantId(nextTenantId);
     setTenantId(nextTenantId);
     setDrawer(null); setQuery(""); setOrderFocus(null); setClientsFocus(null); setCrmFocus(null);
@@ -211,11 +213,12 @@ export default function FrankBrokerApp() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const brokerHeaders = { "x-frank-tenant-id": tenantId, "x-frank-demo-role": role };
     void Promise.all([
-      fetch("/api/clients", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
-      fetch("/api/reconciliation", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
-      fetch("/api/tenant", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
-      fetch("/api/audit", { signal: controller.signal, headers: { "x-frank-tenant-id": tenantId } }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/clients", { signal: controller.signal, headers: brokerHeaders }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/reconciliation", { signal: controller.signal, headers: brokerHeaders }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/tenant", { signal: controller.signal, headers: brokerHeaders }).then((response) => response.ok ? response.json() : Promise.reject()),
+      fetch("/api/audit", { signal: controller.signal, headers: brokerHeaders }).then((response) => response.ok ? response.json() : Promise.reject()),
     ]).then(([clientResult, reconResult, tenantResult, auditResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, TenantApiResult, { events?: AuditEntry[] }]) => {
       if (clientResult.clients) {
         setClients(clientResult.clients);
@@ -233,6 +236,7 @@ export default function FrankBrokerApp() {
       setModules({ ...fallbackModules, ...(tenantResult.tenant?.modules ?? {}) });
       setBusinessType(tenantResult.tenant?.profile?.businessType ?? "securities_dealer");
       if (tenantResult.tenant?.availableRoles?.length) setAvailableRoles(tenantResult.tenant.availableRoles);
+      if (tenantResult.tenant?.currentUser?.fullName) setCurrentUserName(tenantResult.tenant.currentUser.fullName);
       if (tenantResult.tenant?.tradingName) setTenantInfo({ name: tenantResult.tenant.tradingName, license: tenantResult.tenant.licenseNumber ?? "", primaryColor: tenantResult.tenant.primaryColor ?? "#0C8189" });
 
       if (tenantResult.instruments) {
@@ -260,7 +264,7 @@ export default function FrankBrokerApp() {
       // The synthetic fallback keeps the market-validation demo usable offline.
     });
     return () => controller.abort();
-  }, [tenantId]);
+  }, [role, tenantId]);
 
   const selected = orderDetails[selectedId] ?? orders.find((order) => order.id === selectedId) ?? orders[0];
 
@@ -360,6 +364,7 @@ export default function FrankBrokerApp() {
   }, [role]);
   // If the active role can't see the current view, fall back to the dashboard.
   const changeRole = (nextRole: Role) => {
+    setCurrentUserName("");
     setRole(nextRole);
     if (nextRole === "access_admin") { setView("users"); return; }
     const current = navItems.find((item) => item.id === view);
@@ -879,7 +884,7 @@ export default function FrankBrokerApp() {
         </header>
 
         <main>
-          {view === "dashboard" && (modules.dealer_operations ? <Dashboard orders={orders} auditEntries={auditEntries} queue={workItems} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} onOpenWork={(item) => navigateToTarget(item.target)} onOpenStatus={(status) => { setOrdersStatusFocus(status); setOrderFocus(null); setQuery(""); setView("orders"); setDrawer(null); }} /> : <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />)}
+          {view === "dashboard" && (modules.dealer_operations ? <Dashboard userName={currentUserName} orders={orders} auditEntries={auditEntries} queue={workItems} settlementCycle={controls.settlementCycle} manualTradeCapture={features.manualTradeCapture} onViewOrders={() => setView("orders")} onNewOrder={openNewOrder} onSettle={() => setView("settlement")} onOpenWork={(item) => navigateToTarget(item.target)} onOpenStatus={(status) => { setOrdersStatusFocus(status); setOrderFocus(null); setQuery(""); setView("orders"); setDrawer(null); }} /> : <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />)}
           {view === "performance" && <PerformancePage orders={orders} clients={clients} period={period} setPeriod={setPeriod} onOpen={openDetail} />}
           {view === "market" && <MarketWatchPage role={role} orders={orders} onOpenOrder={openDetail} onViewOrders={(focus) => { setOrderFocus(focus); setQuery(""); setView("orders"); setDrawer(null); }} />}
           {view === "orders" && <OrdersPage orders={orders} query={query} role={role} refreshKey={orderRefreshKey} focus={orderFocus} initialStatus={ordersStatusFocus} onInitialStatusConsumed={() => setOrdersStatusFocus(null)} onClearFocus={() => setOrderFocus(null)} onOpen={openDetail} onNewOrder={openNewOrder} />}

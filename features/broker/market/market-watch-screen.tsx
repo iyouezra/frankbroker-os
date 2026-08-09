@@ -43,11 +43,11 @@ export function MarketWatchPage({ role, orders, onOpenOrder, onViewOrders }: {
   const types = [...new Set((data?.instruments ?? []).map((item) => item.instrumentType))];
   const isDemoFeed = data?.providerMode === "development_mock";
 
-  if (loading && !data) return <><SectionHeader eyebrow="ESX MARKET DATA" title="Market Watch" copy="Loading permitted instruments and current market state." /><div className="market-loading"><span /><span /><span /></div></>;
-  if (error && !data) return <><SectionHeader eyebrow="ESX MARKET DATA" title="Market Watch" copy="Live market visibility for broker operations." /><div className="panel market-unavailable"><b>Market data unavailable</b><p>{error}</p><button className="btn secondary" onClick={retry}>Retry</button></div></>;
+  if (loading && !data) return <><SectionHeader eyebrow="ESX MARKET DATA" title="Market Watch" copy="Explore the market and connect quotes to existing client orders." /><div className="market-loading"><span /><span /><span /></div></>;
+  if (error && !data) return <><SectionHeader eyebrow="ESX MARKET DATA" title="Market Watch" copy="Explore the market and connect quotes to existing client orders." /><div className="panel market-unavailable"><b>Market data unavailable</b><p>{error}</p><button className="btn secondary" onClick={retry}>Retry</button></div></>;
 
   return <>
-    <SectionHeader eyebrow={isDemoFeed ? "SIMULATED ESX MARKET DATA" : "ESX MARKET DATA"} title="Market Watch" copy={isDemoFeed ? "Explore a realistic market session and connect quotes to existing client orders." : "Live quote context connected to existing client orders. No orders are created from this page."} action={refreshing ? <span className="market-refreshing">Refreshing…</span> : undefined} />
+    <SectionHeader eyebrow={isDemoFeed ? "SIMULATED ESX MARKET DATA" : "ESX MARKET DATA"} title="Market Watch" copy="Explore the market and connect quotes to existing client orders." action={refreshing ? <span className="market-refreshing">Refreshing…</span> : undefined} />
     {isDemoFeed && <div className="market-demo-notice"><b>DEMO MARKET FEED</b><span>Prices, activity and order-book depth are simulated for the platform demonstration. They are not live ESX data and must not be used for trading decisions.</span></div>}
     {data && <MarketStatus summary={data.summary} providerMode={data.providerMode} staleAfterMs={data.staleAfterMs} />}
     {error && <div className="market-warning"><b>Refresh failed.</b> Last successful market data remains visible. {error}</div>}

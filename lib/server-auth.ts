@@ -8,6 +8,7 @@ import { isInsecureDemoMode } from "./deployment-mode";
 export type Actor = {
   id: string;
   email: string;
+  fullName?: string;
   role: Role;
   brokerId: string;
 };
@@ -35,33 +36,33 @@ const DEFAULT_SESSION_SECONDS = 15 * 60;
 const MAX_SESSION_SECONDS = 60 * 60;
 
 const defaultDemoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
-  access_admin: { id: "usr_access_admin", email: "access.admin@frankbroker.et" },
-  broker_admin: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et" },
-  trader: { id: "usr_trader", email: "dawit@frankbroker.et" },
-  operations: { id: "usr_operations", email: "hana@frankbroker.et" },
-  compliance: { id: "usr_compliance", email: "liya@frankbroker.et" },
-  settlement: { id: "usr_settlement", email: "rahel@frankbroker.et" },
-  relationship_officer: { id: "usr_relationship", email: "kalkidan@frankbroker.et" },
-  service_officer: { id: "usr_service", email: "bethel@frankbroker.et" },
-  management: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et" },
-  advisory_lead: { id: "usr_advisory_lead", email: "lead@addiscapital.example" },
-  advisory_analyst: { id: "usr_advisory_analyst", email: "analyst@addiscapital.example" },
-  super_admin: { id: "usr_platform_admin", email: "platform.admin@frankmoney.et" },
+  access_admin: { id: "usr_access_admin", email: "access.admin@frankbroker.et", fullName: "Sara Alemayehu" },
+  broker_admin: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et", fullName: "Mekdes Tadesse" },
+  trader: { id: "usr_trader", email: "dawit@frankbroker.et", fullName: "Dawit Alemu" },
+  operations: { id: "usr_operations", email: "hana@frankbroker.et", fullName: "Hana Kebede" },
+  compliance: { id: "usr_compliance", email: "liya@frankbroker.et", fullName: "Liya Girma" },
+  settlement: { id: "usr_settlement", email: "rahel@frankbroker.et", fullName: "Rahel Getachew" },
+  relationship_officer: { id: "usr_relationship", email: "kalkidan@frankbroker.et", fullName: "Kalkidan Alemu" },
+  service_officer: { id: "usr_service", email: "bethel@frankbroker.et", fullName: "Bethel Tesfaye" },
+  management: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et", fullName: "Mekdes Tadesse" },
+  advisory_lead: { id: "usr_advisory_lead", email: "lead@addiscapital.example", fullName: "Saron Desta" },
+  advisory_analyst: { id: "usr_advisory_analyst", email: "analyst@addiscapital.example", fullName: "Nahom Bekele" },
+  super_admin: { id: "usr_platform_admin", email: "platform.admin@frankmoney.et", fullName: "Frank" },
 };
 
 const tenantDemoActors: Record<string, Partial<Record<Role, Omit<Actor, "role" | "brokerId">>>> = {
   brk_blue_nile: {
-    broker_admin: { id: "usr_blue_tenant_admin", email: "tenant.admin@addiscapital.example" },
-    management: { id: "usr_blue_tenant_admin", email: "tenant.admin@addiscapital.example" },
-    advisory_lead: { id: "usr_advisory_lead", email: "lead@addiscapital.example" },
-    advisory_analyst: { id: "usr_advisory_analyst", email: "analyst@addiscapital.example" },
+    broker_admin: { id: "usr_blue_tenant_admin", email: "tenant.admin@addiscapital.example", fullName: "Mimi Solomon" },
+    management: { id: "usr_blue_tenant_admin", email: "tenant.admin@addiscapital.example", fullName: "Mimi Solomon" },
+    advisory_lead: { id: "usr_advisory_lead", email: "lead@addiscapital.example", fullName: "Saron Desta" },
+    advisory_analyst: { id: "usr_advisory_analyst", email: "analyst@addiscapital.example", fullName: "Nahom Bekele" },
   },
   brk_sheba: {
-    broker_admin: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example" },
-    compliance: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example" },
-    management: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example" },
-    advisory_lead: { id: "usr_sheba_advisory_lead", email: "lead@sheba.example" },
-    advisory_analyst: { id: "usr_sheba_advisory_analyst", email: "analyst@sheba.example" },
+    broker_admin: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example", fullName: "Eden Girma" },
+    compliance: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example", fullName: "Eden Girma" },
+    management: { id: "usr_sheba_tenant_admin", email: "tenant.admin@sheba.example", fullName: "Eden Girma" },
+    advisory_lead: { id: "usr_sheba_advisory_lead", email: "lead@sheba.example", fullName: "Sheba Advisory Lead" },
+    advisory_analyst: { id: "usr_sheba_advisory_analyst", email: "analyst@sheba.example", fullName: "Sheba Advisory Analyst" },
   },
 };
 
@@ -220,7 +221,7 @@ export async function resolveActor(request: Request): Promise<Actor> {
   if (session.kind !== "broker") unauthorized("A broker user session is required.");
   const user = await prisma.user.findFirst({
     where: { id: session.sub, status: "active" },
-    select: { id: true, email: true, role: true, brokerId: true },
+    select: { id: true, email: true, fullName: true, role: true, brokerId: true },
   });
   if (!user || !(user.role in workflowPermissions)) unauthorized("The user account is unavailable.");
   const role = user.role as Role;
