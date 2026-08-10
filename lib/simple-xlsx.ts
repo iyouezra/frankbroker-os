@@ -12,6 +12,9 @@ export type WorkbookSheet = {
   cells: WorkbookCell[];
   merges?: string[];
   widths?: number[];
+  rowHeights?: Record<number, number>;
+  hideGridLines?: boolean;
+  freeze?: { columns: number; rows: number; topLeftCell: string };
 };
 
 const xml = (value: string) => value
@@ -33,6 +36,9 @@ function cellXml(cell: WorkbookCell) {
 function sheetXml(sheet: WorkbookSheet) {
   const rows = new Map<number, WorkbookCell[]>();
   sheet.cells.forEach((cell) => rows.set(rowNumber(cell.ref), [...(rows.get(rowNumber(cell.ref)) ?? []), cell]));
+  const sheetViews = sheet.hideGridLines || sheet.freeze
+    ? `<sheetViews><sheetView${sheet.hideGridLines ? ' showGridLines="0"' : ""} workbookViewId="0">${sheet.freeze ? `<pane xSplit="${sheet.freeze.columns}" ySplit="${sheet.freeze.rows}" topLeftCell="${sheet.freeze.topLeftCell}" activePane="bottomRight" state="frozen"/>` : ""}</sheetView></sheetViews>`
+    : "";
   const cols = sheet.widths?.length
     ? `<cols>${sheet.widths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join("")}</cols>`
     : "";
@@ -40,7 +46,7 @@ function sheetXml(sheet: WorkbookSheet) {
     ? `<mergeCells count="${sheet.merges.length}">${sheet.merges.map((ref) => `<mergeCell ref="${ref}"/>`).join("")}</mergeCells>`
     : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols}<sheetData>${[...rows.entries()].sort(([a], [b]) => a - b).map(([row, cells]) => `<row r="${row}">${cells.map(cellXml).join("")}</row>`).join("")}</sheetData>${merges}</worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${sheetViews}${cols}<sheetData>${[...rows.entries()].sort(([a], [b]) => a - b).map(([row, cells]) => `<row r="${row}"${sheet.rowHeights?.[row] ? ` ht="${sheet.rowHeights[row]}" customHeight="1"` : ""}>${cells.map(cellXml).join("")}</row>`).join("")}</sheetData>${merges}</worksheet>`;
 }
 
 const contentTypes = (count: number) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -57,17 +63,32 @@ const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 
 const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="3"><font><sz val="11"/><name val="Aptos"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/></font><font><b/><sz val="11"/><name val="Aptos"/></font></fonts>
-  <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0C8189"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE9F4F4"/><bgColor indexed="64"/></patternFill></fill></fills>
-  <borders count="2"><border/><border><left style="thin"><color rgb="FFD6E3E3"/></left><right style="thin"><color rgb="FFD6E3E3"/></right><top style="thin"><color rgb="FFD6E3E3"/></top><bottom style="thin"><color rgb="FFD6E3E3"/></bottom></border></borders>
+  <fonts count="5"><font><sz val="11"/><name val="Aptos"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/></font><font><b/><sz val="11"/><name val="Aptos"/></font><font><i/><sz val="11"/><name val="Aptos"/></font><font><b/><i/><sz val="11"/><name val="Aptos"/></font></fonts>
+  <fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0C8189"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE9F4F4"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF000000"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills>
+  <borders count="3"><border/><border><left style="thin"><color rgb="FFD6E3E3"/></left><right style="thin"><color rgb="FFD6E3E3"/></right><top style="thin"><color rgb="FFD6E3E3"/></top><bottom style="thin"><color rgb="FFD6E3E3"/></bottom></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom></border></borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="6">
+  <cellXfs count="21">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
     <xf numFmtId="4" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right"/></xf>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
     <xf numFmtId="10" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="5" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="2" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="4" borderId="2" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="4" borderId="2" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="4" borderId="2" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="4" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="10" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="1" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="5" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
+    <xf numFmtId="1" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="1" fontId="0" fillId="0" borderId="2" xfId="0" applyNumberFormat="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="2" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;

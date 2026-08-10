@@ -5,13 +5,28 @@ const header = (ref: string, value: string): WorkbookCell => ({ ref, value, styl
 const label = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 2 });
 const text = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 4 });
 const number = (ref: string, value: number): WorkbookCell => ({ ref, value, style: 3 });
+const ecmaTitle = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 6 });
+const ecmaHeader = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 7 });
+const ecmaProfileHeader = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 8 });
+const ecmaProfileLabel = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 9 });
+const ecmaProfileValue = (ref: string, value: string | number): WorkbookCell => ({ ref, value, style: 10 });
+const ecmaNote = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 11 });
+const ecmaNumber = (ref: string, value: number): WorkbookCell => ({ ref, value, style: 12 });
+const ecmaPercent = (ref: string, formula: string, value: number): WorkbookCell => ({ ref, formula, value, style: 13 });
+const ecmaText = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 14 });
+const ecmaSummaryLabel = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 15 });
+const ecmaSummaryNumber = (ref: string, value: number, formula?: string): WorkbookCell => ({ ref, value, formula, style: 16 });
+const ecmaNotesBlock = (ref: string, value: string): WorkbookCell => ({ ref, value, style: 17 });
+const ecmaDatePart = (ref: string, value: number | ""): WorkbookCell => ({ ref, value, style: 18 });
+const ecmaSerial = (ref: string, value: number): WorkbookCell => ({ ref, value, style: 19 });
 
 function monthlyWorkbook(snapshot: MonthlyTransactionSnapshot) {
   const cells: WorkbookCell[] = [
-    header("B2", "Template - Monthly Transaction Report for Securities Brokers, Dealers and Investment Banks"),
-    header("B4", "S/N"), header("C4", "Transaction Category"), header("D4", "Domestic Investors (Birr)"), header("G4", "Foreign Investors (Birr)"), header("J4", "Total"),
-    header("D5", "Retail"), header("E5", "Institutional"), header("F5", "Sub-Total"), header("G5", "Retail"), header("H5", "Institutional"), header("I5", "Sub-Total"), header("J5", "Total (Birr)"), header("K5", "Domestic (%)"), header("L5", "Foreign (%)"),
-    label("B19", "Corporate Profile"), label("B20", "Reporting CMSP:"), text("D20", snapshot.brokerName), label("B21", "Reporting Month:"), text("D21", snapshot.month), label("B22", "Reporting Year:"), number("D22", snapshot.year),
+    ecmaTitle("B2", "MONTHLY TRANSACTION REPORT (SECURITIES BROKERS, SECURITIES DEALERS AND APPLICABLE INVESTMENT BANKS)"),
+    ecmaHeader("B4", "S/N"), ecmaHeader("C4", "Transaction Category"), ecmaHeader("D4", "Domestic Investors (Birr)"), ecmaHeader("G4", "Foreign Investors (Birr)"), ecmaHeader("J4", "Total"),
+    ecmaHeader("D5", "Retail"), ecmaHeader("E5", "Institutional"), ecmaHeader("F5", "Sub-Total"), ecmaHeader("G5", "Retail"), ecmaHeader("H5", "Institutional"), ecmaHeader("I5", "Sub-Total"), ecmaHeader("J5", "Total (Birr)"), ecmaHeader("K5", "Domestic (%)"), ecmaHeader("L5", "Foreign (%)"),
+    ecmaNote("B17", "Note: The CMSP's proprietary trades are to be recorded as part of Domestic Institutional transactions."),
+    ecmaProfileHeader("B19", "Corporate Profile"), ecmaProfileLabel("B20", "Reporting CMSP:"), ecmaProfileValue("D20", snapshot.brokerName), ecmaProfileLabel("B21", "Reporting Month:"), ecmaProfileValue("D21", snapshot.month), ecmaProfileLabel("B22", "Reporting Year:"), ecmaProfileValue("D22", snapshot.year),
   ];
   snapshot.rows.forEach((row, index) => {
     const r = index + 6;
@@ -19,24 +34,25 @@ function monthlyWorkbook(snapshot: MonthlyTransactionSnapshot) {
     const foreign = row.foreignRetail + row.foreignInstitutional;
     const total = domestic + foreign;
     cells.push(
-      number(`B${r}`, index + 1), text(`C${r}`, row.category),
-      number(`D${r}`, row.domesticRetail), number(`E${r}`, row.domesticInstitutional), { ref: `F${r}`, formula: `SUM(D${r}:E${r})`, value: domestic, style: 3 },
-      number(`G${r}`, row.foreignRetail), number(`H${r}`, row.foreignInstitutional), { ref: `I${r}`, formula: `SUM(G${r}:H${r})`, value: foreign, style: 3 },
-      { ref: `J${r}`, formula: `F${r}+I${r}`, value: total, style: 3 },
-      { ref: `K${r}`, formula: `IF(J${r}=0,0,F${r}/J${r})`, value: total ? domestic / total : 0, style: 5 },
-      { ref: `L${r}`, formula: `IF(J${r}=0,0,I${r}/J${r})`, value: total ? foreign / total : 0, style: 5 },
+      ecmaSerial(`B${r}`, index + 1), ecmaText(`C${r}`, row.category),
+      ecmaNumber(`D${r}`, row.domesticRetail), ecmaNumber(`E${r}`, row.domesticInstitutional), { ref: `F${r}`, formula: `SUM(D${r}:E${r})`, value: domestic, style: 12 },
+      ecmaNumber(`G${r}`, row.foreignRetail), ecmaNumber(`H${r}`, row.foreignInstitutional), { ref: `I${r}`, formula: `SUM(G${r}:H${r})`, value: foreign, style: 12 },
+      { ref: `J${r}`, formula: `F${r}+I${r}`, value: total, style: 12 },
+      ecmaPercent(`K${r}`, `IF(J${r}=0,0,F${r}/J${r})`, total ? domestic / total : 0),
+      ecmaPercent(`L${r}`, `IF(J${r}=0,0,I${r}/J${r})`, total ? foreign / total : 0),
     );
   });
-  return createXlsx([{ name: "Sheet1", cells, merges: ["B2:L2", "B4:B5", "C4:C5", "D4:F4", "G4:I4", "J4:L4", "B19:G19", "B20:C20", "D20:G20", "B21:C21", "D21:G21", "B22:C22", "D22:G22"], widths: [5, 5, 18, 18, 18, 18, 18, 18, 18, 18, 14, 14] }]);
+  return createXlsx([{ name: "Sheet1", cells, merges: ["B2:L2", "B4:B5", "C4:C5", "D4:F4", "G4:I4", "J4:L4", "B17:L17", "B19:G19", "B20:C20", "D20:G20", "B21:C21", "D21:G21", "B22:C22", "D22:G22"], widths: [5.57, 4.57, 15.86, 18.86, 18.86, 18.86, 18.86, 18.86, 18.86, 18.86, 13.57, 13.57], hideGridLines: true, freeze: { columns: 3, rows: 5, topLeftCell: "D6" } }]);
 }
 
-const splitDate = (value: string | null) => value ? [Number(value.slice(8, 10)), Number(value.slice(5, 7)), Number(value.slice(0, 4))] : ["", "", ""];
+const splitDate = (value: string | null): [number | "", number | "", number | ""] => value ? [Number(value.slice(8, 10)), Number(value.slice(5, 7)), Number(value.slice(0, 4))] : ["", "", ""];
 
 function complaintsWorkbook(snapshot: ComplaintsSnapshot) {
   const overview: WorkbookCell[] = [
-    header("B2", "Template - CMSPs Quarterly Complaints Management Report"),
-    label("B4", "Corporate Profile"), label("B5", "Reporting CMSP:"), text("D5", snapshot.brokerName), label("B6", "Type(s) of License(s)"), text("D6", "Securities Broker"), label("B7", "Reporting Quarter:"), text("D7", snapshot.quarter), label("B8", "Reporting Year:"), number("D8", snapshot.year),
-    label("B10", "Summary"),
+    ecmaTitle("B2", "COMPLAINTS MANAGEMENT REPORT (CAPITAL MARKET SERVICE PROVIDERS)"),
+    ecmaProfileHeader("B4", "Corporate Profile"), ecmaProfileLabel("B5", "Reporting CMSP:"), ecmaProfileValue("D5", snapshot.brokerName), ecmaProfileLabel("B6", "Type(s) of License(s)"), ecmaProfileValue("D6", snapshot.licenseTypes?.join(", ") || "Securities Broker"), ecmaProfileLabel("B7", "Reporting Quarter:"), ecmaProfileValue("D7", snapshot.quarter), ecmaProfileLabel("B8", "Reporting Year:"), ecmaProfileValue("D8", snapshot.year),
+    ecmaProfileHeader("B10", "Summary"),
+    ecmaNotesBlock("G4", "Notes:\n\n1. The report must be organized in chronological order, based on the date each complaint was received.\n\n2. When listing individuals' names, the first name should appear first, with the surname stated last.\n\n3. A \"Closed\" complaint is a complaint which falls outside the operational scope of the CMSP (e.g., matters related to an Issuer's activities or another regulated entity). Upon thorough review, the complainant has been duly informed that the CMSP does not have the authority to act on the matter, and where applicable, guidance has been provided on the appropriate channel for escalation or resolution. As a result, the complaint is closed within the CMSP's records."),
   ];
   const summaryRows: Array<[string, number]> = [
     ["No. of Complaints Brought Forward from Previous Quarter", snapshot.summary.broughtForward],
@@ -48,31 +64,33 @@ function complaintsWorkbook(snapshot: ComplaintsSnapshot) {
     ["No. of Complaints Closed During the Reporting Quarter", snapshot.summary.closed],
     ["Total No. of Pending Complaints as at the End of the Reporting Quarter", snapshot.summary.pending],
   ];
-  summaryRows.forEach(([description, value], index) => overview.push(number(`B${index + 11}`, index + 1), text(`C${index + 11}`, description), number(`E${index + 11}`, value)));
+  summaryRows.forEach(([description, value], index) => {
+    const row = index + 11;
+    const formula = row === 13 ? "E11+E12" : row === 18 ? "E13-SUM(E14:E17)" : undefined;
+    overview.push(ecmaSerial(`B${row}`, index + 1), ecmaSummaryLabel(`C${row}`, description), ecmaSummaryNumber(`E${row}`, value, formula));
+  });
 
   const report: WorkbookCell[] = [
-    header("B2", "Template - CMSPs Quarterly Complaints Management Report"),
-    header("B5", "S/N"), header("C5", "Complainant"), header("D5", "Category of Complainant (i.e., Retail or Institutional)"), header("E5", "Type (i.e., Brought Forward or New)"), header("F5", "Date Received"), header("I5", "Details of the Complaint"), header("J5", "Status of Complaint (Resolved, Closed, Referred to SRO, Referred to ECMA, or Pending)"), header("K5", "Date Resolved/ Closed/ Referred"), header("N5", "Comment (e.g., reason for status and description of action taken)"),
-    header("F6", "Day"), header("G6", "Month"), header("H6", "Year"), header("K6", "Day"), header("L6", "Month"), header("M6", "Year"),
+    ecmaTitle("B2", "COMPLAINTS MANAGEMENT REPORT (CAPITAL MARKET SERVICE PROVIDERS)"),
+    ecmaHeader("B5", "S/N"), ecmaHeader("C5", "Complainant"), ecmaHeader("D5", "Category of Complainant\n(i.e., Retail or Institutional)"), ecmaHeader("E5", "Type\n(i.e., Brought Forward or New)"), ecmaHeader("F5", "Date Received"), ecmaHeader("I5", "Details of the Complaint"), ecmaHeader("J5", "Status of Complaint\n(Resolved, Closed, Referred to SRO, Referred to ECMA, or Pending)"), ecmaHeader("K5", "Date Resolved/ Closed/ Referred)"), ecmaHeader("N5", "Comment\n(e.g., reason for status and description of action taken)"),
+    ecmaHeader("F6", "Day"), ecmaHeader("G6", "Month"), ecmaHeader("H6", "Year"), ecmaHeader("K6", "Day"), ecmaHeader("L6", "Month"), ecmaHeader("M6", "Year"),
   ];
   const rowCount = Math.max(20, snapshot.complaints.length);
   for (let index = 0; index < rowCount; index += 1) {
     const r = index + 7;
     const item = snapshot.complaints[index];
-    report.push(number(`B${r}`, index + 1));
-    if (!item) continue;
-    const received = splitDate(item.dateReceived);
-    const statusDate = splitDate(item.statusDate);
+    const received = splitDate(item?.dateReceived ?? null);
+    const statusDate = splitDate(item?.statusDate ?? null);
     report.push(
-      text(`C${r}`, item.complainant), text(`D${r}`, item.complainantCategory), text(`E${r}`, item.type),
-      text(`F${r}`, String(received[0])), text(`G${r}`, String(received[1])), text(`H${r}`, String(received[2])),
-      text(`I${r}`, item.details), text(`J${r}`, item.status),
-      text(`K${r}`, String(statusDate[0])), text(`L${r}`, String(statusDate[1])), text(`M${r}`, String(statusDate[2])), text(`N${r}`, item.comment),
+      ecmaSerial(`B${r}`, index + 1), ecmaText(`C${r}`, item?.complainant ?? ""), ecmaText(`D${r}`, item?.complainantCategory ?? ""), ecmaText(`E${r}`, item?.type ?? ""),
+      ecmaDatePart(`F${r}`, received[0]), ecmaDatePart(`G${r}`, received[1]), ecmaDatePart(`H${r}`, received[2]),
+      ecmaText(`I${r}`, item?.details ?? ""), ecmaText(`J${r}`, item?.status ?? ""),
+      ecmaDatePart(`K${r}`, statusDate[0]), ecmaDatePart(`L${r}`, statusDate[1]), ecmaDatePart(`M${r}`, statusDate[2]), ecmaText(`N${r}`, item?.comment ?? ""),
     );
   }
   return createXlsx([
-    { name: "Overview", cells: overview, merges: ["B2:H2", "B4:E4", "B5:C5", "D5:E5", "B6:C6", "D6:E6", "B7:C7", "D7:E7", "B8:C8", "D8:E8", "B10:E10", ...Array.from({ length: 8 }, (_, index) => `C${index + 11}:D${index + 11}`)], widths: [5, 5, 18, 55, 14, 5, 18, 18] },
-    { name: "Report", cells: report, merges: ["B2:N2", "B5:B6", "C5:C6", "D5:D6", "E5:E6", "F5:H5", "I5:I6", "J5:J6", "K5:M5", "N5:N6"], widths: [5, 5, 24, 16, 14, 9, 9, 9, 27, 23, 9, 9, 9, 44] },
+    { name: "Overview", cells: overview, merges: ["B2:H2", "B4:E4", "B5:C5", "D5:E5", "B6:C6", "D6:E6", "B7:C7", "D7:E7", "B8:C8", "D8:E8", "B10:E10", "G4:I18", ...Array.from({ length: 8 }, (_, index) => `C${index + 11}:D${index + 11}`)], widths: [5.57, 4.57, 18, 54.86, 30.57, 4.71, 18.86, 18.86, 9.14], hideGridLines: true },
+    { name: "Report", cells: report, merges: ["B2:N2", "B5:B6", "C5:C6", "D5:D6", "E5:E6", "F5:H5", "I5:I6", "J5:J6", "K5:M5", "N5:N6", "B28:N28"], widths: [5.57, 4.57, 23.29, 14.29, 12, 8.14, 8.14, 8.14, 26, 21.43, 8.14, 8.14, 8.14, 44.14], rowHeights: { 5: 61.5, 6: 20.25 }, hideGridLines: true, freeze: { columns: 3, rows: 6, topLeftCell: "D7" } },
   ]);
 }
 

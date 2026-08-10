@@ -52,6 +52,7 @@ export type ComplaintsSnapshot = {
   kind: "quarterly_complaints";
   brokerName: string;
   licenseNumber: string;
+  licenseTypes?: string[];
   quarter: string;
   year: number;
   summary: {
@@ -116,10 +117,22 @@ export function serializeComplianceReport(row: ReportRow) {
 async function brokerProfile(actor: Actor) {
   const broker = await prisma.broker.findUnique({
     where: { id: actor.brokerId },
-    include: { settings: { select: { tradingName: true } } },
+    include: {
+      settings: { select: { tradingName: true } },
+      tenantProfile: { select: { businessType: true } },
+      tenantLicenses: { select: { regulator: true, licenseType: true, status: true } },
+    },
   });
   if (!broker) throw new Response("Broker tenant not found.", { status: 404 });
-  return { brokerName: broker.settings?.tradingName ?? broker.name, licenseNumber: broker.licenseNumber };
+  const labelLicense = (value: string) => value
+    .trim()
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const configuredTypes = broker.tenantLicenses
+    .filter((license) => license.regulator.trim().toUpperCase() === "ECMA" && license.status === "active")
+    .map((license) => labelLicense(license.licenseType));
+  const licenseTypes = [...new Set(configuredTypes.length ? configuredTypes : [labelLicense(broker.tenantProfile?.businessType ?? "securities_broker")])];
+  return { brokerName: broker.settings?.tradingName ?? broker.name, licenseNumber: broker.licenseNumber, licenseTypes };
 }
 
 function dateAtEndOfDay(date: Date) {
@@ -127,7 +140,8 @@ function dateAtEndOfDay(date: Date) {
 }
 
 async function monthlyTransactionSnapshot(actor: Actor, periodStart: Date, periodEnd: Date) {
-  const profile = await brokerProfile(actor);
+  const broker = await brokerProfile(actor);
+  const profile = { brokerName: broker.brokerName, licenseNumber: broker.licenseNumber };
   const trades = await prisma.trade.findMany({
     where: {
       tradeDate: { gte: periodStart, lte: periodEnd },

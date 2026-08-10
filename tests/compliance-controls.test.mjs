@@ -36,6 +36,7 @@ const complaintsSnapshot = {
   kind: "quarterly_complaints",
   brokerName: "Frank Demo Securities",
   licenseNumber: "ECMA-CMSP-001",
+  licenseTypes: ["Securities Dealer", "Investment Bank"],
   quarter: "Q3",
   year: 2026,
   summary: { broughtForward: 1, newComplaints: 1, totalUnderReview: 2, resolved: 1, referredSro: 0, referredEcma: 1, closed: 0, pending: 0 },
@@ -97,7 +98,11 @@ test("monthly transaction workbook preserves the prescribed table and profile ce
   const workbook = strFromU8(files["xl/workbook.xml"]);
   const sheet = strFromU8(files["xl/worksheets/sheet1.xml"]);
   assert.match(workbook, /sheet name="Sheet1"/);
-  assert.match(sheet, /Monthly Transaction Report/);
+  assert.match(sheet, /MONTHLY TRANSACTION REPORT \(SECURITIES BROKERS, SECURITIES DEALERS AND APPLICABLE INVESTMENT BANKS\)/);
+  assert.match(sheet, /proprietary trades are to be recorded as part of Domestic Institutional transactions/);
+  assert.match(sheet, /mergeCell ref="B17:L17"/);
+  assert.match(sheet, /showGridLines="0"/);
+  assert.match(sheet, /topLeftCell="D6"/);
   assert.match(sheet, /r="D20"/);
   assert.match(sheet, /Frank Demo Securities/);
   assert.match(sheet, /r="K6"/);
@@ -112,11 +117,16 @@ test("quarterly complaints workbook preserves the prescribed overview and report
   const report = strFromU8(files["xl/worksheets/sheet2.xml"]);
   assert.match(workbook, /sheet name="Overview"/);
   assert.match(workbook, /sheet name="Report"/);
-  assert.match(overview, /CMSPs Quarterly Complaints Management Report/);
+  assert.match(overview, /COMPLAINTS MANAGEMENT REPORT \(CAPITAL MARKET SERVICE PROVIDERS\)/);
+  assert.match(overview, /Securities Dealer, Investment Bank/);
+  assert.match(overview, /organized in chronological order/);
+  assert.match(overview, /<f>E11\+E12<\/f>/);
+  assert.match(overview, /<f>E13-SUM\(E14:E17\)<\/f>/);
   assert.match(overview, /r="E16"/);
   assert.match(report, /r="C7"/);
   assert.match(report, /Test Investor/);
   assert.match(report, /Referred to ECMA/);
+  assert.match(report, /topLeftCell="D7"/);
   assert.equal(complianceWorkbookName(complaintsSnapshot), "ecma-quarterly-complaints-2026-q3.xlsx");
 });
 
