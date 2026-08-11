@@ -598,7 +598,11 @@ export default function InvestorApp() {
       return false;
     }
     try {
-      const result = await postInvestor({ action: "cash_movement", ...input, submissionReference: crypto.randomUUID() });
+      const { proofFile, ...cashInput } = input;
+      const result = await postInvestor(
+        { action: "cash_movement", ...cashInput, submissionReference: crypto.randomUUID() },
+        proofFile ? [proofFile] : [],
+      );
       if (result.cashMovement) {
         setBootstrap((current) => current ? {
           ...current,

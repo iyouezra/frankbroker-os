@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       }),
       prisma.cashMovement.findMany({
         where: { brokerId: actor.brokerId },
-        include: { client: true, account: true, pooledBankAccount: true },
+        include: { client: true, account: true, pooledBankAccount: true, proof: { select: { originalName: true, mimeType: true, sizeBytes: true, uploadedAt: true } } },
         orderBy: { submittedAt: "desc" },
         take: 250,
       }),

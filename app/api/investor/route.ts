@@ -6,7 +6,7 @@ import { resolveTenantContext } from "../../../lib/tenant-capabilities";
 import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
-import { serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
+import { prepareCashMovementProof, serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
 import { confirmOtpChallenge, createOtpChallenge, OTP_DELIVERY_CHANNELS, otpDestinationHint, orderPayloadHash, type OtpDeliveryChannel } from "../../../lib/verification-service";
 import { sortInvestorActivity, type InvestorActivity } from "../../../lib/investor-activity";
 import {
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
           },
           consents: { orderBy: { acceptedAt: "desc" } },
           serviceRequests: { orderBy: { submittedAt: "desc" }, take: 20 },
-          cashMovements: { include: { pooledBankAccount: true }, orderBy: { submittedAt: "desc" }, take: 25 },
+          cashMovements: { include: { pooledBankAccount: true, proof: { select: { originalName: true, mimeType: true, sizeBytes: true, uploadedAt: true } } }, orderBy: { submittedAt: "desc" }, take: 25 },
           documents: { include: { content: { select: { documentId: true } } }, orderBy: { uploadedAt: "desc" } },
           linkedBankAccounts: { orderBy: { createdAt: "asc" } },
         },
@@ -360,6 +360,8 @@ export async function POST(request: Request) {
       if (!['deposit', 'withdrawal'].includes(movementType)) {
         return Response.json({ error: "Movement type must be deposit or withdrawal." }, { status: 400 });
       }
+      const receipt = formData?.get("attachment0");
+      const proof = receipt instanceof File && receipt.size > 0 ? await prepareCashMovementProof(receipt) : undefined;
       const movement = await submitInvestorCashMovement(brokerId, clientId, {
         pooledBankAccountId: String(payload.pooledBankAccountId ?? ""),
         movementType: movementType as "deposit" | "withdrawal",
@@ -372,6 +374,7 @@ export async function POST(request: Request) {
         destinationAccountMasked: String(payload.destinationAccountMasked ?? ""),
         linkedBankAccountId: String(payload.linkedBankAccountId ?? "") || undefined,
         notes: String(payload.notes ?? ""),
+        proof,
       });
       const account = await prisma.account.findUnique({ where: { id: movement.accountId } });
       return Response.json({

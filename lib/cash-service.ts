@@ -12,8 +12,15 @@ import {
 import { writeAudit } from "./oms/audit-service";
 import { writeNotification, OPS } from "./oms/notification-service";
 import { lockAccount, persistCashMutation } from "./oms/persistence";
+import { MAX_DOCUMENT_BYTES, matchesSignature, supportedMimeTypes } from "./onboarding-evidence";
 
 export type CashMovementType = "deposit" | "withdrawal";
+export type CashMovementProofInput = {
+  originalName: string;
+  mimeType: "application/pdf" | "image/png" | "image/jpeg";
+  sizeBytes: number;
+  bytes: Uint8Array;
+};
 export type CashMovementInput = {
   clientId: string;
   accountId?: string;
@@ -28,9 +35,16 @@ export type CashMovementInput = {
   destinationAccountMasked?: string;
   linkedBankAccountId?: string;
   notes?: string;
+  proof?: CashMovementProofInput;
 };
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
+const movementInclude = {
+  client: true,
+  account: true,
+  pooledBankAccount: true,
+  proof: { select: { originalName: true, mimeType: true, sizeBytes: true, uploadedAt: true } },
+} as const;
 
 const fail = (message: string, status: number) => Response.json({ error: message }, { status });
 
@@ -56,6 +70,7 @@ function assertInput(input: CashMovementInput) {
   if (input.movementType === "deposit" && !clean(input.bankReference, 120)) {
     throw fail("Enter the bank transfer or deposit-slip reference.", 400);
   }
+  if (input.proof && input.movementType !== "deposit") throw fail("Receipts can only be attached to deposits.", 400);
   if (input.movementType === "withdrawal") {
     if (!input.linkedBankAccountId && (!clean(input.destinationBankName, 120) || !clean(input.destinationAccountName, 160) || !clean(input.destinationAccountMasked, 32))) {
       throw fail("Destination bank, account name, and masked account number are required.", 400);
@@ -65,6 +80,21 @@ function assertInput(input: CashMovementInput) {
     }
   }
   return amount;
+}
+
+export async function prepareCashMovementProof(file: File): Promise<CashMovementProofInput> {
+  if (!supportedMimeTypes.has(file.type)) throw fail("Deposit receipts must be PDF, PNG, or JPG files.", 400);
+  if (file.size <= 0 || file.size > MAX_DOCUMENT_BYTES) throw fail("Deposit receipts must be no larger than 10 MB.", 400);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!matchesSignature(bytes, file.type)) throw fail("The deposit receipt content does not match its file type.", 400);
+  const originalName = file.name.replace(/[\r\n"]/g, "_").trim().slice(0, 240);
+  if (!originalName) throw fail("The deposit receipt needs a file name.", 400);
+  return {
+    originalName,
+    mimeType: file.type as CashMovementProofInput["mimeType"],
+    sizeBytes: bytes.byteLength,
+    bytes,
+  };
 }
 
 async function lockMovement(tx: Prisma.TransactionClient, id: string) {
@@ -98,6 +128,7 @@ export function serializeCashMovement(movement: {
   rejectionReason: string | null;
   failureReason: string | null;
   notes: string | null;
+  proof?: { originalName: string; mimeType: string; sizeBytes: number; uploadedAt: Date } | null;
   client?: { id: string; clientCode: string; fullName: string };
   account?: { id: string; accountNumber: string };
   pooledBankAccount?: { id: string; bankName: string; accountName: string; accountNumberMasked: string; purpose: string };
@@ -121,6 +152,12 @@ export function serializeCashMovement(movement: {
     rejectionReason: movement.rejectionReason,
     failureReason: movement.failureReason,
     notes: movement.notes,
+    proof: movement.proof ? {
+      name: movement.proof.originalName,
+      mimeType: movement.proof.mimeType,
+      sizeBytes: movement.proof.sizeBytes,
+      uploadedAt: movement.proof.uploadedAt.toISOString(),
+    } : null,
     client: movement.client ? { id: movement.client.id, code: movement.client.clientCode, name: movement.client.fullName } : undefined,
     account: movement.account ? { id: movement.account.id, number: movement.account.accountNumber } : undefined,
     pool: movement.pooledBankAccount ? {
@@ -146,7 +183,7 @@ export async function submitCashMovement(
   return prisma.$transaction(async (tx) => {
     const existing = await tx.cashMovement.findUnique({
       where: { brokerId_submissionReference: { brokerId: context.brokerId, submissionReference: input.submissionReference.trim() } },
-      include: { client: true, account: true, pooledBankAccount: true },
+      include: movementInclude,
     });
     if (existing) {
       if (existing.clientId === input.clientId && existing.movementType === input.movementType && existing.amount.eq(amount)) return existing;
@@ -210,7 +247,7 @@ export async function submitCashMovement(
         currency: account.currency,
         status: input.movementType === "deposit" ? "pending_verification" : "pending_approval",
         bankReference: clean(input.bankReference, 120),
-        proofReference: clean(input.proofReference, 180),
+        proofReference: input.proof?.originalName ?? clean(input.proofReference, 180),
         destinationBankName,
         destinationAccountName,
         destinationAccountMasked,
@@ -218,8 +255,14 @@ export async function submitCashMovement(
         requestedByChannel: context.channel,
         submittedByUserId: context.actorId,
         notes: clean(input.notes, 500),
+        proof: input.proof ? { create: {
+          originalName: input.proof.originalName,
+          mimeType: input.proof.mimeType,
+          sizeBytes: input.proof.sizeBytes,
+          bytes: Buffer.from(input.proof.bytes),
+        } } : undefined,
       },
-      include: { client: true, account: true, pooledBankAccount: true },
+      include: movementInclude,
     });
 
     if (input.movementType === "withdrawal") {
@@ -276,7 +319,7 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
     await lockMovement(tx, id);
     const movement = await tx.cashMovement.findFirst({
       where: { id, brokerId: actor.brokerId },
-      include: { client: true, account: true, pooledBankAccount: true, submittedBy: true },
+      include: { ...movementInclude, submittedBy: true },
     });
     if (!movement) throw fail("Cash movement not found for this tenant.", 404);
     const settings = await tx.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } });
@@ -332,7 +375,7 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
       const updated = await tx.cashMovement.update({ where: { id }, data: {
         status: "completed", bankReference, reviewedByUserId: actor.id, completedByUserId: actor.id,
         reviewedAt: now, completedAt: now,
-      }, include: { client: true, account: true, pooledBankAccount: true } });
+      }, include: movementInclude });
       await writeAudit(tx, {
         brokerId: actor.brokerId, actorId: actor.id, action: "DEPOSIT_VERIFIED_AND_CREDITED",
         entityType: "cash_movement", entityId: id, summary: `${amount.toFixed(2)} ${movement.currency} credited after bank verification`,
@@ -351,7 +394,7 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
       if (movement.movementType !== "withdrawal" || movement.status !== "pending_approval") {
         throw fail("Only a pending withdrawal can be approved.", 409);
       }
-      const updated = await tx.cashMovement.update({ where: { id }, data: { status: "approved", reviewedByUserId: actor.id, reviewedAt: now }, include: { client: true, account: true, pooledBankAccount: true } });
+      const updated = await tx.cashMovement.update({ where: { id }, data: { status: "approved", reviewedByUserId: actor.id, reviewedAt: now }, include: movementInclude });
       await writeAudit(tx, { brokerId: actor.brokerId, actorId: actor.id, action: "WITHDRAWAL_APPROVED", entityType: "cash_movement", entityId: id, summary: `${amount.toFixed(2)} ${movement.currency} withdrawal approved for payment`, previousValue: { status: movement.status }, newValue: { status: "approved" }, reason });
       await writeNotification(tx, { scope: "broker", brokerId: actor.brokerId, roles: OPS, category: "account", severity: "warning", title: "Withdrawal ready for payment", body: `${movement.client.fullName} · ${amount.toFixed(2)} ${movement.currency}`, entityType: "cash_movement", entityId: id, link: "/?view=cash" });
       return updated;
@@ -391,7 +434,7 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
         entryType: "withdrawal_debit", amount: amount.negated(), balanceImpact: amount.negated(), runningBalance: nextPoolBalance,
         bankReference, createdBy: actor.id, notes: reason,
       } });
-      const updated = await tx.cashMovement.update({ where: { id }, data: { status: "completed", completedByUserId: actor.id, completedAt: now, bankReference }, include: { client: true, account: true, pooledBankAccount: true } });
+      const updated = await tx.cashMovement.update({ where: { id }, data: { status: "completed", completedByUserId: actor.id, completedAt: now, bankReference }, include: movementInclude });
       await writeAudit(tx, {
         brokerId: actor.brokerId, actorId: actor.id, action: "WITHDRAWAL_PAID_AND_DEBITED", entityType: "cash_movement", entityId: id,
         summary: `${amount.toFixed(2)} ${movement.currency} withdrawal paid and debited`,
@@ -424,7 +467,7 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
       const updated = await tx.cashMovement.update({ where: { id }, data: {
         status, reviewedByUserId: actor.id, reviewedAt: now,
         ...(action === "reject" ? { rejectionReason: reason } : { failureReason: reason, completedByUserId: actor.id, completedAt: now }),
-      }, include: { client: true, account: true, pooledBankAccount: true } });
+      }, include: movementInclude });
       await writeAudit(tx, { brokerId: actor.brokerId, actorId: actor.id, action: action === "reject" ? `${movement.movementType.toUpperCase()}_REJECTED` : "WITHDRAWAL_PAYMENT_FAILED", entityType: "cash_movement", entityId: id, summary: `${movement.movementType} instruction marked ${status}`, previousValue: { status: movement.status }, newValue: { status }, reason });
       await writeNotification(tx, { scope: "investor", brokerId: actor.brokerId, clientId: movement.clientId, category: "account", severity: action === "fail" ? "critical" : "warning", title: `${movement.movementType === "deposit" ? "Deposit" : "Withdrawal"} ${status}`, body: reason, entityType: "cash_movement", entityId: id });
       return updated;

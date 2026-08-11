@@ -50,6 +50,7 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
         bankReference,
         proofReference,
         linkedBankAccountId: selectedDestination?.id,
+        proofFile: receiptFile ?? undefined,
       });
       if (saved) onClose();
     } finally { setBusy(false); }

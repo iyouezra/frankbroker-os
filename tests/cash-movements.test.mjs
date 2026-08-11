@@ -6,6 +6,8 @@ const service = await readFile(new URL("../lib/cash-service.ts", import.meta.url
 const clientMoneyService = await readFile(new URL("../lib/client-money-service.ts", import.meta.url), "utf8");
 const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
 const investorRoute = await readFile(new URL("../app/api/investor/route.ts", import.meta.url), "utf8");
+const cashScreen = await readFile(new URL("../features/broker/cash/cash-operations-screen.tsx", import.meta.url), "utf8");
+const proofRoute = await readFile(new URL("../app/api/cash-movements/[id]/proof/route.ts", import.meta.url), "utf8");
 
 test("cash movement workflow is serializable, maker-checker controlled, and evidence gated", () => {
   assert.match(service, /TransactionIsolationLevel\.Serializable/);
@@ -37,4 +39,14 @@ test("trade cash impacts remain synchronized with beneficial and pooled books", 
 test("investor cash submission is a dedicated controlled action", () => {
   assert.match(investorRoute, /payload\.action === "cash_movement"/);
   assert.match(investorRoute, /submitInvestorCashMovement/);
+});
+
+test("deposit receipts are stored and visible with submitted details during officer review", () => {
+  assert.match(schema, /model CashMovementProof/);
+  assert.match(service, /prepareCashMovementProof/);
+  assert.match(investorRoute, /formData\?\.get\("attachment0"\)/);
+  assert.match(cashScreen, /View uploaded receipt/);
+  assert.match(cashScreen, /Submission reference/);
+  assert.match(proofRoute, /requireTenantModule\(request, "dealer_operations", "report"\)/);
+  assert.match(proofRoute, /cashMovement: \{ brokerId: actor\.brokerId \}/);
 });

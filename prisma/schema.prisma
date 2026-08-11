@@ -1187,6 +1187,7 @@ model CashMovement {
   submittedBy              User?                    @relation("CashMovementSubmitter", fields: [submittedByUserId], references: [id], onDelete: SetNull)
   reviewedBy               User?                    @relation("CashMovementReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   completedBy              User?                    @relation("CashMovementCompleter", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  proof                    CashMovementProof?
   cashLedgerEntries        CashLedgerEntry[]
   clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
   pooledBankLedgerEntries  PooledBankLedgerEntry[]
@@ -1197,6 +1198,18 @@ model CashMovement {
   @@index([accountId, status])
   @@index([linkedBankAccountId])
   @@map("cash_movements")
+}
+
+model CashMovementProof {
+  cashMovementId String       @id @map("cash_movement_id")
+  originalName   String       @map("original_name")
+  mimeType       String       @map("mime_type")
+  sizeBytes      Int          @map("size_bytes")
+  bytes          Bytes
+  uploadedAt     DateTime     @default(now()) @map("uploaded_at")
+  cashMovement   CashMovement @relation(fields: [cashMovementId], references: [id], onDelete: Cascade)
+
+  @@map("cash_movement_proofs")
 }
 
 model ClientMoneyLedgerEntry {
