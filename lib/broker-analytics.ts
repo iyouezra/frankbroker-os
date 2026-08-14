@@ -1,4 +1,5 @@
 import type { BrokerClient, DemoOrder } from "./demo-data";
+import { addisDateOnly } from "./addis-date";
 
 /**
  * Broker business + risk analytics. Pure and browser-safe: it derives the
@@ -19,7 +20,6 @@ export const PERIODS: { id: Period; label: string; days: number }[] = [
 // Statuses that represent an executed instruction (turnover + earned commission).
 const EXECUTED = new Set(["settlement_pending", "settled", "partially_filled"]);
 const REJECTED = new Set(["rejected", "validation_failed", "cancelled"]);
-const BUSINESS_DATE = new Date("2026-07-14T00:00:00Z");
 
 type Tone = "good" | "warning" | "serious";
 
@@ -64,11 +64,11 @@ function noise(seed: number) {
 
 // Trailing `days` trading days (weekends skipped) ending on the business date.
 // The final day is anchored to the live order book; earlier days vary around it.
-function buildTrend(days: number, bookVolume: number, bookRevenue: number, bookOrders: number): TrendPoint[] {
+function buildTrend(days: number, bookVolume: number, bookRevenue: number, bookOrders: number, asOf: Date): TrendPoint[] {
   const points: TrendPoint[] = [];
   const baseVolume = bookVolume > 0 ? bookVolume : 4_000_000;
   const rate = bookVolume > 0 ? bookRevenue / bookVolume : 0.005;
-  const cursor = new Date(BUSINESS_DATE);
+  const cursor = addisDateOnly(asOf);
   let collected = 0;
   while (collected < days) {
     const weekday = cursor.getUTCDay();
@@ -106,13 +106,13 @@ const KYC_META: Record<string, { label: string; tone: Tone }> = {
   rejected: { label: "Rejected", tone: "serious" },
 };
 
-export function computeBrokerAnalytics(orders: DemoOrder[], clients: BrokerClient[], period: Period): BrokerAnalytics {
+export function computeBrokerAnalytics(orders: DemoOrder[], clients: BrokerClient[], period: Period, asOf = new Date()): BrokerAnalytics {
   const days = PERIODS.find((item) => item.id === period)?.days ?? 22;
   const executed = orders.filter((order) => EXECUTED.has(order.status));
 
   const bookVolume = sum(executed, (order) => order.estimatedGross);
   const bookRevenue = sum(executed, (order) => order.estimatedFees);
-  const trend = buildTrend(days, bookVolume, bookRevenue, executed.length);
+  const trend = buildTrend(days, bookVolume, bookRevenue, executed.length, asOf);
 
   const volume = sum(trend, (point) => point.volume);
   const revenue = sum(trend, (point) => point.revenue);

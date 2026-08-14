@@ -2,6 +2,7 @@ import { prisma } from "../../../lib/prisma";
 import { D } from "../../../lib/money";
 import { requireTenantModule } from "../../../lib/tenant-capabilities";
 import { apiError } from "../../../lib/api";
+import { addisDateOnly, addisYear } from "../../../lib/addis-date";
 
 export const runtime = "nodejs";
 
@@ -111,14 +112,14 @@ export async function POST(request: Request) {
       }
     }
 
-    const id = `REC-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const id = `REC-${addisYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const matchedRecords = rows.length - exceptions.length;
     const batch = await prisma.$transaction(async (tx) => {
       const created = await tx.reconciliationBatch.create({
         data: {
           id,
           brokerId: actor.brokerId,
-          batchDate: new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`),
+          batchDate: addisDateOnly(),
           fileName: payload.fileName,
           source: "manual_upload",
           totalRecords: rows.length,

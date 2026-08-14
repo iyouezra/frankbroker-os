@@ -38,7 +38,8 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
     readFile(new URL("prisma/migrations/20260716090000_oms_integrity/migration.sql", root), "utf8"),
   ]);
 
-  assert.match(app, /Good morning, \$\{firstName\}/);
+  assert.match(app, /const greeting = addisGreeting\(\)/);
+  assert.match(app, /\$\{greeting\}, \$\{firstName\}/);
   assert.doesNotMatch(app, /title="Good morning, Mekdes"/);
   assert.match(app, /Explore the market and connect quotes to existing client orders\./);
   assert.match(app, /Order log/);

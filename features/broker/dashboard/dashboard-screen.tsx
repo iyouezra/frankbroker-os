@@ -2,6 +2,7 @@
 
 import type { DemoOrder } from "../../../lib/demo-data";
 import type { WorkItem } from "../../../lib/back-office";
+import { addisBusinessDate, addisGreeting, formatAddisDashboardDate, formatDateKey, shiftDateKey } from "../../../lib/addis-date";
 import { Icon, Metric, SectionHeader, auditTime, compactEtb, type AuditEntry } from "../shared/broker-foundation";
 
 const workIcon: Record<WorkItem["kind"], string> = { order: "orders", onboarding: "clients", cash: "cash", settlement: "settlement", reconciliation: "reconciliation", conversation: "conversations", task: "tasks", case: "complaints", service_request: "conversations", advisory: "advisory" };
@@ -14,8 +15,21 @@ export function Dashboard({ userName, orders, auditEntries, queue, settlementCyc
   const orderValue = orders.reduce((total, order) => total + order.estimatedNet, 0);
   const filledValue = filled.reduce((total, order) => total + (order.tradeNet ?? order.estimatedNet), 0);
   const settlementValue = settlement.reduce((total, order) => total + (order.tradeNet ?? order.estimatedNet), 0);
+  const today = addisBusinessDate();
+  const tomorrow = shiftDateKey(today, 1);
+  const settlementPositions = [...settlement.reduce((groups, order) => {
+    const date = order.settlementDate ?? "date-not-set";
+    const current = groups.get(date) ?? { date, trades: 0, value: 0 };
+    current.trades += 1;
+    current.value += order.tradeNet ?? order.estimatedNet;
+    groups.set(date, current);
+    return groups;
+  }, new Map<string, { date: string; trades: number; value: number }>()).values()].sort((left, right) => left.date.localeCompare(right.date));
+  const largestSettlementPosition = Math.max(...settlementPositions.map((item) => item.value), 1);
+  const settlementLabel = (date: string) => date === "date-not-set" ? "Date not set" : date < today ? `Overdue · ${formatDateKey(date)}` : date === today ? "Today" : date === tomorrow ? "Tomorrow" : formatDateKey(date);
+  const greeting = addisGreeting();
   return <>
-    <SectionHeader eyebrow="TUESDAY · 14 JULY 2026" title={firstName ? `Good morning, ${firstName}` : "Good morning"} copy="Here’s the control picture for today’s brokerage operations." action={<><button className="btn secondary" onClick={onViewOrders}>View order log</button><button className="btn primary" onClick={onNewOrder}><span>＋</span> New order</button></>} />
+    <SectionHeader eyebrow={formatAddisDashboardDate()} title={firstName ? `${greeting}, ${firstName}` : greeting} copy="Here’s the control picture for today’s brokerage operations." action={<><button className="btn secondary" onClick={onViewOrders}>View order log</button><button className="btn primary" onClick={onNewOrder}><span>＋</span> New order</button></>} />
     <div className="manual-banner"><span>{manualTradeCapture ? "MANUAL MARKET MODE" : "TRADE CAPTURE DISABLED"}</span><p>{manualTradeCapture ? "Orders are entered and sent to ESX manually. Settlement confirmations are updated by operations." : "Platform administration has paused manual execution capture for this tenant. Existing orders and settlements remain visible."}</p></div>
     <section className="metric-grid"><Metric label="Orders in view" value={String(orders.length)} note={`${compactEtb(orderValue)} estimated value`} onClick={() => onOpenStatus("all")} /><Metric label="Pending approvals" value={String(pending.length)} note={`${pending.filter((order) => order.riskFlag !== "none").length} require risk review`} tone="warning" onClick={() => onOpenStatus("review")} /><Metric label="Executed orders" value={String(filled.length)} note={`${compactEtb(filledValue)} captured`} tone="success" onClick={() => onOpenStatus("executed")} /><Metric label="Settlement pending" value={String(settlement.length)} note={`${compactEtb(settlementValue)} due by ${settlementCycle}`} tone="purple" onClick={onSettle} /><Metric label="Validation exceptions" value={String(orders.filter((order) => order.status === "validation_failed").length)} note="Orders requiring correction" tone="danger" onClick={() => onOpenStatus("exceptions")} /></section>
     <div className="dashboard-grid">
@@ -24,7 +38,7 @@ export function Dashboard({ userName, orders, auditEntries, queue, settlementCyc
           ? <div className="queue-empty">Nothing is waiting on you right now.</div>
           : queue.slice(0, 10).map((item) => <button key={item.id} onClick={() => onOpenWork(item)}><span className={`queue-icon ${item.urgency === "critical" ? "danger" : item.urgency === "high" ? "warning" : "info"}`}><Icon name={workIcon[item.kind]} size={16} /></span><span><b>{item.title}{item.readOnly ? " · Oversight" : ""}</b><small>{item.detail}{item.dueAt ? ` · Due ${item.dueAt.slice(0, 10)}` : ""}</small></span><em>›</em></button>)}</div>
       </section>
-      <section className="panel settlement-card"><div className="panel-head"><div><span className="eyebrow">SETTLEMENT POSITION</span><h2>Due by value date</h2></div><button className="text-button" onClick={onSettle}>Open queue <span>→</span></button></div><div className="settlement-bars"><div><span><b>Today</b><small>3 trades</small></span><i><em style={{ width: "82%" }} /></i><strong>ETB 1.84M</strong></div><div><span><b>Tomorrow</b><small>5 trades</small></span><i><em style={{ width: "58%" }} /></i><strong>ETB 1.22M</strong></div><div><span><b>16 Jul</b><small>2 trades</small></span><i><em style={{ width: "30%" }} /></i><strong>ETB 640K</strong></div></div><div className="settlement-foot"><span><i className="cash" /> Cash pending <b>3</b></span><span><i className="security" /> Securities pending <b>4</b></span></div></section>
+      <section className="panel settlement-card"><div className="panel-head"><div><span className="eyebrow">SETTLEMENT POSITION</span><h2>Due by value date</h2></div><button className="text-button" onClick={onSettle}>Open queue <span>→</span></button></div><div className="settlement-bars">{settlementPositions.length ? settlementPositions.slice(0, 3).map((item) => <div key={item.date}><span><b>{settlementLabel(item.date)}</b><small>{item.trades} {item.trades === 1 ? "trade" : "trades"}</small></span><i><em style={{ width: `${Math.max(8, Math.round(item.value / largestSettlementPosition * 100))}%` }} /></i><strong>{compactEtb(item.value)}</strong></div>) : <div><span><b>No pending settlements</b><small>The queue is clear</small></span><i><em style={{ width: "0%" }} /></i><strong>ETB 0</strong></div>}</div><div className="settlement-foot"><span><i className="cash" /> Cash pending <b>{settlement.length}</b></span><span><i className="security" /> Securities pending <b>{settlement.length}</b></span></div></section>
       <section className="panel activity-panel"><div className="panel-head"><div><span className="eyebrow">LIVE ACTIVITY</span><h2>Latest control events</h2></div></div><div className="activity-list">{auditEntries.slice(0, 4).map((item) => <div key={item.id ?? item.time}><i /><time>{auditTime(item.time)}</time><span><b>{item.action.replaceAll("_", " ")}</b><small>{item.detail}</small></span><em>{item.actor}</em></div>)}</div></section>
     </div>
   </>;

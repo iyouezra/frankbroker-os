@@ -3,6 +3,7 @@ import { prisma } from "../../../../lib/prisma";
 import { toNum } from "../../../../lib/money";
 import { requirePlatformAdmin } from "../../../../lib/server-auth";
 import { apiError as routeError } from "../../../../lib/api";
+import { addisBusinessDate, addisDayStart } from "../../../../lib/addis-date";
 
 export const runtime = "nodejs";
 
@@ -36,8 +37,7 @@ function audit(brokerId: string | null, action: string, entityType: string, enti
 export async function GET(request: Request) {
   try {
     await requirePlatformAdmin(request);
-    const start = new Date();
-    start.setUTCHours(0, 0, 0, 0);
+    const start = addisDayStart();
     const [brokers, instruments, auditRows, platformFeeSchedule, checklistTemplates] = await Promise.all([
       prisma.broker.findMany({
         include: {
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
         welcomeMessage: settings?.welcomeMessage ?? "",
         baseCurrency: broker.baseCurrency,
         timezone: settings?.timezone ?? "Africa/Addis_Ababa",
-        businessDate: (settings?.businessDate ?? new Date()).toISOString().slice(0, 10),
+        businessDate: addisBusinessDate(),
         users: broker.users.length,
         clients: broker.clients.length,
         ordersToday: broker.orders.length,
@@ -137,7 +137,7 @@ export async function GET(request: Request) {
           summary: "Account operation, order handling, fees, confirmations, settlement, and closure terms.",
           content: "Add counsel-approved tenant brokerage terms before production.",
           status: "draft",
-          effectiveAt: new Date().toISOString().slice(0, 10),
+          effectiveAt: addisBusinessDate(),
           requiresReacceptance: true,
         },
         feeSchedule: feeSchedule ? {
@@ -160,7 +160,7 @@ export async function GET(request: Request) {
           name: "Standard ESX fee schedule",
           version: "1.0",
           status: "draft",
-          effectiveFrom: new Date().toISOString().slice(0, 10),
+          effectiveFrom: addisBusinessDate(),
           rules: ["equity", "bond"].map((assetClass) => ({
             assetClass,
             marketSegment: "main",
@@ -234,7 +234,7 @@ export async function PATCH(request: Request) {
       const entitlements = Array.isArray(data.entitlements) ? data.entitlements.map(String) : [];
       const businessType = String(data.businessType ?? "");
       const status = String(data.status ?? "");
-      const businessDate = String(data.businessDate ?? "");
+      const businessDate = addisBusinessDate();
       const numericControls = {
         approvalThreshold: Number(controls.approvalThreshold),
         clientDailyLimit: Number(controls.clientDailyLimit),
@@ -245,8 +245,8 @@ export async function PATCH(request: Request) {
       };
       const settlementCycle = String(controls.settlementCycle ?? "");
       const allowedOrderTypes = Array.isArray(controls.allowedOrderTypes) ? controls.allowedOrderTypes.map(String) : [];
-      if (!businessTypes.includes(businessType as typeof businessTypes[number]) || !["active", "pilot", "suspended"].includes(status) || !validDateOnly(businessDate)) {
-        return Response.json({ error: "Select a valid tenant profile, status, and business date." }, { status: 400 });
+      if (!businessTypes.includes(businessType as typeof businessTypes[number]) || !["active", "pilot", "suspended"].includes(status)) {
+        return Response.json({ error: "Select a valid tenant profile and status." }, { status: 400 });
       }
       if (Object.values(numericControls).some((value) => !Number.isFinite(value) || value < 0)
         || !Number.isInteger(numericControls.discrepancyWindowDays) || numericControls.discrepancyWindowDays > 365
@@ -388,7 +388,7 @@ export async function POST(request: Request) {
         await tx.brokerSettings.create({ data: {
           id: `set_${brokerId}`, brokerId, tradingName, plan, domain: domain || null, supportEmail: supportEmail || null,
           primaryColor: String(data.primaryColor ?? "#0C8189"), welcomeMessage: String(data.welcomeMessage ?? ""), timezone: "Africa/Addis_Ababa",
-          businessDate: dateOnly(String(data.businessDate ?? new Date().toISOString().slice(0, 10))), features: features as Prisma.InputJsonValue,
+          businessDate: dateOnly(addisBusinessDate()), features: features as Prisma.InputJsonValue,
           makerChecker: controls.makerChecker !== false, approvalThreshold: numericControls.approvalThreshold, clientDailyLimit: numericControls.clientDailyLimit,
           brokerageFeePct: numericControls.brokerageFeePct, minimumFee: numericControls.minimumFee,
           settlementCycle, allowedOrderTypes: allowedOrderTypes as Prisma.InputJsonValue,

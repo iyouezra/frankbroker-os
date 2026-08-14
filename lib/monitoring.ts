@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { addisBusinessDate as currentAddisBusinessDate } from "./addis-date";
 
 export type MonitoringSeverity = "low" | "medium" | "high" | "critical";
 
@@ -113,9 +114,7 @@ export function isMonitoringEnabled(features: unknown) {
 }
 
 export function addisBusinessDate(value = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Addis_Ababa", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value;
-  return `${get("year")}-${get("month")}-${get("day")}`;
+  return currentAddisBusinessDate(value);
 }
 
 export function activeOnDate(input: { effectiveFrom: Date; effectiveTo: Date | null }, at = new Date()) {

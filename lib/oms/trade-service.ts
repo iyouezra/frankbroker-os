@@ -1,4 +1,5 @@
 import { Prisma } from "../../app/generated/prisma/client";
+import { addisYear } from "../addis-date";
 import { settlementDateFrom } from "../frank";
 import { D, money, toNum, ZERO } from "../money";
 import { prisma } from "../prisma";
@@ -135,7 +136,7 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
     const executedFees = order.executedFees.plus(amounts.fees);
     const executedNet = order.executedNet.plus(amounts.net);
     const averageFillPrice = weightedAveragePrice(order.filledQuantity, order.averageFillPrice, quantity, executionPrice);
-    const tradeId = `TRD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+    const tradeId = `TRD-${addisYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const settlementId = `STL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const settlementDate = settlementDateFrom(input.tradeDate, settings?.settlementCycle ?? order.instrument.settlementCycle);
     const valueDate = dateOnly(input.tradeDate);

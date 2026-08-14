@@ -10,6 +10,7 @@ import type { Period } from "../lib/broker-analytics";
 import type { AppTarget, WorkItem } from "../lib/back-office";
 import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/notifications-demo";
 import { isOrderEligibleClient } from "../lib/client-readiness";
+import { addisBusinessDate, formatAddisBusinessDate } from "../lib/addis-date";
 import {
   Icon,
   PENDING_CASH_STATUSES,
@@ -128,7 +129,7 @@ export default function FrankBrokerApp() {
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [currentUserName, setCurrentUserName] = useState("");
-  const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: "2026-07-14", captureReference: "" });
+  const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: addisBusinessDate(), captureReference: "" });
   const [orderFocus, setOrderFocus] = useState<OrderFocus | null>(null);
   // A dashboard metric card can deep-link into the order log at a status tab.
   const [ordersStatusFocus, setOrdersStatusFocus] = useState<"all" | "review" | "executed" | "exceptions" | null>(null);
@@ -498,7 +499,7 @@ export default function FrankBrokerApp() {
     if (!features.manualTradeCapture) return notify("Manual trade capture is disabled for this tenant in the admin console.", "error");
     if (!hasPermission(role, "trade")) return notify(`${roleLabels[role]} cannot capture trades.`, "error");
     setSelectedId(order.id);
-    setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: new Date().toISOString().slice(0, 10), captureReference: "" });
+    setTradeForm({ quantity: String(order.remainingQuantity ?? order.quantity), price: String(order.price), tradeDate: addisBusinessDate(), captureReference: "" });
     setDrawer("trade");
   };
 
@@ -635,7 +636,7 @@ export default function FrankBrokerApp() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "frankbroker-daily-orders-2026-07-14.csv";
+    link.download = `frankbroker-daily-orders-${addisBusinessDate()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     notify("Daily order report exported as CSV.");
@@ -875,7 +876,7 @@ export default function FrankBrokerApp() {
             </div>
           </div>
           <UniversalSearch role={role} onSelect={navigateToTarget} />
-          <div className="top-actions"><span className="business-date">Business date <b>14 JUL 2026</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => {
+          <div className="top-actions"><span className="business-date">Business date <b>{formatAddisBusinessDate()}</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => {
             setBellOpen((value) => !value);
             if (!bellOpen) {
               void fetch("/api/notifications", { headers: notifyHeaders })

@@ -6,12 +6,11 @@ import { TASK_TEMPLATES } from "../../../lib/crm/tasks";
 import { BROKER_TENANT_ID } from "../shared/broker-foundation";
 import { BrandSelect } from "../../shared/brand-select";
 import type { Role } from "../../../lib/frank";
+import { addisBusinessDate, shiftDateKey } from "../../../lib/addis-date";
 
 /** Default a follow-up to three business-ish days out; the officer can change it. */
 function defaultDueDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 3);
-  return date.toISOString().slice(0, 10);
+  return shiftDateKey(addisBusinessDate(), 3);
 }
 
 /**

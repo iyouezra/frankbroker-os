@@ -4,6 +4,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { addisBusinessDate } from "../../lib/addis-date";
 import {
   adminAudit,
   formatAdminEtb,
@@ -161,7 +162,7 @@ const tenantProfileDefaults = (businessType: TenantConfig["businessType"]) => {
 function newTenantDraft(): TenantOnboardingDraft {
   const profile = tenantProfileDefaults("securities_dealer");
   return {
-    tenantCode: "", name: "", tradingName: "", licenseNumber: "", licenseValidFrom: new Date().toISOString().slice(0, 10),
+    tenantCode: "", name: "", tradingName: "", licenseNumber: "", licenseValidFrom: addisBusinessDate(),
     businessType: "securities_dealer", plan: "Pilot", domain: "", supportEmail: "", ...profile,
     controls: { makerChecker: true, approvalThreshold: 250000, clientDailyLimit: 2500000, brokerageFeePct: .5, minimumFee: 25, settlementCycle: "T+2", allowedOrderTypes: ["Limit"] },
   };
@@ -361,7 +362,7 @@ export default function AdminConsole() {
   const createTenant = async (value: TenantOnboardingDraft) => {
     setCreationBusy(true); setCreationError("");
     try {
-      const result = await request("POST", { entity: "tenant", data: { ...value, businessDate: new Date().toISOString().slice(0, 10), primaryColor: "#0C8189", welcomeMessage: `Welcome to ${value.tradingName}.` } }) as { tenant: { id: string } };
+      const result = await request("POST", { entity: "tenant", data: { ...value, businessDate: addisBusinessDate(), primaryColor: "#0C8189", welcomeMessage: `Welcome to ${value.tradingName}.` } }) as { tenant: { id: string } };
       const refreshed = await refreshConfiguration();
       if (!refreshed.tenants.some((item) => item.id === result.tenant.id)) throw new Error("The tenant was created but could not be loaded into the console.");
       setTenantId(result.tenant.id); setConfigTab("identity"); setView("tenants"); setTenantCreateOpen(false);

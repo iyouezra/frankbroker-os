@@ -1,4 +1,5 @@
 import { prisma } from "../../../lib/prisma";
+import { addisYear } from "../../../lib/addis-date";
 import { composeFeeRules } from "../../../lib/fee-schedule-view";
 import { toNum } from "../../../lib/money";
 import { resolveInvestorContext } from "../../../lib/server-auth";
@@ -508,7 +509,7 @@ export async function POST(request: Request) {
       const newApplication = payload.newApplication === true;
       const applicationSuffix = crypto.randomUUID().slice(0, 6).toUpperCase();
       const applicationClientId = `cli_${crypto.randomUUID().slice(0, 12)}`;
-      const applicationClientCode = `CL-${new Date().getUTCFullYear()}-${applicationSuffix}`;
+      const applicationClientCode = `CL-${addisYear()}-${applicationSuffix}`;
       const applicationClientType = payload.accountType === "institution" ? "institution" : "individual";
       const clientData = {
         fullName,

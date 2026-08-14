@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { addisDateOnly } from "./addis-date";
 import { hasPermission, type Role } from "./frank";
 import { resolveActor } from "./server-auth";
 
@@ -66,8 +67,7 @@ export async function resolveTenantContext(tenantId: string): Promise<TenantCont
   if (!tenant.tenantProfile && tenant.tenantEntitlements.length === 0) entitlementSet.add("securities_dealing");
 
   const configured = new Map(tenant.tenantModules.map((item) => [item.moduleKey, item.enabled]));
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = addisDateOnly();
   const activeLicenseTypes = new Set(tenant.tenantLicenses.filter((license) => (
     license.status === "active"
     && (!license.validFrom || license.validFrom <= today)

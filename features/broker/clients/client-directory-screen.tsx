@@ -9,6 +9,7 @@ import { BrandSelect } from "../../shared/brand-select";
 import { RelationshipOfficerCard } from "../crm/relationship-officer-card";
 import { TaskCard } from "../crm/my-tasks-screen";
 import { isTaskClosed } from "../../../lib/crm/tasks";
+import { addisBusinessDate } from "../../../lib/addis-date";
 import {
   evaluateRestorationControls,
   inferRestrictionCategory,
@@ -32,10 +33,10 @@ import {
 } from "../shared/broker-foundation";
 
 function currentQuarterDates() {
-  const now = new Date();
-  const startMonth = Math.floor(now.getUTCMonth() / 3) * 3;
-  const from = new Date(Date.UTC(now.getUTCFullYear(), startMonth, 1)).toISOString().slice(0, 10);
-  const to = new Date(Date.UTC(now.getUTCFullYear(), startMonth + 3, 0)).toISOString().slice(0, 10);
+  const [year, month] = addisBusinessDate().split("-").map(Number);
+  const startMonth = Math.floor((month - 1) / 3) * 3;
+  const from = new Date(Date.UTC(year, startMonth, 1)).toISOString().slice(0, 10);
+  const to = new Date(Date.UTC(year, startMonth + 3, 0)).toISOString().slice(0, 10);
   return { from, to };
 }
 

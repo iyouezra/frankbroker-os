@@ -21,6 +21,7 @@ import {
 } from "./monitoring";
 import { prisma } from "./prisma";
 import type { Actor } from "./server-auth";
+import { addisYear } from "./addis-date";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -381,7 +382,7 @@ export async function createMonitoringCase(actor: Actor, input: { category: stri
     const sequence = await tx.monitoringCase.count({ where: { brokerId: actor.brokerId } });
     const caseRow = await tx.monitoringCase.create({ data: {
       id: `MCASE-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, brokerId: actor.brokerId,
-      referenceNumber: `RC-${new Date().getUTCFullYear()}-${String(sequence + 1).padStart(5, "0")}`,
+      referenceNumber: `RC-${addisYear()}-${String(sequence + 1).padStart(5, "0")}`,
       category: input.category === "employee_conduct" ? "employee_conduct" : "aml", title,
       priority: input.priority ?? "medium", dueAt: input.dueAt ? new Date(input.dueAt) : null, openedByUserId: actor.id,
       events: { create: { id: crypto.randomUUID(), eventType: "opened", actorUserId: actor.id, toStatus: "open", note: "Case opened" } },
