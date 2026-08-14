@@ -9,6 +9,7 @@ import {
   addisGreeting,
   addisYear,
   formatAddisBusinessDate,
+  formatAddisBusinessTime,
   formatAddisDashboardDate,
   shiftDateKey,
 } from "../lib/addis-date.ts";
@@ -27,6 +28,7 @@ test("business-date labels and greetings use Addis local time", () => {
   const friday = new Date("2026-08-14T10:00:00.000Z");
   assert.equal(formatAddisDashboardDate(friday), "FRIDAY · 14 AUGUST 2026");
   assert.equal(formatAddisBusinessDate(friday), "14 AUG 2026");
+  assert.equal(formatAddisBusinessTime(friday), "13:00:00");
   assert.equal(addisGreeting(new Date("2026-08-14T05:00:00.000Z")), "Good morning");
   assert.equal(addisGreeting(new Date("2026-08-14T11:00:00.000Z")), "Good afternoon");
   assert.equal(addisGreeting(new Date("2026-08-14T17:00:00.000Z")), "Good evening");

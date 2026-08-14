@@ -10,7 +10,7 @@ import type { Period } from "../lib/broker-analytics";
 import type { AppTarget, WorkItem } from "../lib/back-office";
 import { demoBrokerNotifications, timeAgo, type NotificationItem } from "../lib/notifications-demo";
 import { isOrderEligibleClient } from "../lib/client-readiness";
-import { addisBusinessDate, formatAddisBusinessDate } from "../lib/addis-date";
+import { addisBusinessDate, formatAddisBusinessDate, formatAddisBusinessTime } from "../lib/addis-date";
 import {
   Icon,
   PENDING_CASH_STATUSES,
@@ -129,6 +129,7 @@ export default function FrankBrokerApp() {
   const [period, setPeriod] = useState<Period>("month");
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({ name: "Abyssinia Securities", license: "ESCA-BR-004", primaryColor: "#0C8189" });
   const [currentUserName, setCurrentUserName] = useState("");
+  const [businessClock, setBusinessClock] = useState<Date | null>(null);
   const [tradeForm, setTradeForm] = useState({ quantity: "", price: "", tradeDate: addisBusinessDate(), captureReference: "" });
   const [orderFocus, setOrderFocus] = useState<OrderFocus | null>(null);
   // A dashboard metric card can deep-link into the order log at a status tab.
@@ -148,6 +149,13 @@ export default function FrankBrokerApp() {
   const eligibleClients = clients.filter(isOrderEligibleClient);
   const pendingClientCount = clients.filter((client) => client.status === "pending_approval").length;
   const pendingCashCount = cashOperations.movements.filter((movement) => PENDING_CASH_STATUSES.includes(movement.status)).length;
+
+  useEffect(() => {
+    const updateBusinessClock = () => setBusinessClock(new Date());
+    updateBusinessClock();
+    const timer = window.setInterval(updateBusinessClock, 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!demoTenantSwitcherEnabled) return;
@@ -876,7 +884,7 @@ export default function FrankBrokerApp() {
             </div>
           </div>
           <UniversalSearch role={role} onSelect={navigateToTarget} />
-          <div className="top-actions"><span className="business-date">Business date <b>{formatAddisBusinessDate()}</b></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => {
+          <div className="top-actions"><span className="business-date">Business date <b>{formatAddisBusinessDate(businessClock ?? undefined)}</b><small>{businessClock ? formatAddisBusinessTime(businessClock) : "--:--:--"}</small></span><button className="icon-button" aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme}><Icon name={theme === "dark" ? "sun" : "moon"} size={18} /></button><div className="notif-wrap"><button className="icon-button" aria-label="Notifications" onClick={() => {
             setBellOpen((value) => !value);
             if (!bellOpen) {
               void fetch("/api/notifications", { headers: notifyHeaders })
