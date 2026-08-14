@@ -13,6 +13,7 @@ import { writeAudit } from "./oms/audit-service";
 import { writeNotification, OPS } from "./oms/notification-service";
 import { lockAccount, persistCashMutation } from "./oms/persistence";
 import { MAX_DOCUMENT_BYTES, matchesSignature, supportedMimeTypes } from "./onboarding-evidence";
+import { assertCashMonitoringClearance, evaluateCashMovement } from "./monitoring-service";
 
 export type CashMovementType = "deposit" | "withdrawal";
 export type CashMovementProofInput = {
@@ -34,6 +35,7 @@ export type CashMovementInput = {
   destinationAccountName?: string;
   destinationAccountMasked?: string;
   linkedBankAccountId?: string;
+  sourceLinkedBankAccountId?: string;
   notes?: string;
   proof?: CashMovementProofInput;
 };
@@ -218,6 +220,16 @@ export async function submitCashMovement(
     if (input.movementType === "withdrawal" && input.linkedBankAccountId && !linkedBank) {
       throw fail("Choose an approved linked bank account.", 409);
     }
+    const sourceLinkedBank = input.movementType === "deposit" && input.sourceLinkedBankAccountId
+      ? await tx.linkedBankAccount.findFirst({
+        where: {
+          id: input.sourceLinkedBankAccountId,
+          clientId: client.id,
+          brokerId: context.brokerId,
+          status: "approved",
+        },
+      })
+      : null;
     const destinationBankName = linkedBank?.bankName ?? clean(input.destinationBankName, 120);
     const destinationAccountName = linkedBank?.accountHolderName ?? clean(input.destinationAccountName, 160);
     const destinationAccountMasked = linkedBank
@@ -252,6 +264,7 @@ export async function submitCashMovement(
         destinationAccountName,
         destinationAccountMasked,
         linkedBankAccountId: linkedBank?.id ?? null,
+        sourceLinkedBankAccountId: sourceLinkedBank?.id ?? null,
         requestedByChannel: context.channel,
         submittedByUserId: context.actorId,
         notes: clean(input.notes, 500),
@@ -299,6 +312,7 @@ export async function submitCashMovement(
       body: `${client.fullName} · ${amount.toFixed(2)} ${account.currency}`,
       entityType: "cash_movement", entityId: movement.id, link: "/?view=cash",
     });
+    await evaluateCashMovement(tx, context.brokerId, movement.id);
     return movement;
   }, transactionOptions);
 }
@@ -335,6 +349,10 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
     ]);
     const amount = money(movement.amount);
     const now = new Date();
+
+    if (action === "verify" || action === "approve" || action === "complete") {
+      await assertCashMonitoringClearance(tx, actor.brokerId, movement.id);
+    }
 
     if (action === "verify") {
       if (movement.movementType !== "deposit" || movement.status !== "pending_verification") {

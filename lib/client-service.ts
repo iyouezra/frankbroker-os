@@ -1,6 +1,7 @@
 import { Prisma } from "../app/generated/prisma/client";
 import { prisma } from "./prisma";
 import { clientIdentityReference } from "./client-identity";
+import { taxIdentityReference } from "./monitoring";
 import type { Actor } from "./server-auth";
 import { writeNotification, COMPLIANCE } from "./oms/notification-service";
 import {
@@ -126,6 +127,7 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         identityReference: identityRef,
         faydaLast7: fayda.slice(-7),
         taxIdLast4: tin.slice(-4),
+        taxIdentityReference: taxIdentityReference(tin),
         taxId: null,
         kycConsentAt: now,
         address: input.address?.trim() || null,
@@ -169,6 +171,13 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
             restrictionReason: "Awaiting client onboarding approval",
           },
         },
+        beneficialOwnerRecords: input.clientType !== "individual" && input.beneficialOwnerName ? {
+          create: {
+            id: crypto.randomUUID(),
+            brokerId: actor.brokerId,
+            displayName: input.beneficialOwnerName.trim(),
+          },
+        } : undefined,
       },
     });
     if (legalDocument && input.termsAccepted) {

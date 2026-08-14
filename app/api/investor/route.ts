@@ -28,6 +28,7 @@ import {
   serializeLinkedBank,
 } from "../../../lib/onboarding-evidence";
 import { getFrankCoachHoldingValue } from "../../../lib/frank-coach";
+import { taxIdentityReference } from "../../../lib/monitoring";
 
 export const runtime = "nodejs";
 
@@ -517,6 +518,7 @@ export async function POST(request: Request) {
         identityReference: identityRef,
         faydaLast7: faydaId.slice(-7),
         taxIdLast4: tin.slice(-4),
+        taxIdentityReference: taxIdentityReference(tin),
         taxId: null,
         address: String(payload.address ?? "").trim() || null,
         proofOfAddressType: String(payload.proofOfAddressType ?? "").trim() || null,
@@ -575,6 +577,13 @@ export async function POST(request: Request) {
           })
           : await tx.client.update({ where: { id: client.id }, data: clientData });
         const targetClientId = next.id;
+        await tx.beneficialOwner.deleteMany({ where: { clientId: targetClientId } });
+        if (applicationClientType === "institution" && String(payload.beneficialOwnerName ?? "").trim()) {
+          await tx.beneficialOwner.create({ data: {
+            id: crypto.randomUUID(), brokerId, clientId: targetClientId,
+            displayName: String(payload.beneficialOwnerName).trim(),
+          } });
+        }
         const documents = formData ? await prepareDocuments(formData) : [];
         const linkedBanks = parseLinkedBanks(payload.linkedBanks);
         await saveOnboardingEvidence(tx, {

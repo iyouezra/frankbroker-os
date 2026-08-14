@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const { actor } = await requireTenantModule(request, "dealer_operations", "report");
-    const [pools, movements] = await Promise.all([
+    const [pools, movements, linkedBanks] = await Promise.all([
       prisma.pooledBankAccount.findMany({
         where: { brokerId: actor.brokerId },
         include: { positions: { select: { balance: true } } },
@@ -20,6 +20,11 @@ export async function GET(request: Request) {
         include: { client: true, account: true, pooledBankAccount: true, proof: { select: { originalName: true, mimeType: true, sizeBytes: true, uploadedAt: true } } },
         orderBy: { submittedAt: "desc" },
         take: 250,
+      }),
+      prisma.linkedBankAccount.findMany({
+        where: { brokerId: actor.brokerId, status: "approved" },
+        select: { id: true, clientId: true, bankName: true, accountHolderName: true, accountNumber: true },
+        orderBy: { createdAt: "asc" },
       }),
     ]);
     const serializedPools = pools.map((pool) => {
@@ -53,6 +58,7 @@ export async function GET(request: Request) {
       },
       pools: serializedPools,
       movements: movements.map(serializeCashMovement),
+      linkedBanks: linkedBanks.map((bank) => ({ id: bank.id, clientId: bank.clientId, bankName: bank.bankName, accountHolderName: bank.accountHolderName, accountNumberMasked: `•••••• ${bank.accountNumber.slice(-6)}` })),
     });
   } catch (error) {
     return apiError(error);

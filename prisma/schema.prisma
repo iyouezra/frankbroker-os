@@ -8,13 +8,13 @@ datasource db {
 }
 
 model Broker {
-  id                     String                  @id
+  id                     String                           @id
   name                   String
-  licenseNumber          String                  @unique @map("license_number")
-  status                 String                  @default("active")
-  baseCurrency           String                  @default("ETB") @map("base_currency")
-  createdAt              DateTime                @default(now()) @map("created_at")
-  updatedAt              DateTime                @updatedAt @map("updated_at")
+  licenseNumber          String                           @unique @map("license_number")
+  status                 String                           @default("active")
+  baseCurrency           String                           @default("ETB") @map("base_currency")
+  createdAt              DateTime                         @default(now()) @map("created_at")
+  updatedAt              DateTime                         @updatedAt @map("updated_at")
   users                  User[]
   clients                Client[]
   orders                 Order[]
@@ -48,6 +48,19 @@ model Broker {
   dealDocuments          DealDocument[]
   dealTasks              DealTask[]
   dealSubmissions        DealSubmission[]
+  beneficialOwnerRecords BeneficialOwner[]
+  monitoringRules        MonitoringRuleVersion[]
+  monitoringAlerts       MonitoringAlert[]
+  monitoringCases        MonitoringCase[]
+  monitoringEvidence     MonitoringEvidence[]
+  employeeProfiles       EmployeeConductProfile[]
+  tradeClearances        PersonalTradeClearance[]
+  restrictedSecurities   RestrictedSecurity[]
+  sensitiveInfoAccess    SensitiveInformationAccess[]
+  employeeDisclosures    EmployeeDisclosure[]
+  conductAttestations    ConductAttestation[]
+  withdrawalExceptions   WithdrawalDestinationException[]
+  monitoringAuditEvents  MonitoringAuditEvent[]
 
   @@map("brokers")
 }
@@ -111,6 +124,7 @@ model User {
   reviewedComplianceEscalations ComplianceEscalation[]    @relation("ComplianceEscalationReviewer")
   recordedClientScreenings      ClientScreening[]         @relation("ClientScreeningRecorder")
   signedReconciliationBatches   ReconciliationBatch[]     @relation("ReconciliationReviewer")
+  employeeConductProfile        EmployeeConductProfile?
 
   @@unique([brokerId, employeeId])
   @@index([brokerId, status])
@@ -118,62 +132,63 @@ model User {
 }
 
 model Client {
-  id                           String                  @id
-  brokerId                     String                  @map("broker_id")
-  clientCode                   String                  @unique @map("client_code")
-  fullName                     String                  @map("full_name")
-  clientType                   String                  @default("individual") @map("client_type")
+  id                           String                   @id
+  brokerId                     String                   @map("broker_id")
+  clientCode                   String                   @unique @map("client_code")
+  fullName                     String                   @map("full_name")
+  clientType                   String                   @default("individual") @map("client_type")
   phone                        String?
   email                        String?
-  taxId                        String?                 @map("tax_id")
-  identityReference            String?                 @map("identity_reference")
-  faydaLast7                   String?                 @map("fayda_last7")
-  taxIdLast4                   String?                 @map("tax_id_last4")
-  kycConsentAt                 DateTime?               @map("kyc_consent_at")
+  taxId                        String?                  @map("tax_id")
+  taxIdentityReference         String?                  @map("tax_identity_reference")
+  identityReference            String?                  @map("identity_reference")
+  faydaLast7                   String?                  @map("fayda_last7")
+  taxIdLast4                   String?                  @map("tax_id_last4")
+  kycConsentAt                 DateTime?                @map("kyc_consent_at")
   address                      String?
-  proofOfAddressType           String?                 @map("proof_of_address_type")
-  proofOfAddressReference      String?                 @map("proof_of_address_reference")
-  proofOfAddressStatus         String                  @default("pending") @map("proof_of_address_status")
-  businessRegistrationNumber   String?                 @map("business_registration_number")
-  authorizedRepresentativeName String?                 @map("authorized_representative_name")
-  signatoryAuthorityConfirmed  Boolean                 @default(false) @map("signatory_authority_confirmed")
-  beneficialOwners             Json?                   @map("beneficial_owners")
-  kycReviewDueAt               DateTime?               @map("kyc_review_due_at")
-  electronicDeliveryConsentAt  DateTime?               @map("electronic_delivery_consent_at")
-  kycStatus                    String                  @default("pending") @map("kyc_status")
-  riskRating                   String                  @default("standard") @map("risk_rating")
-  status                       String                  @default("active")
-  createdBy                    String?                 @map("created_by")
-  submittedAt                  DateTime?               @map("submitted_at")
-  approvedBy                   String?                 @map("approved_by")
-  approvedAt                   DateTime?               @map("approved_at")
-  rejectionReason              String?                 @map("rejection_reason")
-  onboardingChannel            String                  @default("in_person") @map("onboarding_channel")
-  externalClientReference      String?                 @map("external_client_reference")
-  portalAuthSubject            String?                 @map("portal_auth_subject")
-  dateOfBirth                  DateTime?               @map("date_of_birth") @db.Date
+  proofOfAddressType           String?                  @map("proof_of_address_type")
+  proofOfAddressReference      String?                  @map("proof_of_address_reference")
+  proofOfAddressStatus         String                   @default("pending") @map("proof_of_address_status")
+  businessRegistrationNumber   String?                  @map("business_registration_number")
+  authorizedRepresentativeName String?                  @map("authorized_representative_name")
+  signatoryAuthorityConfirmed  Boolean                  @default(false) @map("signatory_authority_confirmed")
+  beneficialOwners             Json?                    @map("beneficial_owners")
+  kycReviewDueAt               DateTime?                @map("kyc_review_due_at")
+  electronicDeliveryConsentAt  DateTime?                @map("electronic_delivery_consent_at")
+  kycStatus                    String                   @default("pending") @map("kyc_status")
+  riskRating                   String                   @default("standard") @map("risk_rating")
+  status                       String                   @default("active")
+  createdBy                    String?                  @map("created_by")
+  submittedAt                  DateTime?                @map("submitted_at")
+  approvedBy                   String?                  @map("approved_by")
+  approvedAt                   DateTime?                @map("approved_at")
+  rejectionReason              String?                  @map("rejection_reason")
+  onboardingChannel            String                   @default("in_person") @map("onboarding_channel")
+  externalClientReference      String?                  @map("external_client_reference")
+  portalAuthSubject            String?                  @map("portal_auth_subject")
+  dateOfBirth                  DateTime?                @map("date_of_birth") @db.Date
   nationality                  String?
-  countryOfResidence           String?                 @map("country_of_residence")
+  countryOfResidence           String?                  @map("country_of_residence")
   occupation                   String?
-  employerName                 String?                 @map("employer_name")
-  sourceOfFunds                String?                 @map("source_of_funds")
-  investmentObjective          String?                 @map("investment_objective")
-  taxResidency                 String?                 @map("tax_residency")
-  pepStatus                    String                  @default("not_declared") @map("pep_status")
-  bankName                     String?                 @map("bank_name")
-  bankAccountName              String?                 @map("bank_account_name")
-  bankAccountLast4             String?                 @map("bank_account_last4")
-  phoneVerifiedAt              DateTime?               @map("phone_verified_at")
-  identityVerifiedAt           DateTime?               @map("identity_verified_at")
-  createdAt                    DateTime                @default(now()) @map("created_at")
-  updatedAt                    DateTime                @updatedAt @map("updated_at")
-  broker                       Broker                  @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  employerName                 String?                  @map("employer_name")
+  sourceOfFunds                String?                  @map("source_of_funds")
+  investmentObjective          String?                  @map("investment_objective")
+  taxResidency                 String?                  @map("tax_residency")
+  pepStatus                    String                   @default("not_declared") @map("pep_status")
+  bankName                     String?                  @map("bank_name")
+  bankAccountName              String?                  @map("bank_account_name")
+  bankAccountLast4             String?                  @map("bank_account_last4")
+  phoneVerifiedAt              DateTime?                @map("phone_verified_at")
+  identityVerifiedAt           DateTime?                @map("identity_verified_at")
+  createdAt                    DateTime                 @default(now()) @map("created_at")
+  updatedAt                    DateTime                 @updatedAt @map("updated_at")
+  broker                       Broker                   @relation(fields: [brokerId], references: [id], onDelete: Restrict)
   accounts                     Account[]
   consents                     ClientConsent[]
   serviceRequests              ClientServiceRequest[]
   notes                        ClientNote[]
-  creator                      User?                   @relation("ClientCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  approver                     User?                   @relation("ClientApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  creator                      User?                    @relation("ClientCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  approver                     User?                    @relation("ClientApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   cashMovements                CashMovement[]
   verificationChallenges       VerificationChallenge[]
   documents                    ClientDocument[]
@@ -184,6 +199,9 @@ model Client {
   investorAssignments          InvestorAssignment[]
   complianceReports            ComplianceReport[]
   screenings                   ClientScreening[]
+  beneficialOwnerRecords       BeneficialOwner[]
+  monitoringAlerts             MonitoringAlert[]
+  employeeConductProfiles      EmployeeConductProfile[]
 
   @@unique([brokerId, identityReference])
   @@unique([brokerId, portalAuthSubject])
@@ -226,23 +244,24 @@ model ClientDocumentContent {
 }
 
 model LinkedBankAccount {
-  id                String         @id
-  brokerId          String         @map("broker_id")
-  clientId          String         @map("client_id")
-  bankName          String         @map("bank_name")
-  accountNumber     String         @map("account_number")
-  accountHolderName String         @map("account_holder_name")
-  source            String
-  status            String         @default("pending_review")
-  reviewedBy        String?        @map("reviewed_by")
-  reviewedAt        DateTime?      @map("reviewed_at")
-  rejectionReason   String?        @map("rejection_reason")
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  broker            Broker         @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  client            Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  reviewer          User?          @relation("LinkedBankReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  cashMovements     CashMovement[]
+  id                       String         @id
+  brokerId                 String         @map("broker_id")
+  clientId                 String         @map("client_id")
+  bankName                 String         @map("bank_name")
+  accountNumber            String         @map("account_number")
+  accountHolderName        String         @map("account_holder_name")
+  source                   String
+  status                   String         @default("pending_review")
+  reviewedBy               String?        @map("reviewed_by")
+  reviewedAt               DateTime?      @map("reviewed_at")
+  rejectionReason          String?        @map("rejection_reason")
+  createdAt                DateTime       @default(now()) @map("created_at")
+  updatedAt                DateTime       @updatedAt @map("updated_at")
+  broker                   Broker         @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client                   Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewer                 User?          @relation("LinkedBankReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  destinationCashMovements CashMovement[] @relation("CashDestinationBank")
+  sourceCashMovements      CashMovement[] @relation("CashSourceBank")
 
   @@unique([clientId, bankName, accountNumber])
   @@index([brokerId, status, createdAt])
@@ -279,35 +298,39 @@ model Account {
   cashMovements            CashMovement[]
   verificationChallenges   VerificationChallenge[]
   communicationThreads     CommunicationThread[]
+  employeeConductProfiles  EmployeeConductProfile[]
 
   @@index([clientId])
   @@map("accounts")
 }
 
 model Instrument {
-  id                      String                  @id
-  symbol                  String                  @unique
+  id                      String                       @id
+  symbol                  String                       @unique
   name                    String
-  assetClass              String                  @map("asset_class")
+  assetClass              String                       @map("asset_class")
   sector                  String?
-  marketSegment           String                  @default("main") @map("market_segment")
+  marketSegment           String                       @default("main") @map("market_segment")
   issuer                  String
-  tradingStatus           String                  @default("tradable") @map("trading_status")
-  currency                String                  @default("ETB")
-  lotSize                 Int                     @default(1) @map("lot_size")
-  tickSize                Decimal                 @default(0.01) @map("tick_size") @db.Decimal(12, 6)
-  settlementCycle         String                  @default("T+2") @map("settlement_cycle")
-  faceValue               Decimal?                @map("face_value") @db.Decimal(20, 6)
-  maturityDate            DateTime?               @map("maturity_date") @db.Date
-  couponRate              Decimal?                @map("coupon_rate") @db.Decimal(9, 6)
-  couponFrequency         String?                 @map("coupon_frequency")
-  lastPrice               Decimal?                @map("last_price") @db.Decimal(20, 6)
-  createdAt               DateTime                @default(now()) @map("created_at")
-  updatedAt               DateTime                @updatedAt @map("updated_at")
+  tradingStatus           String                       @default("tradable") @map("trading_status")
+  currency                String                       @default("ETB")
+  lotSize                 Int                          @default(1) @map("lot_size")
+  tickSize                Decimal                      @default(0.01) @map("tick_size") @db.Decimal(12, 6)
+  settlementCycle         String                       @default("T+2") @map("settlement_cycle")
+  faceValue               Decimal?                     @map("face_value") @db.Decimal(20, 6)
+  maturityDate            DateTime?                    @map("maturity_date") @db.Date
+  couponRate              Decimal?                     @map("coupon_rate") @db.Decimal(9, 6)
+  couponFrequency         String?                      @map("coupon_frequency")
+  lastPrice               Decimal?                     @map("last_price") @db.Decimal(20, 6)
+  createdAt               DateTime                     @default(now()) @map("created_at")
+  updatedAt               DateTime                     @updatedAt @map("updated_at")
   holdings                Holding[]
   orders                  Order[]
   securitiesLedgerEntries SecuritiesLedgerEntry[]
   brokerAccess            BrokerInstrument[]
+  tradeClearances         PersonalTradeClearance[]
+  restrictedSecurities    RestrictedSecurity[]
+  sensitiveInfoAccess     SensitiveInformationAccess[]
 
   @@map("instruments")
 }
@@ -424,19 +447,19 @@ model ChecklistTemplate {
 }
 
 model ChecklistTemplateItem {
-  id               String            @id
-  templateId       String            @map("template_id")
-  itemCode         String            @map("item_code")
+  id               String              @id
+  templateId       String              @map("template_id")
+  itemCode         String              @map("item_code")
   section          String
   title            String
   guidance         String
-  expectedEvidence String            @map("expected_evidence")
-  required         Boolean           @default(true)
-  sortOrder        Int               @map("sort_order")
-  sourceTitle      String            @map("source_title")
-  sourceUrl        String            @map("source_url")
-  sourceReference  String            @map("source_reference")
-  template         ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  expectedEvidence String              @map("expected_evidence")
+  required         Boolean             @default(true)
+  sortOrder        Int                 @map("sort_order")
+  sourceTitle      String              @map("source_title")
+  sourceUrl        String              @map("source_url")
+  sourceReference  String              @map("source_reference")
+  template         ChecklistTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
   dealItems        DealChecklistItem[]
 
   @@unique([templateId, itemCode])
@@ -482,26 +505,26 @@ model Issuer {
 }
 
 model AdvisoryDeal {
-  id                  String                @id
-  tenantId            String                @map("tenant_id")
-  issuerId            String                @map("issuer_id")
-  checklistTemplateId String                @map("checklist_template_id")
+  id                  String              @id
+  tenantId            String              @map("tenant_id")
+  issuerId            String              @map("issuer_id")
+  checklistTemplateId String              @map("checklist_template_id")
   name                String
-  transactionType     String                @map("transaction_type")
-  marketSegment       String                @map("market_segment")
-  mandateReference    String?               @map("mandate_reference")
-  leadUserId          String?               @map("lead_user_id")
-  stage               String                @default("draft")
-  status              String                @default("active")
-  targetDate          DateTime?             @map("target_date") @db.Date
-  stageOverrideReason String?               @map("stage_override_reason")
-  createdByUserId     String?               @map("created_by_user_id")
-  version             Int                   @default(0)
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
-  tenant              Broker                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  issuer              Issuer                @relation(fields: [issuerId], references: [id], onDelete: Restrict)
-  checklistTemplate   ChecklistTemplate     @relation(fields: [checklistTemplateId], references: [id], onDelete: Restrict)
+  transactionType     String              @map("transaction_type")
+  marketSegment       String              @map("market_segment")
+  mandateReference    String?             @map("mandate_reference")
+  leadUserId          String?             @map("lead_user_id")
+  stage               String              @default("draft")
+  status              String              @default("active")
+  targetDate          DateTime?           @map("target_date") @db.Date
+  stageOverrideReason String?             @map("stage_override_reason")
+  createdByUserId     String?             @map("created_by_user_id")
+  version             Int                 @default(0)
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  tenant              Broker              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  issuer              Issuer              @relation(fields: [issuerId], references: [id], onDelete: Restrict)
+  checklistTemplate   ChecklistTemplate   @relation(fields: [checklistTemplateId], references: [id], onDelete: Restrict)
   parties             DealParty[]
   checklistItems      DealChecklistItem[]
   documents           DealDocument[]
@@ -532,38 +555,38 @@ model DealParty {
 }
 
 model DealChecklistItem {
-  id                   String                 @id
-  tenantId             String                 @map("tenant_id")
-  dealId               String                 @map("deal_id")
-  templateItemId       String?                @map("template_item_id")
-  itemCode             String                 @map("item_code")
-  section              String
-  title                String
-  guidance             String
-  expectedEvidence     String                 @map("expected_evidence")
-  required             Boolean                @default(true)
-  custom               Boolean                @default(false)
-  sortOrder            Int                    @map("sort_order")
-  sourceTitle          String?                @map("source_title")
-  sourceUrl            String?                @map("source_url")
-  sourceReference      String?                @map("source_reference")
-  ownerUserId          String?                @map("owner_user_id")
-  dueDate              DateTime?              @map("due_date") @db.Date
-  status               String                 @default("not_started")
-  notes                String?
-  preparedByUserId     String?                @map("prepared_by_user_id")
-  preparedAt           DateTime?              @map("prepared_at")
-  reviewedByUserId     String?                @map("reviewed_by_user_id")
-  reviewedAt           DateTime?              @map("reviewed_at")
-  reviewNote           String?                @map("review_note")
-  notApplicableReason  String?                @map("not_applicable_reason")
-  version              Int                    @default(0)
-  createdAt            DateTime               @default(now()) @map("created_at")
-  updatedAt            DateTime               @updatedAt @map("updated_at")
-  deal                 AdvisoryDeal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  templateItem         ChecklistTemplateItem? @relation(fields: [templateItemId], references: [id], onDelete: SetNull)
-  documents            DealDocument[]
-  tasks                DealTask[]
+  id                  String                 @id
+  tenantId            String                 @map("tenant_id")
+  dealId              String                 @map("deal_id")
+  templateItemId      String?                @map("template_item_id")
+  itemCode            String                 @map("item_code")
+  section             String
+  title               String
+  guidance            String
+  expectedEvidence    String                 @map("expected_evidence")
+  required            Boolean                @default(true)
+  custom              Boolean                @default(false)
+  sortOrder           Int                    @map("sort_order")
+  sourceTitle         String?                @map("source_title")
+  sourceUrl           String?                @map("source_url")
+  sourceReference     String?                @map("source_reference")
+  ownerUserId         String?                @map("owner_user_id")
+  dueDate             DateTime?              @map("due_date") @db.Date
+  status              String                 @default("not_started")
+  notes               String?
+  preparedByUserId    String?                @map("prepared_by_user_id")
+  preparedAt          DateTime?              @map("prepared_at")
+  reviewedByUserId    String?                @map("reviewed_by_user_id")
+  reviewedAt          DateTime?              @map("reviewed_at")
+  reviewNote          String?                @map("review_note")
+  notApplicableReason String?                @map("not_applicable_reason")
+  version             Int                    @default(0)
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  deal                AdvisoryDeal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  templateItem        ChecklistTemplateItem? @relation(fields: [templateItemId], references: [id], onDelete: SetNull)
+  documents           DealDocument[]
+  tasks               DealTask[]
 
   @@unique([dealId, itemCode])
   @@index([tenantId, dealId, status])
@@ -572,25 +595,25 @@ model DealChecklistItem {
 }
 
 model DealDocument {
-  id                    String                @id
-  tenantId              String                @map("tenant_id")
-  dealId                String                @map("deal_id")
-  checklistItemId       String?               @map("checklist_item_id")
-  title                 String
-  documentType          String                @map("document_type")
-  ownerUserId           String?               @map("owner_user_id")
-  expectedDate          DateTime?             @map("expected_date") @db.Date
-  status                String                @default("expected")
-  externalUrl           String?               @map("external_url")
-  currentVersionId      String?               @unique @map("current_version_id")
-  createdAt             DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
-  tenant                Broker                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  deal                  AdvisoryDeal          @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  checklistItem         DealChecklistItem?    @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
-  versions              DealDocumentVersion[] @relation("DocumentVersions")
-  currentVersion        DealDocumentVersion?  @relation("CurrentDocumentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
-  tasks                 DealTask[]
+  id               String                @id
+  tenantId         String                @map("tenant_id")
+  dealId           String                @map("deal_id")
+  checklistItemId  String?               @map("checklist_item_id")
+  title            String
+  documentType     String                @map("document_type")
+  ownerUserId      String?               @map("owner_user_id")
+  expectedDate     DateTime?             @map("expected_date") @db.Date
+  status           String                @default("expected")
+  externalUrl      String?               @map("external_url")
+  currentVersionId String?               @unique @map("current_version_id")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  tenant           Broker                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deal             AdvisoryDeal          @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  checklistItem    DealChecklistItem?    @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+  versions         DealDocumentVersion[] @relation("DocumentVersions")
+  currentVersion   DealDocumentVersion?  @relation("CurrentDocumentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  tasks            DealTask[]
 
   @@index([tenantId, dealId, status])
   @@map("deal_documents")
@@ -623,27 +646,27 @@ model DealDocumentContent {
 }
 
 model DealTask {
-  id                String             @id
-  tenantId          String             @map("tenant_id")
-  dealId            String             @map("deal_id")
-  checklistItemId   String?            @map("checklist_item_id")
-  documentId        String?            @map("document_id")
-  title             String
-  description       String?
-  assignedToUserId  String?            @map("assigned_to_user_id")
-  createdByUserId   String?            @map("created_by_user_id")
-  dueDate           DateTime?          @map("due_date") @db.Date
-  priority          String             @default("normal")
-  status            String             @default("open")
-  completedAt       DateTime?          @map("completed_at")
-  completionNote    String?            @map("completion_note")
-  version           Int                @default(0)
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
-  tenant            Broker             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  deal              AdvisoryDeal       @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  checklistItem     DealChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
-  document          DealDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  id               String             @id
+  tenantId         String             @map("tenant_id")
+  dealId           String             @map("deal_id")
+  checklistItemId  String?            @map("checklist_item_id")
+  documentId       String?            @map("document_id")
+  title            String
+  description      String?
+  assignedToUserId String?            @map("assigned_to_user_id")
+  createdByUserId  String?            @map("created_by_user_id")
+  dueDate          DateTime?          @map("due_date") @db.Date
+  priority         String             @default("normal")
+  status           String             @default("open")
+  completedAt      DateTime?          @map("completed_at")
+  completionNote   String?            @map("completion_note")
+  version          Int                @default(0)
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  tenant           Broker             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deal             AdvisoryDeal       @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  checklistItem    DealChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+  document         DealDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status, dueDate])
   @@index([tenantId, assignedToUserId, status])
@@ -651,21 +674,21 @@ model DealTask {
 }
 
 model DealSubmission {
-  id               String            @id
-  tenantId         String            @map("tenant_id")
-  dealId           String            @map("deal_id")
-  authority        String
-  submissionType   String            @map("submission_type")
-  reference        String?
-  status           String            @default("preparing")
-  submittedAt      DateTime?         @map("submitted_at")
-  submittedBy      String?           @map("submitted_by")
-  responseDueAt    DateTime?         @map("response_due_at") @db.Date
-  notes            String?
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  tenant           Broker            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  deal             AdvisoryDeal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  id                String            @id
+  tenantId          String            @map("tenant_id")
+  dealId            String            @map("deal_id")
+  authority         String
+  submissionType    String            @map("submission_type")
+  reference         String?
+  status            String            @default("preparing")
+  submittedAt       DateTime?         @map("submitted_at")
+  submittedBy       String?           @map("submitted_by")
+  responseDueAt     DateTime?         @map("response_due_at") @db.Date
+  notes             String?
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  tenant            Broker            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deal              AdvisoryDeal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
   regulatoryQueries RegulatoryQuery[]
 
   @@index([tenantId, dealId, status])
@@ -673,20 +696,20 @@ model DealSubmission {
 }
 
 model RegulatoryQuery {
-  id               String         @id
-  tenantId         String         @map("tenant_id")
-  submissionId     String         @map("submission_id")
-  reference        String?
-  question         String
-  ownerUserId      String?        @map("owner_user_id")
-  receivedAt       DateTime       @map("received_at")
-  dueDate          DateTime?      @map("due_date") @db.Date
-  status           String         @default("open")
-  responseSummary  String?        @map("response_summary")
-  respondedAt      DateTime?      @map("responded_at")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
-  submission       DealSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id              String         @id
+  tenantId        String         @map("tenant_id")
+  submissionId    String         @map("submission_id")
+  reference       String?
+  question        String
+  ownerUserId     String?        @map("owner_user_id")
+  receivedAt      DateTime       @map("received_at")
+  dueDate         DateTime?      @map("due_date") @db.Date
+  status          String         @default("open")
+  responseSummary String?        @map("response_summary")
+  respondedAt     DateTime?      @map("responded_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  submission      DealSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status, dueDate])
   @@map("regulatory_queries")
@@ -876,6 +899,7 @@ model Order {
   status                    String                   @default("draft")
   source                    String                   @default("manual")
   instructionVerificationId String?                  @unique @map("instruction_verification_id")
+  personalTradeClearanceId  String?                  @unique @map("personal_trade_clearance_id")
   instructionVerifiedAt     DateTime?                @map("instruction_verified_at")
   assignedTraderId          String?                  @map("assigned_trader_id")
   riskFlag                  String                   @default("none") @map("risk_flag")
@@ -908,6 +932,8 @@ model Order {
   clientMoneyLedgerEntries  ClientMoneyLedgerEntry[]
   pooledBankLedgerEntries   PooledBankLedgerEntry[]
   instructionVerification   VerificationChallenge?   @relation(fields: [instructionVerificationId], references: [id], onDelete: Restrict)
+  personalTradeClearance    PersonalTradeClearance?  @relation(fields: [personalTradeClearanceId], references: [id], onDelete: SetNull)
+  monitoringAlerts          MonitoringAlert[]
 
   @@unique([brokerId, submissionReference])
   @@index([brokerId, status])
@@ -1004,28 +1030,28 @@ model Trade {
 }
 
 model ClientServiceRequest {
-  id              String    @id
-  brokerId        String    @map("broker_id")
-  clientId        String    @map("client_id")
-  accountId       String?   @map("account_id")
-  orderId         String?   @map("order_id")
-  threadId        String?   @unique @map("thread_id")
-  requestType     String    @map("request_type")
-  status          String    @default("open")
+  id              String               @id
+  brokerId        String               @map("broker_id")
+  clientId        String               @map("client_id")
+  accountId       String?              @map("account_id")
+  orderId         String?              @map("order_id")
+  threadId        String?              @unique @map("thread_id")
+  requestType     String               @map("request_type")
+  status          String               @default("open")
   subject         String
   description     String
-  submittedBy     String    @map("submitted_by")
-  assignedTo      String?   @map("assigned_to")
-  resolutionNotes String?   @map("resolution_notes")
-  resolvedBy      String?   @map("resolved_by")
-  submittedAt     DateTime  @default(now()) @map("submitted_at")
-  resolvedAt      DateTime? @map("resolved_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  broker          Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  client          Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  account         Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  order           Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  submittedBy     String               @map("submitted_by")
+  assignedTo      String?              @map("assigned_to")
+  resolutionNotes String?              @map("resolution_notes")
+  resolvedBy      String?              @map("resolved_by")
+  submittedAt     DateTime             @default(now()) @map("submitted_at")
+  resolvedAt      DateTime?            @map("resolved_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  broker          Broker               @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client          Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  account         Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  order           Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
   thread          CommunicationThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
 
   @@index([brokerId, status, submittedAt])
@@ -1151,53 +1177,372 @@ model ClientMoneyPosition {
 }
 
 model CashMovement {
-  id                       String                   @id
-  brokerId                 String                   @map("broker_id")
-  clientId                 String                   @map("client_id")
-  accountId                String                   @map("account_id")
-  pooledBankAccountId      String                   @map("pooled_bank_account_id")
-  submissionReference      String                   @map("submission_reference")
-  movementType             String                   @map("movement_type")
-  amount                   Decimal                  @db.Decimal(20, 4)
-  currency                 String                   @default("ETB")
-  status                   String
-  bankReference            String?                  @map("bank_reference")
-  proofReference           String?                  @map("proof_reference")
-  destinationBankName      String?                  @map("destination_bank_name")
-  destinationAccountName   String?                  @map("destination_account_name")
-  destinationAccountMasked String?                  @map("destination_account_masked")
-  linkedBankAccountId      String?                  @map("linked_bank_account_id")
-  requestedByChannel       String                   @map("requested_by_channel")
-  submittedByUserId        String?                  @map("submitted_by_user_id")
-  reviewedByUserId         String?                  @map("reviewed_by_user_id")
-  completedByUserId        String?                  @map("completed_by_user_id")
-  submittedAt              DateTime                 @default(now()) @map("submitted_at")
-  reviewedAt               DateTime?                @map("reviewed_at")
-  completedAt              DateTime?                @map("completed_at")
-  rejectionReason          String?                  @map("rejection_reason")
-  failureReason            String?                  @map("failure_reason")
-  notes                    String?
-  createdAt                DateTime                 @default(now()) @map("created_at")
-  updatedAt                DateTime                 @updatedAt @map("updated_at")
-  broker                   Broker                   @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  client                   Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  account                  Account                  @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  pooledBankAccount        PooledBankAccount        @relation(fields: [pooledBankAccountId], references: [id], onDelete: Restrict)
-  linkedBankAccount        LinkedBankAccount?       @relation(fields: [linkedBankAccountId], references: [id], onDelete: SetNull)
-  submittedBy              User?                    @relation("CashMovementSubmitter", fields: [submittedByUserId], references: [id], onDelete: SetNull)
-  reviewedBy               User?                    @relation("CashMovementReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  completedBy              User?                    @relation("CashMovementCompleter", fields: [completedByUserId], references: [id], onDelete: SetNull)
-  proof                    CashMovementProof?
-  cashLedgerEntries        CashLedgerEntry[]
-  clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
-  pooledBankLedgerEntries  PooledBankLedgerEntry[]
+  id                        String                          @id
+  brokerId                  String                          @map("broker_id")
+  clientId                  String                          @map("client_id")
+  accountId                 String                          @map("account_id")
+  pooledBankAccountId       String                          @map("pooled_bank_account_id")
+  submissionReference       String                          @map("submission_reference")
+  movementType              String                          @map("movement_type")
+  amount                    Decimal                         @db.Decimal(20, 4)
+  currency                  String                          @default("ETB")
+  status                    String
+  bankReference             String?                         @map("bank_reference")
+  proofReference            String?                         @map("proof_reference")
+  destinationBankName       String?                         @map("destination_bank_name")
+  destinationAccountName    String?                         @map("destination_account_name")
+  destinationAccountMasked  String?                         @map("destination_account_masked")
+  linkedBankAccountId       String?                         @map("linked_bank_account_id")
+  sourceLinkedBankAccountId String?                         @map("source_linked_bank_account_id")
+  requestedByChannel        String                          @map("requested_by_channel")
+  submittedByUserId         String?                         @map("submitted_by_user_id")
+  reviewedByUserId          String?                         @map("reviewed_by_user_id")
+  completedByUserId         String?                         @map("completed_by_user_id")
+  submittedAt               DateTime                        @default(now()) @map("submitted_at")
+  reviewedAt                DateTime?                       @map("reviewed_at")
+  completedAt               DateTime?                       @map("completed_at")
+  rejectionReason           String?                         @map("rejection_reason")
+  failureReason             String?                         @map("failure_reason")
+  notes                     String?
+  createdAt                 DateTime                        @default(now()) @map("created_at")
+  updatedAt                 DateTime                        @updatedAt @map("updated_at")
+  broker                    Broker                          @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client                    Client                          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  account                   Account                         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  pooledBankAccount         PooledBankAccount               @relation(fields: [pooledBankAccountId], references: [id], onDelete: Restrict)
+  linkedBankAccount         LinkedBankAccount?              @relation("CashDestinationBank", fields: [linkedBankAccountId], references: [id], onDelete: SetNull)
+  sourceLinkedBankAccount   LinkedBankAccount?              @relation("CashSourceBank", fields: [sourceLinkedBankAccountId], references: [id], onDelete: SetNull)
+  submittedBy               User?                           @relation("CashMovementSubmitter", fields: [submittedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy                User?                           @relation("CashMovementReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  completedBy               User?                           @relation("CashMovementCompleter", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  proof                     CashMovementProof?
+  cashLedgerEntries         CashLedgerEntry[]
+  clientMoneyLedgerEntries  ClientMoneyLedgerEntry[]
+  pooledBankLedgerEntries   PooledBankLedgerEntry[]
+  monitoringAlerts          MonitoringAlert[]
+  withdrawalException       WithdrawalDestinationException?
 
   @@unique([brokerId, submissionReference])
   @@index([brokerId, status, submittedAt])
   @@index([clientId, submittedAt])
   @@index([accountId, status])
   @@index([linkedBankAccountId])
+  @@index([sourceLinkedBankAccountId])
   @@map("cash_movements")
+}
+
+/// Structured ownership references used for exact, privacy-preserving shared-
+/// identifier monitoring. Raw identity documents remain in the document vault.
+model BeneficialOwner {
+  id                String    @id
+  brokerId          String    @map("broker_id")
+  clientId          String    @map("client_id")
+  displayName       String    @map("display_name")
+  ownershipPercent  Decimal?  @map("ownership_percent") @db.Decimal(8, 4)
+  identityReference String?   @map("identity_reference")
+  taxReference      String?   @map("tax_reference")
+  identifierLast7   String?   @map("identifier_last7")
+  verifiedAt        DateTime? @map("verified_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  broker            Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client            Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([brokerId, identityReference])
+  @@index([brokerId, taxReference])
+  @@map("beneficial_owners")
+}
+
+/// Immutable versions of configurable monitoring rules. Activating a version
+/// ends the previous version; prior alert decisions remain reproducible.
+model MonitoringRuleVersion {
+  id              String    @id
+  brokerId        String    @map("broker_id")
+  ruleCode        String    @map("rule_code")
+  category        String
+  version         Int
+  enabled         Boolean   @default(true)
+  configuration   Json
+  effectiveFrom   DateTime  @default(now()) @map("effective_from")
+  effectiveTo     DateTime? @map("effective_to")
+  changedByUserId String    @map("changed_by_user_id")
+  changeReason    String    @map("change_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  broker          Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+
+  @@unique([brokerId, ruleCode, version])
+  @@index([brokerId, category, effectiveTo])
+  @@map("monitoring_rule_versions")
+}
+
+model MonitoringCase {
+  id               String                @id
+  brokerId         String                @map("broker_id")
+  category         String
+  referenceNumber  String                @map("reference_number")
+  title            String
+  status           String                @default("open")
+  priority         String                @default("medium")
+  assignedToUserId String?               @map("assigned_to_user_id")
+  dueAt            DateTime?             @map("due_at")
+  openedByUserId   String                @map("opened_by_user_id")
+  resolution       String?
+  resolvedAt       DateTime?             @map("resolved_at")
+  closedAt         DateTime?             @map("closed_at")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  broker           Broker                @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  alerts           MonitoringAlert[]
+  events           MonitoringCaseEvent[]
+  evidence         MonitoringEvidence[]
+
+  @@unique([brokerId, referenceNumber])
+  @@index([brokerId, category, status, dueAt])
+  @@map("monitoring_cases")
+}
+
+model MonitoringAlert {
+  id                  String          @id
+  brokerId            String          @map("broker_id")
+  category            String
+  ruleCode            String          @map("rule_code")
+  ruleVersion         Int             @map("rule_version")
+  fingerprint         String
+  severity            String
+  status              String          @default("open")
+  investigationStatus String          @default("unreviewed") @map("investigation_status")
+  clearanceStatus     String          @default("not_required") @map("clearance_status")
+  title               String
+  summary             String
+  details             Json
+  clientId            String?         @map("client_id")
+  cashMovementId      String?         @map("cash_movement_id")
+  orderId             String?         @map("order_id")
+  caseId              String?         @map("case_id")
+  assignedToUserId    String?         @map("assigned_to_user_id")
+  detectedAt          DateTime        @default(now()) @map("detected_at")
+  reviewedByUserId    String?         @map("reviewed_by_user_id")
+  reviewedAt          DateTime?       @map("reviewed_at")
+  clearedByUserId     String?         @map("cleared_by_user_id")
+  clearedAt           DateTime?       @map("cleared_at")
+  clearanceDecision   String?         @map("clearance_decision")
+  clearanceRationale  String?         @map("clearance_rationale")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  broker              Broker          @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client              Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  cashMovement        CashMovement?   @relation(fields: [cashMovementId], references: [id], onDelete: Restrict)
+  order               Order?          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  case                MonitoringCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  @@unique([brokerId, fingerprint])
+  @@index([brokerId, category, status, severity, detectedAt])
+  @@index([cashMovementId, status])
+  @@index([orderId, status])
+  @@map("monitoring_alerts")
+}
+
+model MonitoringCaseEvent {
+  id             String         @id
+  caseId         String         @map("case_id")
+  eventType      String         @map("event_type")
+  actorUserId    String         @map("actor_user_id")
+  fromStatus     String?        @map("from_status")
+  toStatus       String?        @map("to_status")
+  note           String?
+  restrictedData Json?          @map("restricted_data")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  case           MonitoringCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@map("monitoring_case_events")
+}
+
+model MonitoringEvidence {
+  id               String         @id
+  brokerId         String         @map("broker_id")
+  caseId           String         @map("case_id")
+  evidenceType     String         @map("evidence_type")
+  originalName     String         @map("original_name")
+  mimeType         String         @map("mime_type")
+  sizeBytes        Int            @map("size_bytes")
+  storageRef       String         @map("storage_ref")
+  sha256           String
+  uploadedByUserId String         @map("uploaded_by_user_id")
+  uploadedAt       DateTime       @default(now()) @map("uploaded_at")
+  broker           Broker         @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  case             MonitoringCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([brokerId, caseId, uploadedAt])
+  @@map("monitoring_evidence")
+}
+
+/// Restricted audit stream for monitoring decisions and sensitive control
+/// changes. This is intentionally separate from the ordinary broker audit log.
+model MonitoringAuditEvent {
+  id             String   @id
+  brokerId       String   @map("broker_id")
+  actorUserId    String?  @map("actor_user_id")
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id")
+  summary        String
+  restrictedData Json?    @map("restricted_data")
+  createdAt      DateTime @default(now()) @map("created_at")
+  broker         Broker   @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+
+  @@index([brokerId, createdAt])
+  @@index([brokerId, entityType, entityId])
+  @@map("monitoring_audit_events")
+}
+
+model EmployeeConductProfile {
+  id                     String                       @id
+  brokerId               String                       @map("broker_id")
+  userId                 String                       @unique @map("user_id")
+  identityReference      String                       @map("identity_reference")
+  faydaLast7             String                       @map("fayda_last7")
+  linkedClientId         String?                      @map("linked_client_id")
+  linkedAccountId        String?                      @map("linked_account_id")
+  sensitiveMarketAccess  Boolean                      @default(false) @map("sensitive_market_access")
+  status                 String                       @default("active")
+  designatedByUserId     String                       @map("designated_by_user_id")
+  designatedAt           DateTime                     @default(now()) @map("designated_at")
+  annualAttestationDueAt DateTime?                    @map("annual_attestation_due_at") @db.Date
+  createdAt              DateTime                     @default(now()) @map("created_at")
+  updatedAt              DateTime                     @updatedAt @map("updated_at")
+  broker                 Broker                       @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  user                   User                         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  linkedClient           Client?                      @relation(fields: [linkedClientId], references: [id], onDelete: SetNull)
+  linkedAccount          Account?                     @relation(fields: [linkedAccountId], references: [id], onDelete: SetNull)
+  clearances             PersonalTradeClearance[]
+  disclosures            EmployeeDisclosure[]
+  attestations           ConductAttestation[]
+  sensitiveInfoAccess    SensitiveInformationAccess[]
+
+  @@unique([brokerId, identityReference])
+  @@index([brokerId, status])
+  @@map("employee_conduct_profiles")
+}
+
+model PersonalTradeClearance {
+  id                String                 @id
+  brokerId          String                 @map("broker_id")
+  employeeProfileId String                 @map("employee_profile_id")
+  instrumentId      String                 @map("instrument_id")
+  side              String
+  businessDate      DateTime               @map("business_date") @db.Date
+  maxQuantity       Decimal?               @map("max_quantity") @db.Decimal(24, 8)
+  maxValue          Decimal?               @map("max_value") @db.Decimal(20, 4)
+  status            String                 @default("pending")
+  requestedByUserId String                 @map("requested_by_user_id")
+  approvedByUserId  String?                @map("approved_by_user_id")
+  decisionReason    String?                @map("decision_reason")
+  decidedAt         DateTime?              @map("decided_at")
+  expiresAt         DateTime               @map("expires_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  broker            Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  employeeProfile   EmployeeConductProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Restrict)
+  instrument        Instrument             @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  order             Order?
+
+  @@index([brokerId, status, businessDate])
+  @@index([employeeProfileId, instrumentId, side, businessDate])
+  @@map("personal_trade_clearances")
+}
+
+model RestrictedSecurity {
+  id              String     @id
+  brokerId        String     @map("broker_id")
+  instrumentId    String     @map("instrument_id")
+  classification  String
+  reason          String
+  effectiveFrom   DateTime   @map("effective_from")
+  effectiveTo     DateTime?  @map("effective_to")
+  createdByUserId String     @map("created_by_user_id")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  broker          Broker     @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  instrument      Instrument @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+
+  @@index([brokerId, instrumentId, effectiveTo])
+  @@map("restricted_securities")
+}
+
+model SensitiveInformationAccess {
+  id                String                 @id
+  brokerId          String                 @map("broker_id")
+  employeeProfileId String                 @map("employee_profile_id")
+  instrumentId      String                 @map("instrument_id")
+  reason            String
+  receivedAt        DateTime               @map("received_at")
+  releasedAt        DateTime?              @map("released_at")
+  recordedByUserId  String                 @map("recorded_by_user_id")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  broker            Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  employeeProfile   EmployeeConductProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Restrict)
+  instrument        Instrument             @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+
+  @@index([brokerId, instrumentId, releasedAt])
+  @@index([employeeProfileId, releasedAt])
+  @@map("sensitive_information_access")
+}
+
+model EmployeeDisclosure {
+  id                String                 @id
+  brokerId          String                 @map("broker_id")
+  employeeProfileId String                 @map("employee_profile_id")
+  disclosureType    String                 @map("disclosure_type")
+  title             String
+  details           Json
+  status            String                 @default("submitted")
+  submittedByUserId String                 @map("submitted_by_user_id")
+  reviewedByUserId  String?                @map("reviewed_by_user_id")
+  reviewedAt        DateTime?              @map("reviewed_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  broker            Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  employeeProfile   EmployeeConductProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Restrict)
+
+  @@index([brokerId, disclosureType, status, createdAt])
+  @@map("employee_disclosures")
+}
+
+model ConductAttestation {
+  id                String                 @id
+  brokerId          String                 @map("broker_id")
+  employeeProfileId String                 @map("employee_profile_id")
+  attestationYear   Int                    @map("attestation_year")
+  statementVersion  String                 @map("statement_version")
+  status            String                 @default("pending")
+  attestedAt        DateTime?              @map("attested_at")
+  exceptions        Json?
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  broker            Broker                 @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  employeeProfile   EmployeeConductProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeProfileId, attestationYear])
+  @@index([brokerId, status, attestationYear])
+  @@map("conduct_attestations")
+}
+
+model WithdrawalDestinationException {
+  id                String       @id
+  brokerId          String       @map("broker_id")
+  cashMovementId    String       @unique @map("cash_movement_id")
+  reason            String
+  requestedByUserId String       @map("requested_by_user_id")
+  approvedByUserId  String?      @map("approved_by_user_id")
+  status            String       @default("pending")
+  decidedAt         DateTime?    @map("decided_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+  broker            Broker       @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  cashMovement      CashMovement @relation(fields: [cashMovementId], references: [id], onDelete: Restrict)
+
+  @@index([brokerId, status, createdAt])
+  @@map("withdrawal_destination_exceptions")
 }
 
 model CashMovementProof {

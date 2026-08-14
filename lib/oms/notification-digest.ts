@@ -1,6 +1,8 @@
 import { prisma } from "../prisma";
 import { toNum } from "../money";
 import { createNotificationOnce, SETTLEMENT, COMPLIANCE } from "./notification-service";
+import { isMonitoringEnabled } from "../monitoring";
+import { runClientMonitoringSweep } from "../monitoring-service";
 
 /**
  * Daily-cadence (time-driven) notifications - run once a day by the cron route.
@@ -19,6 +21,7 @@ export async function runDailyNotificationSweep(now = new Date()) {
   const dayKey = today.toISOString().slice(0, 10);
   let settlementReminders = 0;
   let kycReminders = 0;
+  let monitoringAlerts = 0;
 
   // 1. Settlements at or past their value date that have not been confirmed.
   const dueSettlements = await prisma.settlement.findMany({
@@ -83,5 +86,13 @@ export async function runDailyNotificationSweep(now = new Date()) {
     if (created) kycReminders += 1;
   }
 
-  return { settlementReminders, kycReminders, total: settlementReminders + kycReminders };
+  // 3. Tenant-isolated AML client review sweep. Disabled tenants are skipped;
+  // alert fingerprints make the sweep safe to rerun.
+  const monitoringTenants = await prisma.brokerSettings.findMany({ select: { brokerId: true, features: true } });
+  for (const tenant of monitoringTenants) {
+    if (!isMonitoringEnabled(tenant.features)) continue;
+    monitoringAlerts += (await runClientMonitoringSweep(tenant.brokerId)).alerts;
+  }
+
+  return { settlementReminders, kycReminders, monitoringAlerts, total: settlementReminders + kycReminders + monitoringAlerts };
 }

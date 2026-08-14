@@ -17,6 +17,7 @@ import {
   serializeFeeBreakdown,
 } from "./fee-service";
 import { applyClientMoneyTradeBook } from "../client-money-service";
+import { assertNoEmployeeSelfProcessing } from "../monitoring-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -39,6 +40,7 @@ export type CaptureTradeInput = {
 
 export async function captureTrade(actor: Actor, orderId: string, input: CaptureTradeInput) {
   return prisma.$transaction(async (tx) => {
+    await assertNoEmployeeSelfProcessing(tx, actor.brokerId, orderId, actor.id);
     await lockOrder(tx, orderId);
     const order = await tx.order.findUnique({
       where: { id: orderId },

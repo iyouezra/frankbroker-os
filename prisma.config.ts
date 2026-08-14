@@ -4,6 +4,7 @@ import { defineConfig } from "prisma/config";
 config({ path: [".env.local", ".env"], quiet: true });
 
 const databaseUrl =
+  process.env.MIGRATION_DATABASE_URL ??
   process.env.DATABASE_URL ??
   "postgresql://postgres:postgres@localhost:5432/frankbroker";
 

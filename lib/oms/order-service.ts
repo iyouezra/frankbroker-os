@@ -18,6 +18,7 @@ import { assertTransition, isTerminalStatus } from "./status";
 import { validatePreTrade, validationPassed, type ValidationCheck } from "./validation-service";
 import { computeConfiguredAmounts, resolveFeePolicy, serializeFeeBreakdown } from "./fee-service";
 import { consumeOrderVerification, ORDER_SOURCES, orderPayloadHash } from "../verification-service";
+import { assertNoEmployeeSelfProcessing, createMonitoringAlert, evaluateEmployeeOrder } from "../monitoring-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -159,11 +160,29 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
     dailyLimit: settings?.clientDailyLimit,
     sellNet: amounts.net,
   });
+  const employeeControl = await evaluateEmployeeOrder(prisma, {
+    brokerId: actor.brokerId,
+    accountId: input.accountId,
+    instrumentId: input.instrumentId,
+    side: input.side,
+    quantity,
+    value: amounts.gross,
+    actorId: actor.id,
+  });
+  if (employeeControl.employeeProfile && (input.validity ?? "day").trim().toLowerCase() !== "day") {
+    employeeControl.failures.push({ code: "EC_MISSING_CLEARANCE", severity: "high", message: "Employee-account orders must use Day validity." });
+  }
+  checks.push(...employeeControl.failures.map((failure) => ({
+    code: failure.code,
+    label: "Employee personal-dealing control",
+    passed: false,
+    message: failure.message,
+  })));
   const valid = validationPassed(checks);
   const finalStatus = valid ? "pending_broker_review" : "validation_failed";
   const id = `ORD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
   const now = new Date();
-  const riskFlag = amounts.net.gte(2_000_000) ? "review" : "none";
+  const riskFlag = amounts.net.gte(2_000_000) || employeeControl.employeeProfile ? "review" : "none";
   const source = input.source ?? "manual";
   const requiresVerification = ORDER_SOURCES.includes(source as (typeof ORDER_SOURCES)[number]);
   if (requiresVerification && !input.verificationId) {
@@ -227,7 +246,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         price,
         triggerPrice,
         orderType,
-        validity: input.validity ?? "day",
+        validity: employeeControl.employeeProfile ? "day" : input.validity ?? "day",
         estimatedGross: amounts.gross,
         estimatedFees: amounts.fees,
         estimatedNet: amounts.net,
@@ -242,6 +261,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         status: finalStatus,
         source,
         instructionVerificationId: input.verificationId ?? null,
+        personalTradeClearanceId: employeeControl.failures.length ? null : employeeControl.clearance?.id ?? null,
         instructionVerifiedAt,
         riskFlag,
         notes: input.notes?.trim() || null,
@@ -257,6 +277,68 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         },
       },
     });
+    for (const failure of employeeControl.failures) {
+      await createMonitoringAlert(tx, {
+        brokerId: actor.brokerId,
+        ruleCode: failure.code,
+        fingerprint: `${failure.code}:${id}`,
+        severity: failure.severity,
+        clientId: account.client.id,
+        orderId: id,
+        forceClearance: true,
+        summary: failure.message,
+        details: { employeeProfileId: employeeControl.employeeProfile?.id, accountId: input.accountId, instrumentId: input.instrumentId, side: input.side },
+      });
+    }
+    if (employeeControl.employeeProfile) {
+      const watch = await tx.restrictedSecurity.findFirst({
+        where: { brokerId: actor.brokerId, instrumentId: input.instrumentId, classification: "watch", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] },
+      });
+      if (watch) await createMonitoringAlert(tx, {
+        brokerId: actor.brokerId, ruleCode: "EC_ACTIVE_OVERLAP", fingerprint: `EC_WATCH:${id}`, severity: "medium",
+        clientId: account.client.id, orderId: id, summary: "Employee order uses a watch-list security and requires compliance review.",
+        details: { employeeProfileId: employeeControl.employeeProfile.id, restrictionId: watch.id },
+      });
+      const interacted = await tx.order.findFirst({
+        where: {
+          brokerId: actor.brokerId, instrumentId: input.instrumentId, side: input.side, accountId: { not: input.accountId }, submittedAt: { lt: now },
+          events: { some: { actorId: employeeControl.employeeProfile.userId } },
+        },
+        orderBy: { submittedAt: "desc" }, select: { id: true },
+      });
+      const overlap = interacted ?? await tx.order.findFirst({
+        where: {
+          brokerId: actor.brokerId, instrumentId: input.instrumentId, side: input.side, accountId: { not: input.accountId }, submittedAt: { lt: now },
+          status: { in: ["submitted", "pending_broker_review", "approved", "partially_filled"] },
+        },
+        orderBy: { submittedAt: "desc" }, select: { id: true },
+      });
+      if (overlap) await createMonitoringAlert(tx, {
+        brokerId: actor.brokerId, ruleCode: interacted ? "EC_FRONT_RUNNING" : "EC_ACTIVE_OVERLAP", fingerprint: `${interacted ? "EC_FRONT_RUNNING" : "EC_ACTIVE_OVERLAP"}:${id}:${overlap.id}`,
+        severity: interacted ? "high" : "medium", clientId: account.client.id, orderId: id, forceClearance: Boolean(interacted),
+        summary: interacted
+          ? "The employee placed a personal order after interacting with an earlier client order in the same instrument and direction."
+          : "The employee order overlaps earlier active client interest in the same instrument and direction.",
+        details: { employeeProfileId: employeeControl.employeeProfile.id, relatedOrderId: overlap.id },
+      });
+    } else if (actor.id) {
+      // Retrospective side of the targeted front-running control: an employee
+      // who handled this client order may already have traded personally in the
+      // same instrument and direction during the prior business-day window.
+      const actorProfile = await tx.employeeConductProfile.findFirst({ where: { brokerId: actor.brokerId, userId: actor.id, status: "active", linkedAccountId: { not: null } } });
+      if (actorProfile?.linkedAccountId && actorProfile.linkedAccountId !== input.accountId) {
+        const personalOrder = await tx.order.findFirst({
+          where: { brokerId: actor.brokerId, accountId: actorProfile.linkedAccountId, instrumentId: input.instrumentId, side: input.side, submittedAt: { gte: new Date(now.getTime() - 86_400_000), lt: now } },
+          orderBy: { submittedAt: "desc" }, select: { id: true },
+        });
+        if (personalOrder) await createMonitoringAlert(tx, {
+          brokerId: actor.brokerId, ruleCode: "EC_FRONT_RUNNING", fingerprint: `EC_FRONT_RUNNING:${personalOrder.id}:${id}`,
+          severity: "high", orderId: personalOrder.id, forceClearance: true,
+          summary: "The employee traded personally within one business day before processing a client order in the same instrument and direction.",
+          details: { employeeProfileId: actorProfile.id, relatedClientOrderId: id },
+        });
+      }
+    }
     if (cashBlock) {
       await persistCashMutation(tx, {
         accountId: input.accountId,
@@ -444,6 +526,7 @@ async function loadApprovalContext(tx: Prisma.TransactionClient, orderId: string
 
 export async function approveOrder(actor: Actor, orderId: string) {
   return prisma.$transaction(async (tx) => {
+    await assertNoEmployeeSelfProcessing(tx, actor.brokerId, orderId, actor.id);
     const { order, settings, entitlement } = await loadApprovalContext(tx, orderId, actor);
     assertTransition(order.status, "approved");
     const makerChecker = settings?.makerChecker ?? true;

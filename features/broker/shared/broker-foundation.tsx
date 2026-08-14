@@ -5,7 +5,7 @@ import { demoClients, demoInstruments, initialOrders, type BrokerClient, type De
 import { hasPermission, type OrderStatus, type Role } from "../../../lib/frank";
 import { orderResponsibility } from "../../../lib/order-log";
 
-export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings";
+export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
 export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
 export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationChannel: "sms" | "email"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
@@ -65,8 +65,8 @@ export type TenantApiInstrument = { id: string; symbol: string; name: string; as
 export type TenantApiResult = { tenant?: { id?: string; tradingName?: string; licenseNumber?: string; primaryColor?: string; currentUser?: { id: string; fullName: string; email: string }; features?: Partial<TenantFeatures>; modules?: Partial<TenantModules>; profile?: { businessType?: string } | null; availableRoles?: Role[]; currentRole?: Role; controls?: Partial<TenantControls> | null }; instruments?: TenantApiInstrument[] };
 export type CashPoolView = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; status: string; bookBalance: number; statementBalance: number; beneficialTotal: number; ownershipVariance: number; bankVariance: number; lastReconciledAt: string | null };
 export type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: number; currency: string; status: string; bankReference: string | null; proofReference: string | null; destinationBankName: string | null; destinationAccountName: string | null; destinationAccountMasked: string | null; channel: string; submissionReference: string; submittedAt: string; reviewedAt?: string | null; completedAt?: string | null; rejectionReason: string | null; failureReason: string | null; notes?: string | null; proof?: { name: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null; client?: { id: string; code: string; name: string }; account?: { id: string; number: string }; pool?: { id: string; bankName: string; accountName: string; accountNumberMasked: string; purpose: string } };
-export type CashOperationsData = { summary: { bankBookTotal: number; statementTotal: number; beneficialTotal: number; pendingDeposits: number; pendingWithdrawals: number }; pools: CashPoolView[]; movements: CashMovementView[] };
-export type BrokerCashInput = { clientId: string; accountId?: string; pooledBankAccountId: string; movementType: "deposit" | "withdrawal"; amount: number; submissionReference: string; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string; notes?: string };
+export type CashOperationsData = { summary: { bankBookTotal: number; statementTotal: number; beneficialTotal: number; pendingDeposits: number; pendingWithdrawals: number }; pools: CashPoolView[]; movements: CashMovementView[]; linkedBanks?: Array<{ id: string; clientId: string; bankName: string; accountHolderName: string; accountNumberMasked: string }> };
+export type BrokerCashInput = { clientId: string; accountId?: string; pooledBankAccountId: string; movementType: "deposit" | "withdrawal"; amount: number; submissionReference: string; bankReference?: string; proofReference?: string; destinationBankName?: string; destinationAccountName?: string; destinationAccountMasked?: string; linkedBankAccountId?: string; sourceLinkedBankAccountId?: string; notes?: string };
 export type Client360Tab = "overview" | "assets" | "orders" | "trades" | "transactions" | "conversations" | "timeline" | "settlements" | "documents" | "notes" | "audit";
 
 // ---------------------------------------------------------------------------
@@ -383,6 +383,15 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "advisory", label: "Advisory pipeline", icon: "advisory", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
     { id: "issuers", label: "Issuers", icon: "issuers", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
   ] },
+  { label: "Risk & Compliance", items: [
+    { id: "risk_overview", label: "Overview", icon: "risk", roles: ["broker_admin", "compliance", "management"], children: [
+      { id: "risk_monitoring", label: "Monitoring & Cases", icon: "complaints", roles: ["compliance"] },
+      { id: "risk_clients", label: "Client Reviews", icon: "clients", roles: ["compliance"] },
+      { id: "risk_employee", label: "Employee Conduct", icon: "users", roles: ["compliance"] },
+      { id: "risk_reports", label: "Regulatory Reporting", icon: "reports", roles: ["compliance"] },
+      { id: "risk_controls", label: "Controls & Audit", icon: "audit", roles: ["compliance"] },
+    ] },
+  ] },
   { label: "Oversight", items: [
     { id: "performance", label: "Performance", icon: "performance", roles: ["broker_admin"] },
     { id: "reports", label: "Reports", icon: "reports" },
@@ -394,7 +403,11 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
   ] },
 ];
 export const navItems: NavItem[] = navGroups.flatMap((group) => group.items.flatMap((item) => [item, ...(item.children ?? [])]));
-export const navVisible = (item: NavItem, role: Role, modules: TenantModules = fallbackModules) => role === "access_admin" ? item.id === "users" : (!item.module || modules[item.module]) && (role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role));
+export const navVisible = (item: NavItem, role: Role, modules: TenantModules = fallbackModules) => {
+  if (role === "access_admin") return item.id === "users";
+  if (item.id.startsWith("risk_")) return role !== "super_admin" && (!item.module || modules[item.module]) && (!item.roles || item.roles.includes(role));
+  return (!item.module || modules[item.module]) && (role === "super_admin" || role === "management" || !item.roles || item.roles.includes(role));
+};
 export const PENDING_CASH_STATUSES = ["pending_verification", "pending_approval", "approved"];
 export type QueueItem = { key: string; permission: string; roles?: Role[]; tone: "warning" | "danger" | "info"; icon: string; title: string; detail: string; onOpen: () => void };
 export const queueVisible = (item: QueueItem, role: Role) => item.roles ? item.roles.includes(role) : role === "management" || role === "super_admin" || hasPermission(role, item.permission);
@@ -415,6 +428,7 @@ export const roleNames: Record<Role, string> = {
 export const initials = (name: string) => name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 
 const ICON_PATHS: Record<string, string> = {
+  risk: "M12 3l8 4v5c0 5-3.4 8.7-8 10-4.6-1.3-8-5-8-10V7l8-4z M9 12l2 2 4-5",
   dashboard: "M4 13h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 21h6a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1z M14 9h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z M4 21h6a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1z",
   orders: "M8 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1 M9 3h6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M8 11h8 M8 15h5",
   clients: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
