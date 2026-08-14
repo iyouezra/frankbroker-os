@@ -52,6 +52,16 @@ export function formatAddisBusinessDate(value = new Date()) {
   }).format(value).toUpperCase();
 }
 
+export function formatAddisBusinessTime(value = new Date()) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: ADDIS_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(value);
+}
+
 export function addisGreeting(value = new Date()) {
   const hour = parts(value).hour;
   if (hour < 12) return "Good morning";
