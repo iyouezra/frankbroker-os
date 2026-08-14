@@ -3,6 +3,8 @@
  * templates, and the due-date bucketing that drives the My Tasks view.
  */
 
+import { addisBusinessDate } from "../addis-date";
+
 export const TASK_STATUSES = ["open", "in_progress", "awaiting_investor", "completed", "cancelled"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
@@ -79,7 +81,7 @@ export function isTaskType(value: unknown): value is TaskTemplateType {
 
 export type TaskBucket = "overdue" | "today" | "upcoming" | "no_due_date" | "completed";
 
-const dayKey = (value: Date | string) => (typeof value === "string" ? value.slice(0, 10) : value.toISOString().slice(0, 10));
+const dayKey = (value: Date | string) => (typeof value === "string" ? value.slice(0, 10) : addisBusinessDate(value));
 
 /**
  * Buckets a task for the My Tasks view. Comparison is by calendar day in ISO

@@ -3,6 +3,7 @@ import { toNum } from "../money";
 import { createNotificationOnce, SETTLEMENT, COMPLIANCE } from "./notification-service";
 import { isMonitoringEnabled } from "../monitoring";
 import { runMonitoringSweeps } from "../monitoring-service";
+import { addisBusinessDate, addisDateOnly } from "../addis-date";
 
 /**
  * Daily-cadence (time-driven) notifications - run once a day by the cron route.
@@ -13,12 +14,12 @@ import { runMonitoringSweeps } from "../monitoring-service";
  */
 
 function dateOnly(value = new Date()) {
-  return new Date(`${value.toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return addisDateOnly(value);
 }
 
 export async function runDailyNotificationSweep(now = new Date()) {
   const today = dateOnly(now);
-  const dayKey = today.toISOString().slice(0, 10);
+  const dayKey = addisBusinessDate(now);
   let settlementReminders = 0;
   let kycReminders = 0;
   let monitoringAlerts = 0;

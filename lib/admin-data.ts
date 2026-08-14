@@ -1,3 +1,5 @@
+import { addisBusinessDate } from "./addis-date";
+
 export type TenantStatus = "active" | "pilot" | "suspended";
 export type TenantPlan = "Enterprise" | "Growth" | "Pilot";
 export type FeatureKey = "investorPortal" | "selfDirected" | "bonds" | "recurringInvestments" | "institutionalAccounts" | "manualTradeCapture";
@@ -174,7 +176,7 @@ export const initialTenants: TenantConfig[] = [
     welcomeMessage: "Access Ethiopian shares and government bonds through one simple platform.",
     baseCurrency: "ETB",
     timezone: "Africa/Addis_Ababa",
-    businessDate: "2026-07-14",
+    businessDate: addisBusinessDate(),
     users: 14,
     clients: 428,
     ordersToday: 84,
@@ -203,7 +205,7 @@ export const initialTenants: TenantConfig[] = [
     welcomeMessage: "A simpler way to own ESX companies and government bonds.",
     baseCurrency: "ETB",
     timezone: "Africa/Addis_Ababa",
-    businessDate: "2026-07-14",
+    businessDate: addisBusinessDate(),
     users: 7,
     clients: 112,
     ordersToday: 21,
@@ -232,7 +234,7 @@ export const initialTenants: TenantConfig[] = [
     welcomeMessage: "Start small, understand every step, and build from there.",
     baseCurrency: "ETB",
     timezone: "Africa/Addis_Ababa",
-    businessDate: "2026-07-14",
+    businessDate: addisBusinessDate(),
     users: 4,
     clients: 37,
     ordersToday: 0,

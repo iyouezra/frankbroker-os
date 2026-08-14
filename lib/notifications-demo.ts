@@ -55,7 +55,7 @@ export function demoBrokerNotifications(role: string): NotificationItem[] {
 export const demoInvestorNotifications = () => demoInvestor.map((item) => ({ ...item }));
 export const demoPlatformNotifications = () => demoPlatform.map((item) => ({ ...item }));
 
-export function timeAgo(iso: string, now = new Date("2026-07-14T11:20:00Z")): string {
+export function timeAgo(iso: string, now = new Date()): string {
   const diff = Math.max(0, now.getTime() - new Date(iso).getTime());
   const mins = Math.round(diff / 60000);
   if (mins < 1) return "just now";

@@ -1,4 +1,5 @@
 import { prisma } from "../../../lib/prisma";
+import { addisBusinessDate, addisDayStart } from "../../../lib/addis-date";
 import { toNum } from "../../../lib/money";
 import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
@@ -173,7 +174,7 @@ export async function GET(request: Request) {
       return new Response(csv, {
         headers: {
           "content-type": "text/csv; charset=utf-8",
-          "content-disposition": `attachment; filename="frankbroker-orders-${new Date().toISOString().slice(0, 10)}.csv"`,
+          "content-disposition": `attachment; filename="frankbroker-orders-${addisBusinessDate()}.csv"`,
           "cache-control": "private, no-store",
         },
       });
@@ -201,9 +202,7 @@ function boundedInteger(value: string | null, fallback: number, minimum: number,
 function periodStart(period: string) {
   const now = new Date();
   if (period === "today") {
-    const addisOffset = 3 * 60 * 60 * 1_000;
-    const addisNow = new Date(now.getTime() + addisOffset);
-    return new Date(Date.UTC(addisNow.getUTCFullYear(), addisNow.getUTCMonth(), addisNow.getUTCDate()) - addisOffset);
+    return addisDayStart(now);
   }
   const days = period === "7d" ? 7 : period === "30d" ? 30 : 0;
   return days ? new Date(now.getTime() - days * 86_400_000) : null;

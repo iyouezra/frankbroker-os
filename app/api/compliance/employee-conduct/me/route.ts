@@ -7,6 +7,7 @@ import {
   requestOwnPersonalTradeClearance,
 } from "../../../../../lib/monitoring-service";
 import { requirePermission } from "../../../../../lib/server-auth";
+import { addisYear } from "../../../../../lib/addis-date";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     }
     if (action === "attest") {
       return Response.json({ attestation: await recordOwnConductAttestation(actor, {
-        year: Number(payload.year ?? new Date().getFullYear()),
+        year: Number(payload.year ?? addisYear()),
         statementVersion: String(payload.statementVersion ?? "employee-conduct-1.0"),
         exceptions: payload.exceptions && typeof payload.exceptions === "object" && !Array.isArray(payload.exceptions) ? payload.exceptions as Record<string, unknown> : undefined,
       }) }, { status: 201 });

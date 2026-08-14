@@ -1,4 +1,5 @@
 import type { BrokerClient, DemoOrder } from "./demo-data";
+import { addisBusinessDate } from "./addis-date";
 
 /**
  * Broker report generation. Each report is produced from the live order/client/
@@ -118,7 +119,7 @@ export function downloadCsv(report: Report) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `frankbroker-${report.id}-2026-07-14.csv`;
+  link.download = `frankbroker-${report.id}-${addisBusinessDate()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }

@@ -5,6 +5,7 @@ import type { DemoOrder, OrderLogResponse } from "../../../lib/demo-data";
 import type { Role } from "../../../lib/frank";
 import { BrandSelect } from "../../shared/brand-select";
 import { ACTIVE_ORDER_STATUSES, waitingTime } from "../../../lib/order-log";
+import { addisBusinessDate } from "../../../lib/addis-date";
 import { BROKER_TENANT_ID, EmptyState, SectionHeader, StatusBadge, displayLabel, etb, fmt, hydrateOrders, normalizedOrderType } from "../shared/broker-foundation";
 import type { OrderFocus } from "../market/market-watch-screen";
 
@@ -52,7 +53,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
     const needle = query.trim().toLowerCase();
     const periodDays = periodFilter === "7d" ? 7 : periodFilter === "30d" ? 30 : 0;
     const cutoff = periodDays ? Date.now() - periodDays * 86_400_000 : 0;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = addisBusinessDate();
     return orders
       .filter((order) => statusMatches(order)
         && (sideFilter === "all" || order.side === sideFilter)
@@ -105,7 +106,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `frankbroker-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `frankbroker-orders-${addisBusinessDate()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };

@@ -1,3 +1,5 @@
+import { addisBusinessDate } from "./addis-date";
+
 export const COMPLIANCE_REPORT_TYPES = ["monthly_transactions", "quarterly_complaints"] as const;
 export type ComplianceReportType = (typeof COMPLIANCE_REPORT_TYPES)[number];
 
@@ -24,8 +26,9 @@ export const COMPLIANCE_ESCALATION_LABELS: Record<ComplianceEscalationType, stri
 export const SCREENING_RESULTS = ["clear", "potential_match", "confirmed_match"] as const;
 
 export function completedReportPeriod(type: ComplianceReportType, today = new Date()) {
-  const year = today.getUTCFullYear();
-  const month = today.getUTCMonth();
+  const addisToday = new Date(`${addisBusinessDate(today)}T00:00:00.000Z`);
+  const year = addisToday.getUTCFullYear();
+  const month = addisToday.getUTCMonth();
   const periodEnd = type === "monthly_transactions"
     ? new Date(Date.UTC(year, month, 0))
     : new Date(Date.UTC(year, Math.floor(month / 3) * 3, 0));

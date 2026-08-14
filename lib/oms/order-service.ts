@@ -19,11 +19,12 @@ import { validatePreTrade, validationPassed, type ValidationCheck } from "./vali
 import { computeConfiguredAmounts, resolveFeePolicy, serializeFeeBreakdown } from "./fee-service";
 import { consumeOrderVerification, ORDER_SOURCES, orderPayloadHash } from "../verification-service";
 import { assertNoEmployeeSelfProcessing, createMonitoringAlert, evaluateEmployeeOrder } from "../monitoring-service";
+import { addisDateOnly, addisYear } from "../addis-date";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
 function dateOnly(value = new Date()) {
-  return new Date(`${value.toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return addisDateOnly(value);
 }
 
 function cashSnapshot(account: { totalCash: Prisma.Decimal; availableCash: Prisma.Decimal; blockedCash: Prisma.Decimal; unsettledCash: Prisma.Decimal }): CashSnapshot {
@@ -180,7 +181,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   })));
   const valid = validationPassed(checks);
   const finalStatus = valid ? "pending_broker_review" : "validation_failed";
-  const id = `ORD-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+  const id = `ORD-${addisYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
   const now = new Date();
   const riskFlag = amounts.net.gte(2_000_000) || employeeControl.employeeProfile ? "review" : "none";
   const source = input.source ?? "manual";

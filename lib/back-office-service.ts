@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { ADVISORY_PERMISSIONS, CRM_PERMISSIONS, hasPermission } from "./frank";
 import type { Actor } from "./server-auth";
 import { sortWorkItems, type SearchResult, type WorkItem } from "./back-office";
+import { addisBusinessDate } from "./addis-date";
 
 const OPEN_THREAD_STATUSES = ["open", "pending_broker", "pending_client"];
 const OPEN_TASK_STATUSES = ["open", "in_progress", "awaiting_investor"];
@@ -104,7 +105,7 @@ export async function listWorkItems(actor: Actor): Promise<{ items: WorkItem[]; 
       : [],
   ]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = addisBusinessDate();
   const items: WorkItem[] = [
     ...orders.map((order): WorkItem => ({
       id: `order:${order.id}`,

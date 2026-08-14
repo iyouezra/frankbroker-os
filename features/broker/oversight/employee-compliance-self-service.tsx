@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Role } from "../../../lib/frank";
+import { addisBusinessDate } from "../../../lib/addis-date";
 import { EmptyState, SectionHeader, displayLabel } from "../shared/broker-foundation";
 
 type Instrument = { id: string; symbol: string; name: string };
@@ -32,9 +33,9 @@ export function EmployeeComplianceSelfService({ role, tenantId, onNotify }: { ro
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [clearance, setClearance] = useState({ instrumentId: "", side: "buy", maxQuantity: "", maxValue: "" });
-  const [dealing, setDealing] = useState({ securityName: "", symbol: "", side: "buy", tradeDate: "", quantity: "", value: "", executingBroker: "", notes: "" });
+  const [dealing, setDealing] = useState({ securityName: "", symbol: "", side: "buy", tradeDate: addisBusinessDate(), quantity: "", value: "", executingBroker: "", notes: "" });
   const headers = useMemo(() => ({ "x-frank-tenant-id": tenantId, "x-frank-demo-role": role }), [role, tenantId]);
-  const year = new Date().getFullYear();
+  const year = Number(addisBusinessDate().slice(0, 4));
   const attested = data.attestations.some((item) => item.attestationYear === year && item.status === "attested");
 
   const load = useCallback(async () => {
@@ -81,7 +82,7 @@ export function EmployeeComplianceSelfService({ role, tenantId, onNotify }: { ro
 
     <section className="panel cash-capture"><div className="panel-head"><div><span className="eyebrow">EXTERNAL ACTIVITY</span><h2>Declare personal dealing outside this broker</h2></div><p>Only activity the system cannot observe needs manual entry.</p></div><div className="cash-capture-grid">
       <label>Security name<input value={dealing.securityName} onChange={(event) => setDealing((current) => ({ ...current, securityName: event.target.value }))} /></label><label>Symbol / identifier<input value={dealing.symbol} onChange={(event) => setDealing((current) => ({ ...current, symbol: event.target.value }))} /></label><label>Side<select value={dealing.side} onChange={(event) => setDealing((current) => ({ ...current, side: event.target.value }))}><option value="buy">Buy</option><option value="sell">Sell</option></select></label><label>Trade date<input type="date" value={dealing.tradeDate} onChange={(event) => setDealing((current) => ({ ...current, tradeDate: event.target.value }))} /></label><label>Quantity<input type="number" min="0" value={dealing.quantity} onChange={(event) => setDealing((current) => ({ ...current, quantity: event.target.value }))} /></label><label>Value<input type="number" min="0" value={dealing.value} onChange={(event) => setDealing((current) => ({ ...current, value: event.target.value }))} /></label><label>Executing broker<input value={dealing.executingBroker} onChange={(event) => setDealing((current) => ({ ...current, executingBroker: event.target.value }))} /></label><label>Notes<input value={dealing.notes} onChange={(event) => setDealing((current) => ({ ...current, notes: event.target.value }))} /></label>
-    </div><div className="drawer-actions"><button className="btn primary" disabled={busy || !dealing.securityName.trim() || !dealing.tradeDate || !dealing.executingBroker.trim()} onClick={() => void post({ action: "disclose_personal_dealing", title: `${dealing.side === "sell" ? "Sale" : "Purchase"} of ${dealing.securityName}`, details: { ...dealing, executionVenue: "external" } }, "External personal dealing declared.").then((ok) => { if (ok) setDealing({ securityName: "", symbol: "", side: "buy", tradeDate: "", quantity: "", value: "", executingBroker: "", notes: "" }); })}>Submit declaration</button></div></section>
+    </div><div className="drawer-actions"><button className="btn primary" disabled={busy || !dealing.securityName.trim() || !dealing.tradeDate || !dealing.executingBroker.trim()} onClick={() => void post({ action: "disclose_personal_dealing", title: `${dealing.side === "sell" ? "Sale" : "Purchase"} of ${dealing.securityName}`, details: { ...dealing, executionVenue: "external" } }, "External personal dealing declared.").then((ok) => { if (ok) setDealing({ securityName: "", symbol: "", side: "buy", tradeDate: addisBusinessDate(), quantity: "", value: "", executingBroker: "", notes: "" }); })}>Submit declaration</button></div></section>
 
     <div className="perf-grid"><section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">CLEARANCES</span><h2>My requests</h2></div></div><div className="table-scroll"><table><thead><tr><th>Date</th><th>Security</th><th>Limit</th><th>Status</th></tr></thead><tbody>{data.clearances.map((item) => <tr key={item.id}><td>{new Date(item.businessDate).toLocaleDateString()}</td><td><b>{item.instrument.symbol}</b><small>{displayLabel(item.side)}</small></td><td>{item.maxQuantity ? `${Number(item.maxQuantity).toLocaleString()} units` : item.maxValue ? `${Number(item.maxValue).toLocaleString()} ETB` : "—"}</td><td>{status(item.status)}</td></tr>)}</tbody></table></div></section><section className="panel table-panel"><div className="panel-head"><div><span className="eyebrow">DECLARATIONS</span><h2>External dealing submitted</h2></div></div><div className="table-scroll"><table><thead><tr><th>Date</th><th>Declaration</th><th>Status</th></tr></thead><tbody>{data.disclosures.filter((item) => item.disclosureType === "personal_dealing").map((item) => <tr key={item.id}><td>{new Date(item.createdAt).toLocaleDateString()}</td><td><b>{item.title}</b><small>{String(item.details.executingBroker ?? "External broker")}</small></td><td>{status(item.status)}</td></tr>)}</tbody></table></div></section></div>
   </>;

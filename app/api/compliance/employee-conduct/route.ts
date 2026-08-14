@@ -12,6 +12,7 @@ import {
   releaseSensitiveInformationAccess,
 } from "../../../../lib/monitoring-service";
 import { requirePermission } from "../../../../lib/server-auth";
+import { addisYear } from "../../../../lib/addis-date";
 
 export const runtime = "nodejs";
 
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
     }
     if (action === "attest") {
       const actor = await requirePermission(request, MONITORING_PERMISSIONS.clearanceRequest);
-      return Response.json({ attestation: await recordConductAttestation(actor, { employeeProfileId: String(payload.employeeProfileId ?? ""), year: Number(payload.year ?? new Date().getFullYear()), statementVersion: String(payload.statementVersion ?? "1.0"), exceptions: payload.exceptions && typeof payload.exceptions === "object" ? payload.exceptions as Record<string, unknown> : undefined }) }, { status: 201 });
+      return Response.json({ attestation: await recordConductAttestation(actor, { employeeProfileId: String(payload.employeeProfileId ?? ""), year: Number(payload.year ?? addisYear()), statementVersion: String(payload.statementVersion ?? "1.0"), exceptions: payload.exceptions && typeof payload.exceptions === "object" ? payload.exceptions as Record<string, unknown> : undefined }) }, { status: 201 });
     }
     return Response.json({ error: "Unsupported employee-conduct action." }, { status: 400 });
   } catch (error) { return apiError(error); }

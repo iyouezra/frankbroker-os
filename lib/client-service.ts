@@ -1,4 +1,5 @@
 import { Prisma } from "../app/generated/prisma/client";
+import { addisYear } from "./addis-date";
 import { prisma } from "./prisma";
 import { clientIdentityReference } from "./client-identity";
 import { taxIdentityReference } from "./monitoring";
@@ -94,8 +95,8 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
   const suffix = crypto.randomUUID().slice(0, 6).toUpperCase();
   const clientId = `cli_${crypto.randomUUID().slice(0, 12)}`;
   const accountId = `acc_${crypto.randomUUID().slice(0, 12)}`;
-  const clientCode = `CL-${new Date().getUTCFullYear()}-${suffix}`;
-  const accountNumber = `TRD-${new Date().getUTCFullYear()}-${suffix}-01`;
+  const clientCode = `CL-${addisYear()}-${suffix}`;
+  const accountNumber = `TRD-${addisYear()}-${suffix}-01`;
 
   return prisma.$transaction(async (tx) => {
     const [settings, legalDocument] = await Promise.all([
