@@ -114,6 +114,7 @@ export const MONITORING_PERMISSIONS = {
   clearanceApprove: "monitoring.clearance.approve",
   restrictionManage: "monitoring.restriction.manage",
   withdrawalExceptionApprove: "monitoring.withdrawal_exception.approve",
+  selfService: "monitoring.self_service",
 } as const;
 
 const CRM_ALL = Object.values(CRM_PERMISSIONS);
@@ -128,11 +129,11 @@ const MONITORING_ALL = Object.values(MONITORING_PERMISSIONS);
 
 export const workflowPermissions: Record<Role, string[]> = {
   access_admin: ["access.manage"],
-  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...COMPLIANCE_ALL, MONITORING_PERMISSIONS.summary, MONITORING_PERMISSIONS.clearanceRequest, ...Object.values(ADVISORY_PERMISSIONS)],
-  trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE, ...MARKET_FULL, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.clearanceRequest],
-  operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, COMPLIANCE_PERMISSIONS.reportPrepare, COMPLIANCE_PERMISSIONS.escalationCreate, COMPLIANCE_PERMISSIONS.statementExport, MONITORING_PERMISSIONS.clearanceRequest],
+  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...COMPLIANCE_ALL, MONITORING_PERMISSIONS.summary, MONITORING_PERMISSIONS.clearanceRequest, MONITORING_PERMISSIONS.selfService, ...Object.values(ADVISORY_PERMISSIONS)],
+  trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE, ...MARKET_FULL, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.clearanceRequest, MONITORING_PERMISSIONS.selfService],
+  operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, COMPLIANCE_PERMISSIONS.reportPrepare, COMPLIANCE_PERMISSIONS.escalationCreate, COMPLIANCE_PERMISSIONS.statementExport, MONITORING_PERMISSIONS.clearanceRequest, MONITORING_PERMISSIONS.selfService],
   compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage, ...MARKET_VIEW, ...COMPLIANCE_ALL, ...MONITORING_ALL, ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.checklistApprove],
-  settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.escalationCreate],
+  settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.selfService],
   relationship_officer: [
     "report",
     CRM_PERMISSIONS.view,
@@ -145,11 +146,12 @@ export const workflowPermissions: Record<Role, string[]> = {
     CRM_PERMISSIONS.caseView,
     ...MARKET_VIEW,
     COMPLIANCE_PERMISSIONS.statementExport,
+    MONITORING_PERMISSIONS.selfService,
   ],
-  service_officer: ["create", "report", ...CRM_ALL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.statementExport, COMPLIANCE_PERMISSIONS.escalationCreate],
-  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, MONITORING_PERMISSIONS.summary, ADVISORY_PERMISSIONS.view],
-  advisory_lead: ["report", ...Object.values(ADVISORY_PERMISSIONS)],
-  advisory_analyst: ["report", ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.issuerManage, ADVISORY_PERMISSIONS.dealManage, ADVISORY_PERMISSIONS.checklistPrepare, ADVISORY_PERMISSIONS.documentManage, ADVISORY_PERMISSIONS.taskManage],
+  service_officer: ["create", "report", ...CRM_ALL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.statementExport, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.selfService],
+  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, MONITORING_PERMISSIONS.summary, MONITORING_PERMISSIONS.selfService, ADVISORY_PERMISSIONS.view],
+  advisory_lead: ["report", ...Object.values(ADVISORY_PERMISSIONS), MONITORING_PERMISSIONS.selfService],
+  advisory_analyst: ["report", ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.issuerManage, ADVISORY_PERMISSIONS.dealManage, ADVISORY_PERMISSIONS.checklistPrepare, ADVISORY_PERMISSIONS.documentManage, ADVISORY_PERMISSIONS.taskManage, MONITORING_PERMISSIONS.selfService],
   super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...Object.values(ADVISORY_PERMISSIONS)],
 };
 

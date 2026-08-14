@@ -60,6 +60,7 @@ import { SettingsPage, UsersPage } from "../features/broker/administration/admin
 import { AuditPage, ReportsPage } from "../features/broker/oversight/reporting-screens";
 import { PerformancePage } from "../features/broker/oversight/performance-screen";
 import { RiskComplianceWorkspace } from "../features/broker/oversight/risk-compliance-screens";
+import { EmployeeComplianceSelfService } from "../features/broker/oversight/employee-compliance-self-service";
 import { OrdersPage } from "../features/broker/orders/order-log-screen";
 import { CashOperationsPage } from "../features/broker/cash/cash-operations-screen";
 import { ClientsPage } from "../features/broker/clients/client-directory-screen";
@@ -900,6 +901,7 @@ export default function FrankBrokerApp() {
           {view === "advisory" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />}
           {view === "issuers" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="issuers" onNotify={notify} />}
           {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} role={role} onDownloaded={(name) => notify(`${name} exported.`)} onNotify={notify} />}
+          {view === "risk_my" && <EmployeeComplianceSelfService role={role} tenantId={tenantId} onNotify={notify} />}
           {view === "risk_overview" && <RiskComplianceWorkspace mode="overview" role={role} tenantId={tenantId} onNotify={notify} />}
           {view === "risk_monitoring" && <RiskComplianceWorkspace mode="monitoring" role={role} tenantId={tenantId} onNotify={notify} />}
           {view === "risk_clients" && <RiskComplianceWorkspace mode="clients" role={role} tenantId={tenantId} onNotify={notify} />}

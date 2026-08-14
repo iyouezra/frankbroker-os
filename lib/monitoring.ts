@@ -16,6 +16,11 @@ export const MONITORING_RULES = {
   EC_INSIDE_INFORMATION: { category: "employee_conduct", title: "Trade attempt while holding sensitive information", severity: "critical", configuration: {} },
   EC_FRONT_RUNNING: { category: "employee_conduct", title: "Potential employee front-running", severity: "high", configuration: { businessDayWindow: 1 } },
   EC_ACTIVE_OVERLAP: { category: "employee_conduct", title: "Employee order overlaps active client interest", severity: "medium", configuration: {} },
+  EC_PROFILE_MISSING: { category: "employee_conduct", title: "Employee conduct profile missing", severity: "medium", configuration: {} },
+  EC_ACCOUNT_UNLINKED: { category: "employee_conduct", title: "Employee account linkage incomplete", severity: "medium", configuration: {} },
+  EC_ATTESTATION_OVERDUE: { category: "employee_conduct", title: "Annual conduct attestation overdue", severity: "medium", configuration: {} },
+  EC_CLEARANCE_EXCEPTION: { category: "employee_conduct", title: "Clearance remains open for inactive employee", severity: "high", configuration: {} },
+  EC_CANCELLATION_PATTERN: { category: "employee_conduct", title: "Repeated employee order cancellations", severity: "medium", configuration: { count: 3, windowDays: 7 } },
 } as const;
 
 export const PRE_CLEARANCE_ROLES = new Set(["broker_admin", "trader", "operations", "settlement", "compliance", "management", "advisory_lead", "advisory_analyst"]);
@@ -87,6 +92,20 @@ export function closedLoopWithdrawalRisk(input: { destinationFunded: boolean; ha
 
 export function personalClearanceCovers(input: { present: boolean; quantity: number; value: number; maxQuantity?: number | null; maxValue?: number | null }) {
   return input.present && (input.maxQuantity == null || input.quantity <= input.maxQuantity) && (input.maxValue == null || input.value <= input.maxValue);
+}
+
+export function cancellationPatternTriggered(cancelledOrderCount: number, configuredCount = 3) {
+  return configuredCount > 0 && cancelledOrderCount >= configuredCount;
+}
+
+export function isImmediateEmployeeConductRule(ruleCode: MonitoringRuleCode) {
+  return ["EC_RESTRICTED_SECURITY", "EC_INSIDE_INFORMATION", "EC_FRONT_RUNNING"].includes(ruleCode);
+}
+
+export function isAttestationOverdue(input: { dueAt?: Date | null; attestedYears: number[]; now?: Date }) {
+  const now = input.now ?? new Date();
+  if (!input.dueAt || input.dueAt >= now) return false;
+  return !input.attestedYears.includes(input.dueAt.getUTCFullYear());
 }
 
 export function isMonitoringEnabled(features: unknown) {

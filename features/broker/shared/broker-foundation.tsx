@@ -5,7 +5,7 @@ import { demoClients, demoInstruments, initialOrders, type BrokerClient, type De
 import { hasPermission, type OrderStatus, type Role } from "../../../lib/frank";
 import { orderResponsibility } from "../../../lib/order-log";
 
-export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
+export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_my" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
 export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
 export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationChannel: "sms" | "email"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
@@ -384,6 +384,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "issuers", label: "Issuers", icon: "issuers", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
   ] },
   { label: "Risk & Compliance", items: [
+    { id: "risk_my", label: "My Compliance", icon: "risk", roles: ["broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "management", "advisory_lead", "advisory_analyst"] },
     { id: "risk_overview", label: "Overview", icon: "risk", roles: ["broker_admin", "compliance", "management"], children: [
       { id: "risk_monitoring", label: "Monitoring & Cases", icon: "complaints", roles: ["compliance"] },
       { id: "risk_clients", label: "Client Reviews", icon: "clients", roles: ["compliance"] },

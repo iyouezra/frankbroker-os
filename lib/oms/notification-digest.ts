@@ -2,7 +2,7 @@ import { prisma } from "../prisma";
 import { toNum } from "../money";
 import { createNotificationOnce, SETTLEMENT, COMPLIANCE } from "./notification-service";
 import { isMonitoringEnabled } from "../monitoring";
-import { runClientMonitoringSweep } from "../monitoring-service";
+import { runMonitoringSweeps } from "../monitoring-service";
 
 /**
  * Daily-cadence (time-driven) notifications - run once a day by the cron route.
@@ -86,12 +86,12 @@ export async function runDailyNotificationSweep(now = new Date()) {
     if (created) kycReminders += 1;
   }
 
-  // 3. Tenant-isolated AML client review sweep. Disabled tenants are skipped;
+  // 3. Tenant-isolated AML and employee-conduct sweep. Disabled tenants are skipped;
   // alert fingerprints make the sweep safe to rerun.
   const monitoringTenants = await prisma.brokerSettings.findMany({ select: { brokerId: true, features: true } });
   for (const tenant of monitoringTenants) {
     if (!isMonitoringEnabled(tenant.features)) continue;
-    monitoringAlerts += (await runClientMonitoringSweep(tenant.brokerId)).alerts;
+    monitoringAlerts += (await runMonitoringSweeps(tenant.brokerId)).alerts;
   }
 
   return { settlementReminders, kycReminders, monitoringAlerts, total: settlementReminders + kycReminders + monitoringAlerts };

@@ -286,6 +286,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         clientId: account.client.id,
         orderId: id,
         forceClearance: true,
+        actorUserId: actor.id,
         summary: failure.message,
         details: { employeeProfileId: employeeControl.employeeProfile?.id, accountId: input.accountId, instrumentId: input.instrumentId, side: input.side },
       });
@@ -297,6 +298,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
       if (watch) await createMonitoringAlert(tx, {
         brokerId: actor.brokerId, ruleCode: "EC_ACTIVE_OVERLAP", fingerprint: `EC_WATCH:${id}`, severity: "medium",
         clientId: account.client.id, orderId: id, summary: "Employee order uses a watch-list security and requires compliance review.",
+        actorUserId: actor.id,
         details: { employeeProfileId: employeeControl.employeeProfile.id, restrictionId: watch.id },
       });
       const interacted = await tx.order.findFirst({
@@ -316,6 +318,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
       if (overlap) await createMonitoringAlert(tx, {
         brokerId: actor.brokerId, ruleCode: interacted ? "EC_FRONT_RUNNING" : "EC_ACTIVE_OVERLAP", fingerprint: `${interacted ? "EC_FRONT_RUNNING" : "EC_ACTIVE_OVERLAP"}:${id}:${overlap.id}`,
         severity: interacted ? "high" : "medium", clientId: account.client.id, orderId: id, forceClearance: Boolean(interacted),
+        actorUserId: actor.id,
         summary: interacted
           ? "The employee placed a personal order after interacting with an earlier client order in the same instrument and direction."
           : "The employee order overlaps earlier active client interest in the same instrument and direction.",
@@ -334,6 +337,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         if (personalOrder) await createMonitoringAlert(tx, {
           brokerId: actor.brokerId, ruleCode: "EC_FRONT_RUNNING", fingerprint: `EC_FRONT_RUNNING:${personalOrder.id}:${id}`,
           severity: "high", orderId: personalOrder.id, forceClearance: true,
+          actorUserId: actor.id,
           summary: "The employee traded personally within one business day before processing a client order in the same instrument and direction.",
           details: { employeeProfileId: actorProfile.id, relatedClientOrderId: id },
         });

@@ -9,6 +9,9 @@ import {
   validDepositFundingSource,
   closedLoopWithdrawalRisk,
   personalClearanceCovers,
+  cancellationPatternTriggered,
+  isAttestationOverdue,
+  isImmediateEmployeeConductRule,
   isMonitoringEnabled,
   normalizeVerifiedPhone,
   raiseSeverity,
@@ -70,6 +73,7 @@ export async function createMonitoringAlert(db: Db, input: {
   summary: string;
   details?: Record<string, unknown>;
   forceClearance?: boolean;
+  actorUserId?: string | null;
 }) {
   const rule = await resolveRule(db, input.brokerId, input.ruleCode);
   if (!rule.enabled) return null;
@@ -102,7 +106,28 @@ export async function createMonitoringAlert(db: Db, input: {
       updatedAt: new Date(),
     },
   });
-  if (!existing) await writeMonitoringAudit(db, { brokerId: input.brokerId, action: "ALERT_CREATED", entityType: "monitoring_alert", entityId: alert.id, summary: `${rule.title} alert created`, restrictedData: { ruleCode: input.ruleCode, severity, clientId: input.clientId, cashMovementId: input.cashMovementId, orderId: input.orderId } });
+  if (!existing) {
+    await writeMonitoringAudit(db, { brokerId: input.brokerId, actorUserId: input.actorUserId, action: "ALERT_CREATED", entityType: "monitoring_alert", entityId: alert.id, summary: `${rule.title} alert created`, restrictedData: { ruleCode: input.ruleCode, severity, clientId: input.clientId, cashMovementId: input.cashMovementId, orderId: input.orderId } });
+    if (input.actorUserId && isImmediateEmployeeConductRule(input.ruleCode)) {
+      const escalation = await db.complianceEscalation.findFirst({ where: { brokerId: input.brokerId, linkedEntityType: "monitoring_alert", linkedEntityId: alert.id } });
+      if (!escalation) {
+        const awarenessAt = new Date();
+        await db.complianceEscalation.create({ data: {
+          id: `ESC-${crypto.randomUUID().slice(0, 10).toUpperCase()}`,
+          brokerId: input.brokerId,
+          eventType: "market_conduct",
+          subject: `Immediate conduct review · ${rule.title}`,
+          summary: input.summary,
+          linkedEntityType: "monitoring_alert",
+          linkedEntityId: alert.id,
+          awarenessAt,
+          dueAt: awarenessAt,
+          createdBy: input.actorUserId,
+        } });
+        await writeMonitoringAudit(db, { brokerId: input.brokerId, actorUserId: input.actorUserId, action: "IMMEDIATE_ESCALATION_CREATED", entityType: "monitoring_alert", entityId: alert.id, summary: "Immediate employee-conduct escalation opened", restrictedData: { ruleCode: input.ruleCode } });
+      }
+    }
+  }
   return alert;
 }
 
@@ -416,8 +441,30 @@ export async function listMonitoringAudit(actor: Actor) {
   return prisma.monitoringAuditEvent.findMany({ where: { brokerId: actor.brokerId }, orderBy: { createdAt: "desc" }, take: 250 });
 }
 
+export async function listEmployeePersonalDealing(brokerId: string, employeeProfileIds?: string[]) {
+  const profiles = await prisma.employeeConductProfile.findMany({
+    where: { brokerId, status: "active", linkedAccountId: { not: null }, ...(employeeProfileIds ? { id: { in: employeeProfileIds } } : {}) },
+    select: { id: true, userId: true, linkedAccountId: true, user: { select: { fullName: true, role: true } } },
+  });
+  const byAccount = new Map(profiles.flatMap((profile) => profile.linkedAccountId ? [[profile.linkedAccountId, profile] as const] : []));
+  if (!byAccount.size) return [];
+  const orders = await prisma.order.findMany({
+    where: { brokerId, accountId: { in: [...byAccount.keys()] } },
+    include: {
+      instrument: { select: { symbol: true, name: true } },
+      trades: { select: { id: true, tradeDate: true, quantityFilled: true, executionPrice: true, grossAmount: true }, orderBy: { capturedAt: "asc" } },
+      personalTradeClearance: { select: { id: true, status: true, businessDate: true, maxQuantity: true, maxValue: true } },
+      monitoringAlerts: { where: { category: "employee_conduct" }, select: { id: true, ruleCode: true, severity: true, status: true, clearanceStatus: true } },
+      events: { where: { toStatus: "cancelled" }, select: { createdAt: true, actorId: true, reason: true }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
+    orderBy: { submittedAt: "desc" },
+    take: 250,
+  });
+  return orders.map((order) => ({ ...order, employeeProfile: byAccount.get(order.accountId) }));
+}
+
 export async function listEmployeeConduct(actor: Actor) {
-  const [profiles, clearances, restrictions, disclosures, attestations, sensitiveAccess, users, instruments] = await Promise.all([
+  const [profiles, clearances, restrictions, disclosures, attestations, sensitiveAccess, users, instruments, dealingRegister] = await Promise.all([
     prisma.employeeConductProfile.findMany({ where: { brokerId: actor.brokerId }, include: { user: { select: { fullName: true, role: true, email: true } }, linkedClient: { select: { clientCode: true } }, linkedAccount: { select: { accountNumber: true } } }, orderBy: { updatedAt: "desc" } }),
     prisma.personalTradeClearance.findMany({ where: { brokerId: actor.brokerId }, include: { employeeProfile: { include: { user: { select: { fullName: true } } } }, instrument: { select: { symbol: true, name: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
     prisma.restrictedSecurity.findMany({ where: { brokerId: actor.brokerId }, include: { instrument: { select: { symbol: true, name: true } } }, orderBy: { effectiveFrom: "desc" } }),
@@ -426,8 +473,47 @@ export async function listEmployeeConduct(actor: Actor) {
     prisma.sensitiveInformationAccess.findMany({ where: { brokerId: actor.brokerId }, include: { employeeProfile: { include: { user: { select: { fullName: true } } } }, instrument: { select: { symbol: true, name: true } } }, orderBy: { receivedAt: "desc" }, take: 100 }),
     prisma.user.findMany({ where: { brokerId: actor.brokerId, status: { in: ["active", "invited"] } }, select: { id: true, fullName: true, email: true, role: true }, orderBy: { fullName: "asc" } }),
     prisma.brokerInstrument.findMany({ where: { brokerId: actor.brokerId, enabled: true }, include: { instrument: { select: { id: true, symbol: true, name: true } } }, orderBy: { instrument: { symbol: "asc" } } }),
+    listEmployeePersonalDealing(actor.brokerId),
   ]);
-  return { profiles, clearances, restrictions, disclosures, attestations, sensitiveAccess, users, instruments: instruments.map((row) => row.instrument) };
+  return { profiles, clearances, restrictions, disclosures, attestations, sensitiveAccess, users, instruments: instruments.map((row) => row.instrument), dealingRegister };
+}
+
+export async function getOwnEmployeeConduct(actor: Actor) {
+  const profile = await prisma.employeeConductProfile.findFirst({ where: { brokerId: actor.brokerId, userId: actor.id, status: "active" }, include: { linkedAccount: { select: { accountNumber: true } } } });
+  const instruments = await prisma.brokerInstrument.findMany({ where: { brokerId: actor.brokerId, enabled: true }, include: { instrument: { select: { id: true, symbol: true, name: true } } }, orderBy: { instrument: { symbol: "asc" } } });
+  if (!profile) return { profile: null, dealingRegister: [], clearances: [], disclosures: [], attestations: [], instruments: instruments.map((row) => row.instrument) };
+  const [dealingRegister, clearances, disclosures, attestations] = await Promise.all([
+    listEmployeePersonalDealing(actor.brokerId, [profile.id]),
+    prisma.personalTradeClearance.findMany({ where: { brokerId: actor.brokerId, employeeProfileId: profile.id }, include: { instrument: { select: { symbol: true, name: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
+    prisma.employeeDisclosure.findMany({ where: { brokerId: actor.brokerId, employeeProfileId: profile.id }, orderBy: { createdAt: "desc" }, take: 100 }),
+    prisma.conductAttestation.findMany({ where: { brokerId: actor.brokerId, employeeProfileId: profile.id }, orderBy: { attestationYear: "desc" }, take: 20 }),
+  ]);
+  const ownRegister = dealingRegister.map(({ monitoringAlerts, ...order }) => ({
+    ...order,
+    controlStatus: monitoringAlerts.some((alert) => alert.status === "open") ? "review_required" : "clear",
+  }));
+  return { profile, dealingRegister: ownRegister, clearances, disclosures, attestations, instruments: instruments.map((row) => row.instrument) };
+}
+
+async function ownEmployeeProfile(actor: Actor) {
+  const profile = await prisma.employeeConductProfile.findFirst({ where: { brokerId: actor.brokerId, userId: actor.id, status: "active" } });
+  if (!profile) fail("Compliance must enrol your employee conduct profile before this action is available.", 409);
+  return profile;
+}
+
+export async function requestOwnPersonalTradeClearance(actor: Actor, input: { instrumentId: string; side: string; maxQuantity?: number; maxValue?: number }) {
+  const profile = await ownEmployeeProfile(actor);
+  return requestPersonalTradeClearance(actor, { ...input, employeeProfileId: profile.id });
+}
+
+export async function createOwnPersonalDealingDisclosure(actor: Actor, input: { title: string; details: Record<string, unknown> }) {
+  const profile = await ownEmployeeProfile(actor);
+  return createEmployeeDisclosure(actor, { employeeProfileId: profile.id, disclosureType: "personal_dealing", title: input.title, details: input.details });
+}
+
+export async function recordOwnConductAttestation(actor: Actor, input: { year: number; statementVersion: string; exceptions?: Record<string, unknown> }) {
+  const profile = await ownEmployeeProfile(actor);
+  return recordConductAttestation(actor, { ...input, employeeProfileId: profile.id });
 }
 
 export async function requestPersonalTradeClearance(actor: Actor, input: { employeeProfileId: string; instrumentId: string; side: string; maxQuantity?: number; maxValue?: number }) {
@@ -455,8 +541,9 @@ export async function decidePersonalTradeClearance(actor: Actor, clearanceId: st
 }
 
 export async function createEmployeeDisclosure(actor: Actor, input: { employeeProfileId: string; disclosureType: string; title: string; details: Record<string, unknown> }) {
-  const allowed = ["conflict", "outside_business", "directorship", "gift_benefit"];
+  const allowed = ["conflict", "outside_business", "directorship", "gift_benefit", "personal_dealing"];
   if (!allowed.includes(input.disclosureType)) fail("Unsupported disclosure type.", 400);
+  if (!input.title.trim()) fail("A disclosure title is required.", 400);
   const profile = await prisma.employeeConductProfile.findFirst({ where: { id: input.employeeProfileId, brokerId: actor.brokerId } });
   if (!profile) fail("Employee profile not found.", 404);
   return prisma.employeeDisclosure.create({ data: { id: crypto.randomUUID(), brokerId: actor.brokerId, employeeProfileId: profile.id, disclosureType: input.disclosureType, title: input.title.trim(), details: input.details as Prisma.InputJsonValue, submittedByUserId: actor.id } });
@@ -541,4 +628,83 @@ export async function runClientMonitoringSweep(brokerId: string) {
     for (const clientId of uniqueIds) if (await createMonitoringAlert(prisma, { brokerId, ruleCode: "AML_P7", fingerprint: `AML_P7:${key}:${clientId}`, clientId, severity: "high", forceClearance: true, summary: "A verified identifier is shared with another client in this tenant.", details: { identifierType: key.split(":")[0], relatedClientIds: uniqueIds.filter((id) => id !== clientId) } })) alerts++;
   }
   return { alerts };
+}
+
+const EMPLOYEE_SWEEP_RULES: MonitoringRuleCode[] = ["EC_PROFILE_MISSING", "EC_ACCOUNT_UNLINKED", "EC_ATTESTATION_OVERDUE", "EC_CLEARANCE_EXCEPTION", "EC_CANCELLATION_PATTERN"];
+
+export async function runEmployeeConductSweep(brokerId: string) {
+  if (!(await monitoringEnabled(prisma, brokerId))) return { alerts: 0, resolved: 0 };
+  const now = new Date();
+  const [users, profiles, cancellationRule] = await Promise.all([
+    prisma.user.findMany({ where: { brokerId, status: "active" }, select: { id: true, role: true, fullName: true } }),
+    prisma.employeeConductProfile.findMany({
+      where: { brokerId },
+      include: {
+        user: { select: { id: true, role: true, fullName: true, status: true } },
+        attestations: { select: { attestationYear: true, status: true } },
+        clearances: { where: { status: { in: ["pending", "approved"] }, expiresAt: { gt: now } }, select: { id: true, status: true, expiresAt: true } },
+      },
+    }),
+    resolveRule(prisma, brokerId, "EC_CANCELLATION_PATTERN"),
+  ]);
+  let alerts = 0;
+  let resolved = 0;
+  const activeFingerprints = new Set<string>();
+  const profileByUser = new Map(profiles.map((profile) => [profile.userId, profile]));
+  const createSweepAlert = async (input: Parameters<typeof createMonitoringAlert>[1]) => {
+    activeFingerprints.add(input.fingerprint);
+    if (await createMonitoringAlert(prisma, input)) alerts++;
+  };
+
+  for (const user of users) {
+    const profile = profileByUser.get(user.id);
+    if (requiresEmployeePreclearance(user.role, profile?.sensitiveMarketAccess ?? false) && (!profile || profile.status !== "active")) {
+      await createSweepAlert({ brokerId, ruleCode: "EC_PROFILE_MISSING", fingerprint: `EC_PROFILE_MISSING:${user.id}`, severity: "medium", summary: "An active employee in a pre-clearance role has no conduct profile.", details: { employeeUserId: user.id, role: user.role } });
+    }
+  }
+
+  for (const profile of profiles) {
+    const covered = requiresEmployeePreclearance(profile.user.role, profile.sensitiveMarketAccess);
+    if (profile.status === "active" && covered && !profile.linkedAccountId) {
+      await createSweepAlert({ brokerId, ruleCode: "EC_ACCOUNT_UNLINKED", fingerprint: `EC_ACCOUNT_UNLINKED:${profile.id}`, clientId: profile.linkedClientId, severity: "medium", summary: "An employee conduct profile is not linked to an in-house account; automatic dealing surveillance is incomplete.", details: { employeeProfileId: profile.id, employeeUserId: profile.userId } });
+    }
+    const attestedYears = profile.attestations.filter((item) => item.status === "attested").map((item) => item.attestationYear);
+    const effectiveAttestationDueAt = profile.annualAttestationDueAt ?? new Date(Date.UTC(profile.designatedAt.getUTCFullYear() + 1, profile.designatedAt.getUTCMonth(), profile.designatedAt.getUTCDate()));
+    if (profile.status === "active" && isAttestationOverdue({ dueAt: effectiveAttestationDueAt, attestedYears, now })) {
+      const year = effectiveAttestationDueAt.getUTCFullYear();
+      await createSweepAlert({ brokerId, ruleCode: "EC_ATTESTATION_OVERDUE", fingerprint: `EC_ATTESTATION_OVERDUE:${profile.id}:${year}`, clientId: profile.linkedClientId, severity: "medium", summary: `The employee's ${year} conduct attestation is overdue.`, details: { employeeProfileId: profile.id, employeeUserId: profile.userId, dueAt: effectiveAttestationDueAt.toISOString(), attestationYear: year } });
+    }
+    if (profile.user.status !== "active" && profile.clearances.length) {
+      await createSweepAlert({ brokerId, ruleCode: "EC_CLEARANCE_EXCEPTION", fingerprint: `EC_CLEARANCE_EXCEPTION:${profile.id}:${profile.clearances.map((item) => item.id).sort().join(":")}`, clientId: profile.linkedClientId, severity: "high", summary: "An inactive employee still has a pending or unexpired personal-trade clearance.", details: { employeeProfileId: profile.id, employeeUserId: profile.userId, clearanceIds: profile.clearances.map((item) => item.id) } });
+    }
+  }
+
+  const count = Math.max(1, Number(cancellationRule.configuration.count ?? 3));
+  const windowDays = Math.max(1, Number(cancellationRule.configuration.windowDays ?? 7));
+  const since = new Date(now.getTime() - windowDays * 86_400_000);
+  const linkedProfiles = profiles.filter((profile) => profile.status === "active" && profile.linkedAccountId);
+  const cancelledOrders = linkedProfiles.length ? await prisma.order.findMany({
+    where: { brokerId, accountId: { in: linkedProfiles.map((profile) => profile.linkedAccountId!) }, status: "cancelled", submittedAt: { gte: since } },
+    select: { id: true, accountId: true, instrumentId: true, submittedAt: true },
+    orderBy: { submittedAt: "asc" },
+  }) : [];
+  for (const profile of linkedProfiles) {
+    const rows = cancelledOrders.filter((order) => order.accountId === profile.linkedAccountId);
+    if (!cancellationPatternTriggered(rows.length, count)) continue;
+    await createSweepAlert({ brokerId, ruleCode: "EC_CANCELLATION_PATTERN", fingerprint: `EC_CANCELLATION_PATTERN:${profile.id}:${rows[0].id}`, clientId: profile.linkedClientId, severity: "medium", summary: `${rows.length} employee-account orders were cancelled within ${windowDays} days and require review.`, details: { employeeProfileId: profile.id, employeeUserId: profile.userId, count: rows.length, windowDays, orderIds: rows.map((row) => row.id), instrumentIds: [...new Set(rows.map((row) => row.instrumentId))] } });
+  }
+
+  const prior = await prisma.monitoringAlert.findMany({ where: { brokerId, status: "open", ruleCode: { in: EMPLOYEE_SWEEP_RULES } }, select: { id: true, fingerprint: true } });
+  for (const alert of prior) {
+    if (activeFingerprints.has(alert.fingerprint)) continue;
+    await prisma.monitoringAlert.update({ where: { id: alert.id }, data: { status: "closed", investigationStatus: "resolved", clearanceStatus: "not_required", clearanceDecision: "control_resolved", clearanceRationale: "The automated coverage sweep no longer detects this exception." } });
+    await writeMonitoringAudit(prisma, { brokerId, action: "CONTROL_EXCEPTION_RESOLVED", entityType: "monitoring_alert", entityId: alert.id, summary: "Automated employee-control exception resolved" });
+    resolved++;
+  }
+  return { alerts, resolved };
+}
+
+export async function runMonitoringSweeps(brokerId: string) {
+  const [client, employee] = await Promise.all([runClientMonitoringSweep(brokerId), runEmployeeConductSweep(brokerId)]);
+  return { alerts: client.alerts + employee.alerts, clientAlerts: client.alerts, employeeAlerts: employee.alerts, resolvedEmployeeAlerts: employee.resolved };
 }

@@ -16,6 +16,9 @@ import {
   normalizeVerifiedPhone,
   raiseSeverity,
   taxIdentityReference,
+  cancellationPatternTriggered,
+  isAttestationOverdue,
+  isImmediateEmployeeConductRule,
 } from "../lib/monitoring.ts";
 
 test("the selected AML and employee-conduct rule catalogue is explicit", () => {
@@ -63,6 +66,15 @@ test("personal-trade clearance cannot be absent or exceeded", () => {
   assert.equal(personalClearanceCovers({ present: true, quantity: 100, value: 50_001, maxQuantity: 100, maxValue: 50_000 }), false);
 });
 
+test("employee coverage and targeted cancellation controls are deterministic", () => {
+  assert.equal(cancellationPatternTriggered(2, 3), false);
+  assert.equal(cancellationPatternTriggered(3, 3), true);
+  assert.equal(isAttestationOverdue({ dueAt: new Date("2026-03-31"), attestedYears: [], now: new Date("2026-04-01") }), true);
+  assert.equal(isAttestationOverdue({ dueAt: new Date("2026-03-31"), attestedYears: [2026], now: new Date("2026-04-01") }), false);
+  assert.equal(isImmediateEmployeeConductRule("EC_RESTRICTED_SECURITY"), true);
+  assert.equal(isImmediateEmployeeConductRule("EC_CANCELLATION_PATTERN"), false);
+});
+
 test("P8 raises another alert by one severity level only", () => {
   assert.equal(appliesHighRiskMultiplier({ pepStatus: "pep", riskRating: "standard", kycStatus: "approved" }), true);
   assert.equal(appliesHighRiskMultiplier({ pepStatus: "not_pep", riskRating: "enhanced", kycStatus: "approved" }), true);
@@ -99,11 +111,14 @@ test("sensitive monitoring is compliance-only while aggregate oversight is bound
   assert.equal(hasPermission("management", MONITORING_PERMISSIONS.sensitive), false);
   assert.equal(hasPermission("super_admin", MONITORING_PERMISSIONS.summary), false);
   assert.equal(hasPermission("super_admin", MONITORING_PERMISSIONS.sensitive), false);
+  assert.equal(hasPermission("trader", MONITORING_PERMISSIONS.selfService), true);
+  assert.equal(hasPermission("settlement", MONITORING_PERMISSIONS.selfService), true);
+  assert.equal(hasPermission("super_admin", MONITORING_PERMISSIONS.selfService), false);
 });
 
 test("the additive migration and enforcement paths cover the approved scope", async () => {
   const root = new URL("../", import.meta.url);
-  const [schema, migration, cash, orders, trade, seed, reports, monitoringService] = await Promise.all([
+  const [schema, migration, cash, orders, trade, seed, reports, monitoringService, selfService] = await Promise.all([
     readFile(new URL("prisma/schema.prisma", root), "utf8"),
     readFile(new URL("prisma/migrations/20260814120000_risk_compliance_monitoring/migration.sql", root), "utf8"),
     readFile(new URL("lib/cash-service.ts", root), "utf8"),
@@ -112,6 +127,7 @@ test("the additive migration and enforcement paths cover the approved scope", as
     readFile(new URL("prisma/seed.ts", root), "utf8"),
     readFile(new URL("features/broker/oversight/reporting-screens.tsx", root), "utf8"),
     readFile(new URL("lib/monitoring-service.ts", root), "utf8"),
+    readFile(new URL("app/api/compliance/employee-conduct/me/route.ts", root), "utf8"),
   ]);
   for (const model of ["MonitoringAlert", "MonitoringCase", "MonitoringEvidence", "MonitoringAuditEvent", "EmployeeConductProfile", "PersonalTradeClearance", "RestrictedSecurity", "WithdrawalDestinationException"]) assert.match(schema, new RegExp(`model ${model}`));
   assert.match(migration, /CREATE TABLE "monitoring_alerts"/);
@@ -126,6 +142,11 @@ test("the additive migration and enforcement paths cover the approved scope", as
   assert.match(trade, /assertNoEmployeeSelfProcessing/);
   assert.match(monitoringService, /different-user withdrawal-destination exception/);
   assert.match(monitoringService, /recordMonitoringEvidence/);
+  assert.match(monitoringService, /listEmployeePersonalDealing/);
+  assert.match(monitoringService, /runEmployeeConductSweep/);
+  assert.match(monitoringService, /IMMEDIATE_ESCALATION_CREATED/);
+  assert.match(selfService, /MONITORING_PERMISSIONS\.selfService/);
+  assert.doesNotMatch(selfService, /employeeProfileId: String\(payload/);
   assert.match(seed, /riskComplianceMonitoring: false/);
   assert.match(reports, /monthly_transactions/);
   assert.match(reports, /quarterly_complaints/);
