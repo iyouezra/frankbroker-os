@@ -42,6 +42,7 @@ import { MarketsScreen } from "../../features/investor/markets/markets-screen";
 import { PortfolioScreen } from "../../features/investor/portfolio/portfolio-screen";
 import { LearnScreen } from "../../features/investor/learn/learn-screen";
 import { ProfileScreen } from "../../features/investor/profile/profile-screen";
+import type { ServiceRequestInput } from "../../features/investor/profile/profile-workflow-sheets";
 import { SupportScreen, type SupportThreadSummary } from "../../features/investor/support/support-screen";
 import { SupportThreadScreen, type SupportThreadDetail } from "../../features/investor/support/support-thread-screen";
 import { NewRequestSheet, type NewRequestInput } from "../../features/investor/support/new-request-sheet";
@@ -258,7 +259,7 @@ export default function InvestorApp() {
       })()
       : { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) };
     const response = await fetch("/api/investor", init);
-    const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; deliveryChannel?: "sms" | "email"; expiresAt?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; fullName: string; kycStatus: string } };
+    const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; deliveryChannel?: "sms" | "email"; expiresAt?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string; threadId?: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; fullName: string; kycStatus: string } };
     if (!response.ok) throw new Error(data.error ?? t("msg.updateAccountFailed"));
     return data;
   };
@@ -303,6 +304,8 @@ export default function InvestorApp() {
         ...current,
         profile: {
           fullName: result.profile!.fullName,
+          email: profile.email,
+          phone: profile.phone,
           clientType: profile.accountType === "institution" ? "institution" : "individual",
           status: "pending_approval",
           kycStatus: "pending_review",
@@ -568,28 +571,49 @@ export default function InvestorApp() {
     }
   };
 
-  const createServiceRequest = async (requestType: "trade_discrepancy" | "account_closure" | "profile_correction", orderId?: string) => {
-    const description = requestType === "trade_discrepancy"
-      ? t("request.discrepancyDescription", { orderId: orderId ?? "" })
-      : requestType === "account_closure"
-        ? t("request.closureDescription")
-        : t("request.correctionDescription");
+  const createServiceRequest = async ({ requestType, orderId, description, files = [] }: ServiceRequestInput) => {
     try {
-      const result = await postInvestor({ action: "service_request", requestType, orderId, description });
+      const result = await postInvestor({ action: "service_request", requestType, orderId, description }, files);
       if (result.request) {
         setBootstrap((current) => current ? { ...current, serviceRequests: [{
           id: result.request!.id,
           requestType,
           status: result.request!.status,
-          subject: requestType === "trade_discrepancy" ? t("request.discrepancySubject", { orderId: orderId ?? "" }) : requestType === "account_closure" ? t("request.closureSubject") : t("request.correctionSubject"),
+          subject: requestType === "trade_discrepancy" ? t("request.discrepancySubject", { orderId: orderId ?? "" }) : requestType === "account_closure" ? t("request.closureSubject") : requestType === "profile_correction" ? t("request.correctionSubject") : requestType === "tax_document" ? "Tax document request" : "Security concern",
           description,
           orderId,
           submittedAt: new Date().toISOString(),
+          threadId: result.request!.threadId,
         }, ...current.serviceRequests] } : current);
       }
+      await loadSupport().catch(() => undefined);
       notify(t("msg.serviceRequestSent"));
+      return true;
     } catch (error) {
       notify(error instanceof Error ? error.message : t("msg.serviceRequestFailed"));
+      return false;
+    }
+  };
+  const downloadStatement = async (from: string, to: string) => {
+    try {
+      const response = await fetch(`/api/investor/statements?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { headers: investorHeaders });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? "The statement could not be prepared.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const disposition = response.headers.get("content-disposition") ?? "";
+      link.href = url;
+      link.download = disposition.match(/filename="([^"]+)"/)?.[1] ?? `account-statement-${from}-${to}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+      notify("Statement downloaded");
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The statement could not be prepared.");
+      return false;
     }
   };
   const createCashMovement = async (input: CashMovementInput) => {
@@ -741,7 +765,7 @@ export default function InvestorApp() {
                           ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} demoFallback={activeClientId === INVESTOR_CLIENT_ID} />
                           : tab === "learn"
                             ? <LearnScreen />
-                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={(requestType, orderId) => void createServiceRequest(requestType, orderId)} />}
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onOpenRequest={(threadId) => { setSupportOpen(true); void openSupportThread(threadId); }} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={createServiceRequest} onDownloadStatement={downloadStatement} />}
                 </div>
                 <BottomNav active={tab} onChange={navigate} />
               </>}

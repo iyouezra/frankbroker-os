@@ -71,7 +71,7 @@ export function isRelatedType(value: unknown): value is RelatedType {
 /** Maps an existing ClientServiceRequest.requestType onto a conversation category. */
 export function categoryForServiceRequest(requestType: string): ThreadCategory {
   if (requestType === "trade_discrepancy") return "order";
-  if (requestType === "account_closure" || requestType === "profile_correction") return "general";
+  if (["account_closure", "profile_correction", "tax_document", "security_concern"].includes(requestType)) return "general";
   return "other";
 }
 

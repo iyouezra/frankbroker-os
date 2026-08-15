@@ -17,9 +17,10 @@ import {
 } from "../shared/investor-foundation";
 import { useT } from "../../../lib/i18n/context";
 import type { TranslationKey } from "../../../lib/i18n/en";
+import { DiscrepancySheet, ProfileCorrectionSheet, SecuritySheet, StatementsTaxSheet, type ServiceRequestInput } from "./profile-workflow-sheets";
 
 // Menu entries whose only action is a "coming soon" toast.
-const PLACEHOLDER_MENU = [["profile.statementsTax"], ["profile.security"], ["profile.helpAmharic"]].flat() as TranslationKey[];
+const PLACEHOLDER_MENU = ["profile.helpAmharic"] as TranslationKey[];
 const DOCUMENT_LABELS: Record<string, TranslationKey> = {
   proof_of_address: "doc.proof_of_address",
   business_license: "doc.business_license",
@@ -33,13 +34,13 @@ const BANK_STATUS_KEYS: Record<string, TranslationKey> = {
   approved: "banks.statusApproved",
 };
 
-export function ProfileScreen({ notify, name, profile, accountNumber, orders, requests, legalDocument, documents, linkedBanks, supportUnread, onOpenSupport, onAddBank, onDeleteBank, onAcceptTerms, onUpdateKyc, onRequest }: { notify: (message: string) => void; name: string; profile: InvestorBootstrap["profile"]; accountNumber?: string | null; orders: Array<{ id: string }>; requests: InvestorBootstrap["serviceRequests"]; legalDocument: InvestorBootstrap["tenant"]["legalDocument"]; documents: InvestorBootstrap["documents"]; linkedBanks: LinkedBankAccount[]; supportUnread: number; onOpenSupport: () => void; onAddBank: (bankName: string, accountNumber: string) => Promise<void>; onDeleteBank: (id: string) => Promise<void>; onAcceptTerms: () => Promise<void>; onUpdateKyc: (files: Partial<Record<string, File>>) => Promise<void>; onRequest: (requestType: "trade_discrepancy" | "account_closure" | "profile_correction", orderId?: string) => void }) {
+export function ProfileScreen({ notify, name, profile, accountNumber, orders, requests, legalDocument, documents, linkedBanks, supportUnread, onOpenSupport, onOpenRequest, onAddBank, onDeleteBank, onAcceptTerms, onUpdateKyc, onRequest, onDownloadStatement }: { notify: (message: string) => void; name: string; profile: InvestorBootstrap["profile"]; accountNumber?: string | null; orders: NonNullable<InvestorBootstrap["account"]>["orders"]; requests: InvestorBootstrap["serviceRequests"]; legalDocument: InvestorBootstrap["tenant"]["legalDocument"]; documents: InvestorBootstrap["documents"]; linkedBanks: LinkedBankAccount[]; supportUnread: number; onOpenSupport: () => void; onOpenRequest: (threadId: string) => void; onAddBank: (bankName: string, accountNumber: string) => Promise<void>; onDeleteBank: (id: string) => Promise<void>; onAcceptTerms: () => Promise<void>; onUpdateKyc: (files: Partial<Record<string, File>>) => Promise<void>; onRequest: (input: ServiceRequestInput) => Promise<boolean>; onDownloadStatement: (from: string, to: string) => Promise<boolean> }) {
   const t = useT();
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "FM";
-  const latestOrderId = orders[0]?.id;
   const [linkedBanksOpen, setLinkedBanksOpen] = useState(false);
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [kycOpen, setKycOpen] = useState(false);
+  const [workflow, setWorkflow] = useState<"statements" | "security" | "discrepancy" | "correction" | null>(null);
   const termsCurrent = Boolean(legalDocument && profile?.termsAcceptedVersion === legalDocument.version);
   const addLinkedBank = async (bankName: string, accountNumber: string) => {
     if (linkedBanks.length >= 3) return notify(t("profile.bankLimit"));
@@ -56,16 +57,22 @@ export function ProfileScreen({ notify, name, profile, accountNumber, orders, re
     <Card className={styles.menuCard}>
       <button onClick={onOpenSupport}><span>{t("profile.messagesSupport")}</span>{supportUnread > 0 && <em className={styles.menuBadge}>{supportUnread}</em>}<Icon name="chevron" size={18} /></button>
       <button onClick={() => setLinkedBanksOpen(true)}><span>{t("profile.linkedBanks")}</span><Icon name="chevron" size={18} /></button>
-      <button onClick={() => onRequest("profile_correction")}><span>{t("profile.requestCorrection")}</span><Icon name="chevron" size={18} /></button>
-      <button onClick={() => latestOrderId ? onRequest("trade_discrepancy", latestOrderId) : notify(t("profile.noRecentOrder"))}><span>{t("profile.reportDiscrepancy")}</span><Icon name="chevron" size={18} /></button>
-      <button onClick={() => onRequest("account_closure")}><span>{t("profile.requestClosure")}</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => setWorkflow("correction")}><span>{t("profile.requestCorrection")}</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => orders.length ? setWorkflow("discrepancy") : notify(t("profile.noRecentOrder"))}><span>{t("profile.reportDiscrepancy")}</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => void onRequest({ requestType: "account_closure", description: t("request.closureDescription") })}><span>{t("profile.requestClosure")}</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => setWorkflow("statements")}><span>{t("profile.statementsTax")}</span><Icon name="chevron" size={18} /></button>
+      <button onClick={() => setWorkflow("security")}><span>{t("profile.security")}</span><Icon name="chevron" size={18} /></button>
       {PLACEHOLDER_MENU.map((key) => <button key={key} onClick={() => notify(t("profile.comingSoon", { item: t(key) }))}><span>{t(key)}</span><Icon name="chevron" size={18} /></button>)}
     </Card>
-    {requests.length > 0 && <Card className={styles.requestCard}><div className={styles.cardHeader}><h2>{t("profile.yourRequests")}</h2></div>{requests.slice(0, 4).map((item) => <div key={item.id}><span><b>{item.subject}</b><small>{new Date(item.submittedAt).toLocaleDateString("en-GB")} · {item.id}</small></span><em>{item.status.replaceAll("_", " ")}</em></div>)}</Card>}
+    {requests.length > 0 && <Card className={styles.requestCard}><div className={styles.cardHeader}><h2>{t("profile.yourRequests")}</h2></div>{requests.slice(0, 6).map((item) => <button key={item.id} disabled={!item.threadId} onClick={() => item.threadId && onOpenRequest(item.threadId)}><span><b>{item.subject}</b><small>{new Date(item.submittedAt).toLocaleDateString("en-GB")} · {item.id}</small>{item.resolutionNotes && <small className={styles.requestOutcome}>Outcome: {item.resolutionNotes}</small>}</span><em>{item.status.replaceAll("_", " ")}</em>{item.threadId && <Icon name="chevron" size={15} />}</button>)}</Card>}
     <p className={styles.license}>{t("profile.license")}</p>
     {linkedBanksOpen && <LinkedBanksSheet accounts={linkedBanks} accountHolderName={name} onClose={() => setLinkedBanksOpen(false)} onAdd={addLinkedBank} onDelete={deleteLinkedBank} />}
     {agreementOpen && <AgreementSheet document={legalDocument} accepted={termsCurrent} onClose={() => setAgreementOpen(false)} onAccept={async () => { await onAcceptTerms(); setAgreementOpen(false); }} />}
     {kycOpen && <KycDocumentsSheet clientType={profile?.clientType ?? "individual"} documents={documents} onClose={() => setKycOpen(false)} onSubmit={async (files) => { await onUpdateKyc(files); setKycOpen(false); }} />}
+    {workflow === "statements" && <StatementsTaxSheet onClose={() => setWorkflow(null)} onDownload={onDownloadStatement} onSubmit={onRequest} />}
+    {workflow === "security" && <SecuritySheet profile={profile} onClose={() => setWorkflow(null)} onSubmit={onRequest} />}
+    {workflow === "discrepancy" && <DiscrepancySheet orders={orders} onClose={() => setWorkflow(null)} onSubmit={onRequest} />}
+    {workflow === "correction" && <ProfileCorrectionSheet onClose={() => setWorkflow(null)} onSubmit={onRequest} />}
   </div>;
 }
 

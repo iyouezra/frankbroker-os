@@ -79,6 +79,8 @@ test("subject, body, priority and related links are validated before storage", (
 test("service requests map to a conversation category and priorities map to existing status tones", () => {
   assert.equal(categoryForServiceRequest("trade_discrepancy"), "order");
   assert.equal(categoryForServiceRequest("account_closure"), "general");
+  assert.equal(categoryForServiceRequest("tax_document"), "general");
+  assert.equal(categoryForServiceRequest("security_concern"), "general");
   assert.equal(categoryForServiceRequest("anything_else"), "other");
   assert.equal(priorityTone("urgent"), "danger");
   assert.equal(priorityTone("high"), "warning");

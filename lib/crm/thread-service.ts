@@ -778,7 +778,7 @@ export async function investorSupportSummary(context: InvestorContextLike) {
  */
 export async function openThreadForServiceRequest(
   tx: Prisma.TransactionClient,
-  input: { brokerId: string; clientId: string; accountId?: string | null; requestId: string; subject: string; body: string; category: string; clientName: string },
+  input: { brokerId: string; clientId: string; accountId?: string | null; requestId: string; subject: string; body: string; category: string; clientName: string; attachments?: PreparedAttachment[] },
 ) {
   const id = newThreadId();
   const now = new Date();
@@ -806,7 +806,7 @@ export async function openThreadForServiceRequest(
   await appendMessage(
     tx,
     { id, status: "pending_broker", messageCount: 0, lastMessagePreview: null, lastMessageAt: now, brokerUnreadCount: 0, investorUnreadCount: 0 },
-    { threadId: id, visibility: SHARED, authorType: "investor", authorUserId: null, body: input.body, brokerId: input.brokerId, clientId: input.clientId },
+    { threadId: id, visibility: SHARED, authorType: "investor", authorUserId: null, body: input.body, attachments: input.attachments, brokerId: input.brokerId, clientId: input.clientId },
   );
   await writeAudit(tx, {
     brokerId: input.brokerId,

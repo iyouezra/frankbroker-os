@@ -87,8 +87,8 @@ export type InvestorHolding = {
 };
 export type InvestorBootstrap = {
   tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; regulatoryVersion: string; effectiveFrom: string; rules: InvestorFeeRule[] } | null };
-  profile: { fullName: string; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
-  account: { id: string; accountNumber: string; status?: string; restrictionReason?: string | null; restrictedAt?: string | null; totalCash: number; availableCash: number; blockedCash: number; holdings: InvestorHolding[]; orders: Array<{ id: string }> } | null;
+  profile: { fullName: string; email?: string | null; phone?: string | null; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
+  account: { id: string; accountNumber: string; status?: string; restrictionReason?: string | null; restrictedAt?: string | null; totalCash: number; availableCash: number; blockedCash: number; holdings: InvestorHolding[]; orders: Array<{ id: string; ticker: string; side: string; quantity: number; price: number; status: string; createdAt: string }> } | null;
   access: {
     restricted: boolean;
     canTrade: boolean;
@@ -96,7 +96,7 @@ export type InvestorBootstrap = {
     reasons: Array<{ code: string; message: string; action?: "accept_terms" | "update_kyc" | null }>;
   };
   instruments: InvestorInstrument[];
-  serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null }>;
+  serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null; threadId?: string | null }>;
   cashPools: CashPool[];
   cashMovements: CashMovementView[];
   activity: InvestorActivity[];

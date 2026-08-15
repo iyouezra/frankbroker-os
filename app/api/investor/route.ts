@@ -229,7 +229,7 @@ export async function GET(request: Request) {
         } : null,
       },
       profile: client ? {
-        id: client.id, fullName: client.fullName, clientType: client.clientType, phone: client.phone, status: client.status,
+        id: client.id, fullName: client.fullName, clientType: client.clientType, phone: client.phone, email: client.email, status: client.status,
         kycStatus: client.kycStatus, faydaMasked: client.faydaLast7 ? `••••• ${client.faydaLast7}` : null,
         taxIdMasked: client.taxIdLast4 ? `••••••${client.taxIdLast4}` : null,
         address: client.address,
@@ -286,6 +286,7 @@ export async function GET(request: Request) {
         orderId: item.orderId,
         submittedAt: item.submittedAt.toISOString(),
         resolutionNotes: item.resolutionNotes,
+        threadId: item.threadId,
       })),
       cashPools: broker.pooledBankAccounts.map((pool) => ({
         id: pool.id,
@@ -640,7 +641,7 @@ export async function POST(request: Request) {
 
     if (payload.action === "service_request") {
       const requestType = String(payload.requestType ?? "");
-      if (!["trade_discrepancy", "account_closure", "profile_correction"].includes(requestType)) {
+      if (!["trade_discrepancy", "account_closure", "profile_correction", "tax_document", "security_concern"].includes(requestType)) {
         return Response.json({ error: "Unsupported service request type." }, { status: 400 });
       }
       const client = await prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true } });
@@ -651,6 +652,7 @@ export async function POST(request: Request) {
         return Response.json({ error: "Please provide a short description of at least 8 characters." }, { status: 400 });
       }
       const orderId = String(payload.orderId ?? "").trim() || null;
+      const attachments = formData ? await prepareAttachments(formData) : [];
       if (requestType === "trade_discrepancy") {
         const settings = await prisma.brokerSettings.findUnique({ where: { brokerId } });
         const earliest = new Date(Date.now() - (settings?.discrepancyWindowDays ?? 10) * 24 * 60 * 60 * 1000);
@@ -669,7 +671,7 @@ export async function POST(request: Request) {
           accountId: account.id,
           orderId,
           requestType,
-          subject: requestType === "trade_discrepancy" ? `Order discrepancy${orderId ? ` · ${orderId}` : ""}` : requestType === "account_closure" ? "Account closure request" : "Profile correction request",
+          subject: requestType === "trade_discrepancy" ? `Order discrepancy${orderId ? ` · ${orderId}` : ""}` : requestType === "account_closure" ? "Account closure request" : requestType === "profile_correction" ? "Profile correction request" : requestType === "tax_document" ? "Tax document request" : "Security concern",
           description,
           submittedBy: "investor_portal",
         } });
@@ -692,6 +694,7 @@ export async function POST(request: Request) {
           body: description,
           category: categoryForServiceRequest(requestType),
           clientName: client.fullName,
+          attachments,
         });
         await tx.clientServiceRequest.update({ where: { id: next.id }, data: { threadId: thread.id } });
         return { ...next, threadId: thread.id };

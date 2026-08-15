@@ -114,7 +114,7 @@ export function serializeComplianceReport(row: ReportRow) {
   };
 }
 
-async function brokerProfile(actor: Actor) {
+async function brokerProfile(actor: Pick<Actor, "brokerId">) {
   const broker = await prisma.broker.findUnique({
     where: { id: actor.brokerId },
     include: {
@@ -471,7 +471,7 @@ export async function recordClientScreening(actor: Actor, clientId: string, inpu
   return { id, result: input.result, screenedAt: screenedAt.toISOString() };
 }
 
-export async function buildClientStatement(actor: Actor, clientId: string, start: unknown, end: unknown) {
+export async function buildClientStatementSnapshot(actor: Pick<Actor, "brokerId">, clientId: string, start: unknown, end: unknown) {
   const { periodStart, periodEnd } = reportPeriod(start, end);
   const profile = await brokerProfile(actor);
   const client = await prisma.client.findFirst({
@@ -529,10 +529,15 @@ export async function buildClientStatement(actor: Actor, clientId: string, start
     holdings: [...latestHolding.values()].filter((entry) => entry.runningQuantity.gt(0)).map((entry) => ({ symbol: entry.instrument.symbol, name: entry.instrument.name, quantity: toNum(entry.runningQuantity) })),
   };
   const validation: ReportValidation = { blocking: [], notices: [] };
+  return { snapshot, validation, periodStart, periodEnd, clientName: client.fullName };
+}
+
+export async function buildClientStatement(actor: Actor, clientId: string, start: unknown, end: unknown) {
+  const { snapshot, validation, periodStart, periodEnd, clientName } = await buildClientStatementSnapshot(actor, clientId, start, end);
   const id = `STM-${crypto.randomUUID().slice(0, 10).toUpperCase()}`;
   const row = await prisma.$transaction(async (tx) => {
     const created = await tx.complianceReport.create({ data: { id, brokerId: actor.brokerId, clientId, reportType: "client_statement", periodStart, periodEnd, status: "prepared", snapshot: snapshot as unknown as Prisma.InputJsonValue, validation: validation as unknown as Prisma.InputJsonValue, preparedBy: actor.id }, include: reportInclude });
-    await writeAudit(tx, { brokerId: actor.brokerId, actorId: actor.id, action: "CLIENT_STATEMENT_GENERATED", entityType: "compliance_report", entityId: id, summary: `${client.fullName} account statement generated for ${snapshot.periodStart} to ${snapshot.periodEnd}`, newValue: { clientId, periodStart, periodEnd } });
+    await writeAudit(tx, { brokerId: actor.brokerId, actorId: actor.id, action: "CLIENT_STATEMENT_GENERATED", entityType: "compliance_report", entityId: id, summary: `${clientName} account statement generated for ${snapshot.periodStart} to ${snapshot.periodEnd}`, newValue: { clientId, periodStart, periodEnd } });
     return created;
   });
   return row;
