@@ -116,6 +116,7 @@ export type CrmThreadDetail = CrmThreadSummary & {
     resolvedAt: string | null;
     allowedDecisions: Array<"resolve" | "reject" | "approve_closure">;
   } | null;
+  serviceCase?: { id: string; status: string } | null;
 };
 export type CrmThreadsResponse = {
   threads: CrmThreadSummary[];

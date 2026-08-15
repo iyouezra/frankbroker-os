@@ -42,6 +42,7 @@ import {
 } from "./categories";
 import type { PreparedAttachment } from "./attachments";
 import { auditAutomaticRouting, routeInvestorConversation } from "./routing-service";
+import { openComplaintCaseFromThread } from "./complaint-service";
 
 /**
  * Investor-servicing conversations. Mirrors `lib/oms/order-service.ts`: every
@@ -61,6 +62,7 @@ const threadInclude = {
   account: { select: { id: true, accountNumber: true } },
   assignedTo: { select: { id: true, fullName: true } },
   serviceRequest: { select: { id: true, requestType: true, status: true, subject: true, resolutionNotes: true, resolvedAt: true } },
+  serviceCase: { select: { id: true, status: true } },
 } satisfies Prisma.CommunicationThreadInclude;
 
 const messageInclude = {
@@ -260,6 +262,7 @@ export async function getThread(actor: Actor, threadId: string, page = 1, pageSi
           ? thread.serviceRequest.requestType === "account_closure" ? ["approve_closure", "resolve", "reject"] : ["resolve", "reject"]
           : [],
       } : null,
+      serviceCase: thread.serviceCase ? { id: thread.serviceCase.id, status: thread.serviceCase.status } : null,
     },
     pagination: { page: Math.min(page, pageCount), pageSize, total, pageCount },
   };
@@ -668,19 +671,17 @@ export async function createInvestorThread(
       newValue: { category, relatedType, relatedId, channel: "investor_portal", assignedToUserId: routedOwner?.id ?? null, routingReason: routedOwner?.reason ?? "no_eligible_owner" },
     });
     await auditAutomaticRouting(tx, { brokerId: context.brokerId, entityType: "communication_thread", entityId: id, owner: routedOwner });
-    await writeNotification(tx, {
-      scope: "broker",
-      brokerId: context.brokerId,
-      roles: SERVICE,
-      category: "support",
-      severity: category === "complaint" ? "warning" : "info",
-      title: category === "complaint" ? "New complaint from an investor" : "New investor request",
-      body: `${client.fullName}: ${subject}`,
-      entityType: "communication_thread",
-      entityId: id,
+    const complaint = category === "complaint" ? await openComplaintCaseFromThread(tx, {
+      brokerId: context.brokerId, clientId: client.id, clientName: client.fullName, threadId: id,
+      subject, assignedToUserId: routedOwner?.id ?? null,
+    }) : null;
+    if (category !== "complaint") await writeNotification(tx, {
+      scope: "broker", brokerId: context.brokerId, roles: SERVICE, category: "support", severity: "info",
+      title: "New investor request", body: `${client.fullName}: ${subject}`,
+      entityType: "communication_thread", entityId: id,
     });
 
-    return { id, status: "pending_broker" };
+    return { id, status: "pending_broker", caseId: complaint?.id ?? null };
   }, transactionOptions);
 }
 
@@ -818,16 +819,10 @@ export async function openThreadForServiceRequest(
     newValue: { category: input.category, relatedType: "service_request", relatedId: input.requestId },
   });
   await auditAutomaticRouting(tx, { brokerId: input.brokerId, entityType: "communication_thread", entityId: id, owner: routedOwner });
-  await writeNotification(tx, {
-    scope: "broker",
-    brokerId: input.brokerId,
-    roles: SERVICE,
-    category: "support",
-    severity: "info",
-    title: "New investor request",
-    body: `${input.clientName}: ${input.subject}`,
-    entityType: "communication_thread",
-    entityId: id,
+  if (input.category !== "complaint") await writeNotification(tx, {
+    scope: "broker", brokerId: input.brokerId, roles: SERVICE, category: "support", severity: "info",
+    title: "New investor request", body: `${input.clientName}: ${input.subject}`,
+    entityType: "communication_thread", entityId: id,
   });
-  return { id };
+  return { id, assignedToUserId: routedOwner?.id ?? null };
 }

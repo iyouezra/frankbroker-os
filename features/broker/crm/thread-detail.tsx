@@ -73,7 +73,7 @@ export function ThreadDetail({
   const canAssign = hasPermission(role, CRM_PERMISSIONS.assign);
   const canStatus = hasPermission(role, CRM_PERMISSIONS.status);
   const canPriority = hasPermission(role, CRM_PERMISSIONS.priority);
-  const canOpenCase = Boolean(onOpenCase) && hasPermission(role, CRM_PERMISSIONS.caseManage);
+  const canOpenCase = Boolean(onOpenCase) && !thread.serviceCase && hasPermission(role, CRM_PERMISSIONS.caseManage);
   const canCreateTask = Boolean(onCreateTask) && hasPermission(role, CRM_PERMISSIONS.taskCreate);
   const canManageRequest = hasPermission(role, "adjust") && Boolean(thread.serviceRequest?.allowedDecisions.length);
   const closed = isThreadClosed(thread.status);
@@ -126,6 +126,7 @@ export function ThreadDetail({
     </section>}
 
     <div className="crm-controls">
+      {thread.serviceCase && <div className="crm-related"><span><small>FORMAL COMPLAINT</small><b>{thread.serviceCase.id} · {thread.serviceCase.status.replaceAll("_", " ")}</b></span></div>}
       <label>Owner
         <BrandSelect value={thread.assignedToUserId ?? ""} disabled={!canAssign || busy} ariaLabel="Owner"
           onChange={(next) => void onAction("assign", { assignedToUserId: next || null }, [])}

@@ -30,6 +30,7 @@ import {
 } from "../../../lib/onboarding-evidence";
 import { getFrankCoachHoldingValue } from "../../../lib/frank-coach";
 import { taxIdentityReference } from "../../../lib/monitoring";
+import { openComplaintCaseFromThread } from "../../../lib/crm/complaint-service";
 
 export const runtime = "nodejs";
 
@@ -653,6 +654,7 @@ export async function POST(request: Request) {
       }
       const orderId = String(payload.orderId ?? "").trim() || null;
       const attachments = formData ? await prepareAttachments(formData) : [];
+      const formalComplaint = requestType === "trade_discrepancy" && payload.formalComplaint === true;
       if (requestType === "trade_discrepancy") {
         const settings = await prisma.brokerSettings.findUnique({ where: { brokerId } });
         const earliest = new Date(Date.now() - (settings?.discrepancyWindowDays ?? 10) * 24 * 60 * 60 * 1000);
@@ -692,14 +694,18 @@ export async function POST(request: Request) {
           requestId: next.id,
           subject: next.subject,
           body: description,
-          category: categoryForServiceRequest(requestType),
+          category: formalComplaint ? "complaint" : categoryForServiceRequest(requestType),
           clientName: client.fullName,
           attachments,
         });
         await tx.clientServiceRequest.update({ where: { id: next.id }, data: { threadId: thread.id } });
-        return { ...next, threadId: thread.id };
+        const complaint = formalComplaint ? await openComplaintCaseFromThread(tx, {
+          brokerId, clientId, clientName: client.fullName, threadId: thread.id,
+          subject: next.subject, assignedToUserId: thread.assignedToUserId,
+        }) : null;
+        return { ...next, threadId: thread.id, caseId: complaint?.id ?? null };
       });
-      return Response.json({ request: { id: created.id, status: created.status, threadId: created.threadId } }, { status: 201 });
+      return Response.json({ request: { id: created.id, status: created.status, threadId: created.threadId, caseId: created.caseId } }, { status: 201 });
     }
 
     if (payload.action === "support_thread_create") {

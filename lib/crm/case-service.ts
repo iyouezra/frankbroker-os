@@ -4,6 +4,8 @@ import type { Actor } from "../server-auth";
 import { writeAudit } from "../oms/audit-service";
 import { writeNotification, SERVICE } from "../oms/notification-service";
 import { lockThread } from "../oms/persistence";
+import { appendMessage } from "./thread-service";
+import type { InvestorContextLike } from "./access";
 import { assertBrokerTenant } from "./access";
 import {
   CASE_STATUS_LABELS,
@@ -177,13 +179,17 @@ async function loadCase(tx: Prisma.TransactionClient, actor: Actor, caseId: stri
   return row!;
 }
 
-export async function changeCaseStatus(actor: Actor, caseId: string, next: string, resolutionSummary?: unknown) {
+export async function changeCaseStatus(actor: Actor, caseId: string, next: string, resolutionSummary?: unknown, clientMessage?: unknown) {
   if (!isCaseStatus(next)) throw new Response("That case status is not supported.", { status: 400 });
   return prisma.$transaction(async (tx) => {
     const row = await loadCase(tx, actor, caseId);
     assertCaseTransition(row.status, next);
     // Resolving requires a written outcome the investor could be shown.
-    const summary = next === "resolved" ? parseResolutionSummary(resolutionSummary) : row.resolutionSummary;
+    const summary = next === "resolved" || next === "closed" ? parseResolutionSummary(resolutionSummary) : row.resolutionSummary;
+    const updateForInvestor = next === "awaiting_investor" ? String(clientMessage ?? "").trim() : "";
+    if (next === "awaiting_investor" && (updateForInvestor.length < 10 || updateForInvestor.length > 4_000)) {
+      throw new Response("Explain what information the investor needs to provide.", { status: 400 });
+    }
     const now = new Date();
 
     await tx.serviceCase.update({
@@ -206,20 +212,84 @@ export async function changeCaseStatus(actor: Actor, caseId: string, next: strin
       previousValue: { status: row.status },
       newValue: { status: next, resolutionSummary: summary },
     });
-    if (next === "resolved" || next === "closed") {
+    const thread = row.threadId ? await tx.communicationThread.findUnique({ where: { id: row.threadId } }) : null;
+    if (thread && next === "awaiting_investor") {
+      await appendMessage(tx, thread, { threadId: thread.id, visibility: "shared", authorType: "broker", authorUserId: actor.id, body: updateForInvestor, brokerId: actor.brokerId, clientId: row.clientId });
+    }
+    if (thread && next === "resolved") {
+      await appendMessage(tx, thread, { threadId: thread.id, visibility: "shared", authorType: "broker", authorUserId: actor.id, body: `Complaint resolution\n\n${summary}`, brokerId: actor.brokerId, clientId: row.clientId });
+      await tx.communicationThread.update({ where: { id: thread.id }, data: { status: "resolved", resolvedAt: now, version: { increment: 1 } } });
+    }
+    if (thread && next === "closed") {
+      await appendMessage(tx, thread, { threadId: thread.id, visibility: "shared", authorType: "broker", authorUserId: actor.id, body: `Complaint closure\n\n${summary}`, brokerId: actor.brokerId, clientId: row.clientId });
+      await tx.communicationThread.update({ where: { id: thread.id }, data: { status: "closed", closedAt: now, version: { increment: 1 } } });
+    }
+    if (next === "awaiting_investor" || next === "resolved" || next === "closed") {
       await writeNotification(tx, {
         scope: "investor",
         brokerId: actor.brokerId,
         clientId: row.clientId,
         category: "support",
         severity: next === "resolved" ? "success" : "info",
-        title: next === "resolved" ? "Your complaint was resolved" : "Your case was closed",
+        title: next === "awaiting_investor" ? "Information needed for your complaint" : next === "resolved" ? "Your complaint was resolved" : "Your case was closed",
         body: row.subject,
-        entityType: "service_case",
-        entityId: caseId,
+        entityType: next === "awaiting_investor" && row.threadId ? "communication_thread" : "service_case",
+        entityId: next === "awaiting_investor" && row.threadId ? row.threadId : caseId,
       });
     }
     return { status: next };
+  }, transactionOptions);
+}
+
+const investorCaseInclude = { thread: { select: { id: true, subject: true, serviceRequest: { select: { orderId: true } } } } } satisfies Prisma.ServiceCaseInclude;
+
+function serializeInvestorCase(row: Prisma.ServiceCaseGetPayload<{ include: typeof investorCaseInclude }>) {
+  return {
+    id: row.id, subject: row.subject, status: row.status,
+    statusLabel: CASE_STATUS_LABELS[row.status as CaseStatus] ?? row.status,
+    severity: row.severity, openedAt: row.openedAt.toISOString(),
+    targetResolutionAt: row.targetResolutionAt?.toISOString() ?? null,
+    resolutionSummary: row.resolutionSummary, resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    closedAt: row.closedAt?.toISOString() ?? null, threadId: row.threadId,
+    orderId: row.thread?.serviceRequest?.orderId ?? null,
+  };
+}
+
+export async function listInvestorComplaints(context: InvestorContextLike) {
+  const rows = await prisma.serviceCase.findMany({
+    where: { brokerId: context.brokerId, clientId: context.clientId, category: "complaint" },
+    include: investorCaseInclude, orderBy: { openedAt: "desc" }, take: 50,
+  });
+  return rows.map(serializeInvestorCase);
+}
+
+export async function actOnInvestorComplaint(context: InvestorContextLike, caseId: string, input: { action: string; reason?: unknown }) {
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.serviceCase.findFirst({ where: { id: caseId, brokerId: context.brokerId, clientId: context.clientId, category: "complaint" }, include: investorCaseInclude });
+    if (!row) throw new Response("Complaint not found.", { status: 404 });
+    if (row.status !== "resolved") throw new Response("This complaint does not currently have a resolution to respond to.", { status: 409 });
+    const now = new Date();
+    const thread = row.threadId ? await tx.communicationThread.findUnique({ where: { id: row.threadId } }) : null;
+    if (input.action === "accept_resolution") {
+      await tx.serviceCase.update({ where: { id: row.id }, data: { status: "closed", closedAt: now, version: { increment: 1 } } });
+      if (thread) {
+        await appendMessage(tx, thread, { threadId: thread.id, visibility: "shared", authorType: "investor", authorUserId: null, body: "I accept this resolution.", brokerId: context.brokerId, clientId: context.clientId });
+        await tx.communicationThread.update({ where: { id: thread.id }, data: { status: "closed", closedAt: now, version: { increment: 1 } } });
+      }
+      await writeAudit(tx, { brokerId: context.brokerId, actorId: null, action: "CRM_CASE_RESOLUTION_ACCEPTED", entityType: "service_case", entityId: row.id, summary: `Investor accepted the resolution for ${row.id}`, newValue: { status: "closed" } });
+      await writeNotification(tx, { scope: "broker", brokerId: context.brokerId, roles: SERVICE, category: "support", severity: "success", title: "Complaint resolution accepted", body: row.subject, entityType: "service_case", entityId: row.id });
+      return { complaint: serializeInvestorCase({ ...row, status: "closed", closedAt: now }) };
+    }
+    if (input.action === "remain_dissatisfied") {
+      const reason = String(input.reason ?? "").trim();
+      if (reason.length < 10 || reason.length > 4_000) throw new Response("Explain why you remain dissatisfied.", { status: 400 });
+      await tx.serviceCase.update({ where: { id: row.id }, data: { status: "under_review", resolvedAt: null, closedAt: null, version: { increment: 1 } } });
+      if (thread) await appendMessage(tx, thread, { threadId: thread.id, visibility: "shared", authorType: "investor", authorUserId: null, body: `I remain dissatisfied with the resolution.\n\n${reason}`, brokerId: context.brokerId, clientId: context.clientId });
+      await writeAudit(tx, { brokerId: context.brokerId, actorId: null, action: "CRM_CASE_REOPENED_BY_INVESTOR", entityType: "service_case", entityId: row.id, summary: `Investor asked for further review of ${row.id}`, previousValue: { status: "resolved" }, newValue: { status: "under_review" } });
+      await writeNotification(tx, { scope: "broker", brokerId: context.brokerId, roles: SERVICE, category: "support", severity: "warning", title: "Investor remains dissatisfied", body: row.subject, entityType: "service_case", entityId: row.id });
+      return { complaint: serializeInvestorCase({ ...row, status: "under_review", resolvedAt: null }) };
+    }
+    throw new Response("Unsupported complaint action.", { status: 400 });
   }, transactionOptions);
 }
 

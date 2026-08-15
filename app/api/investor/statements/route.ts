@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       summary: `${snapshot.client.name} downloaded an account statement for ${snapshot.periodStart} to ${snapshot.periodEnd}`,
       newValue: JSON.stringify({ periodStart: snapshot.periodStart, periodEnd: snapshot.periodEnd, source: "investor_portal" }),
     } });
-    return new Response(workbook, {
+    return new Response(Buffer.from(workbook), {
       headers: {
         "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "content-disposition": `attachment; filename="${complianceWorkbookName(snapshot)}"`,

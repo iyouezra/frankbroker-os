@@ -46,6 +46,7 @@ import type { ServiceRequestInput } from "../../features/investor/profile/profil
 import { SupportScreen, type SupportThreadSummary } from "../../features/investor/support/support-screen";
 import { SupportThreadScreen, type SupportThreadDetail } from "../../features/investor/support/support-thread-screen";
 import { NewRequestSheet, type NewRequestInput } from "../../features/investor/support/new-request-sheet";
+import { ComplaintsScreen, type InvestorComplaint } from "../../features/investor/support/complaints-screen";
 import { fallbackSupportDetail, fallbackSupportThreads } from "../../features/investor/support/support-demo";
 import { CashSheet } from "../../features/investor/cash/cash-sheet";
 import { BondDetail, StockDetail } from "../../features/investor/markets/security-detail-screens";
@@ -124,10 +125,14 @@ export default function InvestorApp() {
   const [supportLoading, setSupportLoading] = useState(false);
   const [supportBusy, setSupportBusy] = useState(false);
   const [newRequestOpen, setNewRequestOpen] = useState(false);
+  const [complaintsOpen, setComplaintsOpen] = useState(false);
+  const [complaints, setComplaints] = useState<InvestorComplaint[]>([]);
+  const [complaintsLoading, setComplaintsLoading] = useState(false);
+  const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null);
   const investorHeaders = useMemo(() => investorHeadersFor(activeClientId), [activeClientId]);
   const featured = useMemo(() => investorStocks.slice(0, 3), []);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
-  const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); setActivityOpen(false); setActivityInitialItem(null); setSupportOpen(false); setSupportThreadId(null); };
+  const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); setActivityOpen(false); setActivityInitialItem(null); setSupportOpen(false); setSupportThreadId(null); setComplaintsOpen(false); setSelectedComplaintId(null); };
   const resetWorkspace = () => {
     setTab("home");
     setStock(null);
@@ -137,6 +142,8 @@ export default function InvestorApp() {
     setActivityOpen(false);
     setSupportOpen(false);
     setSupportThreadId(null);
+    setComplaintsOpen(false);
+    setSelectedComplaintId(null);
     setSubmittedApplication(null);
   };
   const loadInvestor = async (clientId: string) => {
@@ -207,7 +214,10 @@ export default function InvestorApp() {
     if (item.category === "support") {
       navigate("profile");
       setSupportOpen(true);
-      if (item.entityId) void openSupportThread(item.entityId);
+      if (item.entityType === "service_case") {
+        setComplaintsOpen(true);
+        setSelectedComplaintId(item.entityId ?? null);
+      } else if (item.entityId) void openSupportThread(item.entityId);
       return;
     }
     if (["order", "trade", "settlement"].includes(item.category)) navigate("portfolio");
@@ -518,11 +528,26 @@ export default function InvestorApp() {
     }
   }, [investorHeaders]);
 
+  const loadComplaints = useCallback(async () => {
+    setComplaintsLoading(true);
+    try {
+      const response = await fetch("/api/investor/complaints", { headers: investorHeaders });
+      const data = await response.json().catch(() => ({})) as { complaints?: InvestorComplaint[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Complaints unavailable");
+      setComplaints(data.complaints ?? []);
+    } catch {
+      setComplaints([]);
+    } finally {
+      setComplaintsLoading(false);
+    }
+  }, [investorHeaders]);
+
   useEffect(() => {
     if (phase !== "app") return;
-    const load = async () => { await loadSupport(); };
+    const load = async () => { await Promise.all([loadSupport(), loadComplaints()]); };
     void load();
-  }, [loadSupport, phase]);
+  }, [loadComplaints, loadSupport, phase]);
+  useEffect(() => { if (phase === "app" && complaintsOpen) void loadComplaints(); }, [complaintsOpen, loadComplaints, phase]);
 
   const openSupportThread = async (threadId: string) => {
     setSupportThreadId(threadId);
@@ -561,6 +586,10 @@ export default function InvestorApp() {
       await postInvestor({ action: "support_thread_create", category: input.category, subject: input.subject, body: input.body }, input.files);
       setNewRequestOpen(false);
       await loadSupport();
+      if (input.category === "complaint") {
+        await loadComplaints();
+        setComplaintsOpen(true);
+      }
       notify(t("msg.requestSent"));
       return true;
     } catch (error) {
@@ -570,10 +599,27 @@ export default function InvestorApp() {
       setSupportBusy(false);
     }
   };
-
-  const createServiceRequest = async ({ requestType, orderId, description, files = [] }: ServiceRequestInput) => {
+  const actOnComplaint = async (caseId: string, action: "accept_resolution" | "remain_dissatisfied", reason?: string) => {
+    setSupportBusy(true);
     try {
-      const result = await postInvestor({ action: "service_request", requestType, orderId, description }, files);
+      const response = await fetch("/api/investor/complaints", { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify({ caseId, action, reason }) });
+      const data = await response.json().catch(() => ({})) as { complaint?: InvestorComplaint; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "The complaint could not be updated.");
+      if (data.complaint) setComplaints((current) => current.map((item) => item.id === data.complaint!.id ? data.complaint! : item));
+      await loadSupport();
+      notify(action === "accept_resolution" ? "Resolution accepted" : "Further review requested");
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The complaint could not be updated.");
+      return false;
+    } finally {
+      setSupportBusy(false);
+    }
+  };
+
+  const createServiceRequest = async ({ requestType, orderId, description, files = [], formalComplaint = false }: ServiceRequestInput) => {
+    try {
+      const result = await postInvestor({ action: "service_request", requestType, orderId, description, formalComplaint }, files);
       if (result.request) {
         setBootstrap((current) => current ? { ...current, serviceRequests: [{
           id: result.request!.id,
@@ -587,6 +633,11 @@ export default function InvestorApp() {
         }, ...current.serviceRequests] } : current);
       }
       await loadSupport().catch(() => undefined);
+      if (formalComplaint) {
+        await loadComplaints().catch(() => undefined);
+        setSupportOpen(true);
+        setComplaintsOpen(true);
+      }
       notify(t("msg.serviceRequestSent"));
       return true;
     } catch (error) {
@@ -746,9 +797,11 @@ export default function InvestorApp() {
               : <>
                 <div className={`${styles.scrollArea} ${restrictedAccess ? styles.restrictedScroll : ""}`}>
                   {supportOpen
-                    ? (supportThreadId
+                    ? (complaintsOpen
+                        ? <ComplaintsScreen complaints={complaints} loading={complaintsLoading} selectedId={selectedComplaintId} busy={supportBusy} onBack={() => { setComplaintsOpen(false); setSelectedComplaintId(null); }} onSelect={setSelectedComplaintId} onConversation={(threadId) => { setComplaintsOpen(false); void openSupportThread(threadId); }} onAction={actOnComplaint} />
+                        : supportThreadId
                         ? <SupportThreadScreen thread={supportDetail} sending={supportBusy} onBack={() => setSupportThreadId(null)} onSend={sendSupportReply} />
-                        : <SupportScreen threads={supportThreads} loading={supportLoading} officer={bootstrap?.relationshipOfficer ?? null} onBack={() => setSupportOpen(false)} onOpenThread={openSupportThread} onNewRequest={() => setNewRequestOpen(true)} />)
+                        : <SupportScreen threads={supportThreads} loading={supportLoading} officer={bootstrap?.relationshipOfficer ?? null} onBack={() => setSupportOpen(false)} onOpenThread={openSupportThread} onNewRequest={() => setNewRequestOpen(true)} onOpenComplaints={() => { setComplaintsOpen(true); setSelectedComplaintId(null); }} complaintCount={complaints.filter((item) => !["resolved", "closed"].includes(item.status)).length} />)
                     : activityOpen
                     ? <ActivityScreen activity={activity} initialItem={activityInitialItem} onBack={() => { setActivityOpen(false); setActivityInitialItem(null); }} />
                     : tab === "home"

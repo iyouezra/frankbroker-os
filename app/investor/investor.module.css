@@ -415,6 +415,40 @@
 .securityFacts div:last-child { border-bottom: 0; }
 .securityFacts dt { color: var(--investor-ink-500); font-size: 9px; }
 .securityFacts dd { margin: 0; font-size: 9px; font-weight: 700; text-align: right; }
+.complaintChoice { display: flex; align-items: flex-start; gap: 9px; margin: 3px 0 14px; padding: 11px 12px; border: 1px solid var(--investor-ink-200); border-radius: 12px; background: var(--investor-ink-50); cursor: pointer; }
+.complaintChoice input { margin-top: 2px; accent-color: var(--investor-accent); }
+.complaintChoice span { display: flex; flex-direction: column; gap: 3px; }
+.complaintChoice b { font-size: 10px; }
+.complaintChoice small { color: var(--investor-ink-500); font-size: 8.5px; line-height: 1.4; }
+.complaintList { padding: 5px 15px; }
+.complaintList > button { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 9px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--investor-ink-100); background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.complaintList > button:last-child { border-bottom: 0; }
+.complaintList span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.complaintList b { font-size: 11px; }
+.complaintList small { color: var(--investor-ink-500); font-size: 8px; }
+.complaintList em, .complaintTitle em { padding: 5px 8px; border-radius: 999px; background: var(--investor-ink-50); color: var(--investor-teal-700); font-size: 8px; font-style: normal; font-weight: 750; text-transform: capitalize; }
+.complaintList em[data-status="resolved"], .complaintList em[data-status="closed"], .complaintTitle em[data-status="resolved"], .complaintTitle em[data-status="closed"] { background: #e9f7ef; color: #26734d; }
+.complaintDetail { padding: 16px; }
+.complaintTitle { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 13px; border-bottom: 1px solid var(--investor-ink-100); }
+.complaintTitle span { display: flex; flex-direction: column; gap: 4px; }
+.complaintTitle small, .complaintResolution small { color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .07em; }
+.complaintTitle b { font-size: 14px; }
+.complaintDetail dl { margin: 5px 0 14px; }
+.complaintDetail dl div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--investor-ink-100); }
+.complaintDetail dt { color: var(--investor-ink-500); font-size: 9px; }
+.complaintDetail dd { margin: 0; font-size: 9px; font-weight: 700; text-align: right; }
+.complaintResolution { margin: 12px 0; padding: 13px; border-radius: 12px; background: var(--investor-teal-50); }
+.complaintResolution p { margin: 7px 0; font-size: 10px; line-height: 1.5; white-space: pre-wrap; }
+.complaintResolution time { color: var(--investor-ink-500); font-size: 8px; }
+.complaintConversation { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 0; padding: 11px 12px; border: 1px solid var(--investor-ink-200); border-radius: 12px; background: white; color: inherit; cursor: pointer; text-align: left; }
+.complaintConversation span { display: flex; flex-direction: column; gap: 3px; }
+.complaintConversation b { font-size: 10px; }.complaintConversation small { color: var(--investor-ink-500); font-size: 8px; }
+.complaintDecision { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--investor-ink-100); }
+.complaintDecision p { margin: 0 0 3px; color: var(--investor-ink-600); font-size: 9px; }
+.complaintDecision label { display: flex; flex-direction: column; gap: 6px; font-size: 10px; font-weight: 700; }
+.complaintDecision textarea { width: 100%; padding: 10px 11px; border: 1px solid var(--investor-ink-200); border-radius: 11px; font: inherit; font-size: 10px; resize: vertical; }
+.complaintCancel { border: 0; background: transparent; color: var(--investor-teal-700); font-size: 9px; font-weight: 700; cursor: pointer; }
+.complaintClosed { margin: 13px 0 0; padding: 11px 12px; border-radius: 11px; background: var(--investor-ink-50); color: var(--investor-ink-600); font-size: 9px; line-height: 1.45; }
 .agreementMeta { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 13px; background: var(--investor-ink-50); }
 .agreementMeta b { font-size: 11.5px; }
 .agreementMeta span { color: var(--investor-ink-500); font-size: 9px; }

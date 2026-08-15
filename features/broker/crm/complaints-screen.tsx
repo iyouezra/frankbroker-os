@@ -102,7 +102,10 @@ export function ComplaintsPage({ role, focusId, onNotify, onOpenThread }: { role
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [resolving, setResolving] = useState<CrmCaseView | null>(null);
+  const [resolutionStatus, setResolutionStatus] = useState<"resolved" | "closed">("resolved");
   const [summary, setSummary] = useState("");
+  const [requesting, setRequesting] = useState<CrmCaseView | null>(null);
+  const [clientMessage, setClientMessage] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -152,14 +155,20 @@ export function ComplaintsPage({ role, focusId, onNotify, onOpenThread }: { role
 
   const changeStatus = (item: CrmCaseView, next: string) => {
     // Resolving requires a written outcome, so it opens a short form.
-    if (next === "resolved") { setResolving(item); setSummary(""); return; }
+    if (next === "resolved" || next === "closed") { setResolving(item); setResolutionStatus(next); setSummary(""); return; }
+    if (next === "awaiting_investor") { setRequesting(item); setClientMessage(""); return; }
     void act(item.id, { action: "status", status: next }, `Case moved to ${CASE_STATUS_LABELS[next as CaseStatus] ?? next}.`);
   };
 
   const confirmResolve = async () => {
     if (!resolving) return;
-    const done = await act(resolving.id, { action: "status", status: "resolved", resolutionSummary: summary }, "Case resolved and the investor was notified.");
+    const done = await act(resolving.id, { action: "status", status: resolutionStatus, resolutionSummary: summary }, resolutionStatus === "resolved" ? "Case resolved and the investor was notified." : "Case closed with a written outcome.");
     if (done) setResolving(null);
+  };
+  const confirmInformationRequest = async () => {
+    if (!requesting) return;
+    const done = await act(requesting.id, { action: "status", status: "awaiting_investor", clientMessage }, "Information request sent to the investor.");
+    if (done) setRequesting(null);
   };
 
   return <>
@@ -187,16 +196,27 @@ export function ComplaintsPage({ role, focusId, onNotify, onOpenThread }: { role
 
     {resolving && (
       <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setResolving(null); }}>
-        <aside className="drawer" role="dialog" aria-modal="true" aria-label="Resolve case">
+        <aside className="drawer" role="dialog" aria-modal="true" aria-label={resolutionStatus === "resolved" ? "Resolve case" : "Close case"}>
           <div className="drawer-content">
-            <div className="drawer-title"><span className="eyebrow">RESOLVE CASE</span><h2>{resolving.subject}</h2><p>Write the outcome. The investor is notified that their complaint was resolved.</p></div>
+            <div className="drawer-title"><span className="eyebrow">{resolutionStatus === "resolved" ? "RESOLVE CASE" : "CLOSE CASE"}</span><h2>{resolving.subject}</h2><p>{resolutionStatus === "resolved" ? "Write the outcome. The investor is notified that their complaint was resolved." : "Record why the complaint is being closed. This explanation is published to the investor."}</p></div>
             <div className="form-section">
               <label>Resolution summary<textarea rows={5} value={summary} onChange={(event) => setSummary(event.target.value)} maxLength={4000} placeholder="What was found, what was done, and what the investor was told." /></label>
             </div>
             <div className="drawer-actions">
               <button className="btn secondary" onClick={() => setResolving(null)}>Cancel</button>
-              <button className="btn primary" disabled={busy || summary.trim().length < 10} onClick={() => void confirmResolve()}>{busy ? "Saving…" : "Resolve case"}</button>
+              <button className="btn primary" disabled={busy || summary.trim().length < 10} onClick={() => void confirmResolve()}>{busy ? "Saving…" : resolutionStatus === "resolved" ? "Resolve case" : "Close case"}</button>
             </div>
+          </div>
+        </aside>
+      </div>
+    )}
+    {requesting && (
+      <div className="scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setRequesting(null); }}>
+        <aside className="drawer" role="dialog" aria-modal="true" aria-label="Request information from investor">
+          <div className="drawer-content">
+            <div className="drawer-title"><span className="eyebrow">AWAITING INVESTOR</span><h2>{requesting.subject}</h2><p>Explain exactly what information or evidence is needed. This is published in the linked conversation.</p></div>
+            <div className="form-section"><label>Message to investor<textarea rows={5} value={clientMessage} onChange={(event) => setClientMessage(event.target.value)} maxLength={4000} placeholder="What is needed, why it is needed, and how the investor can provide it." /></label></div>
+            <div className="drawer-actions"><button className="btn secondary" onClick={() => setRequesting(null)}>Cancel</button><button className="btn primary" disabled={busy || clientMessage.trim().length < 10} onClick={() => void confirmInformationRequest()}>{busy ? "Sending…" : "Request information"}</button></div>
           </div>
         </aside>
       </div>

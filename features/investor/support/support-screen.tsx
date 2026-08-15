@@ -35,7 +35,7 @@ export function statusTone(status: string): string {
 }
 
 export function SupportScreen({
-  threads, loading, officer, onBack, onOpenThread, onNewRequest,
+  threads, loading, officer, onBack, onOpenThread, onNewRequest, onOpenComplaints, complaintCount,
 }: {
   threads: SupportThreadSummary[];
   officer?: { name: string; role: string } | null;
@@ -43,6 +43,8 @@ export function SupportScreen({
   onBack: () => void;
   onOpenThread: (threadId: string) => void;
   onNewRequest: () => void;
+  onOpenComplaints: () => void;
+  complaintCount: number;
 }) {
   const t = useT();
   return <div className={styles.screen}>
@@ -52,6 +54,7 @@ export function SupportScreen({
       <p>{t("support.intro")}</p>
       {officer && <span className={styles.supportOfficer}>{t("support.officerPrefix")}<b>{officer.name}</b>{t("support.officerSuffix", { role: officer.role })}</span>}
       <Button className={styles.full} onClick={onNewRequest}>{t("support.newRequest")}</Button>
+      <Button variant="secondary" className={styles.full} onClick={onOpenComplaints}>Complaints{complaintCount ? ` · ${complaintCount}` : ""}</Button>
     </Card>
 
     {loading ? (

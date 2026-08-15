@@ -6,7 +6,7 @@ import { BrandSelect } from "../../shared/brand-select";
 import { Button, type InvestorBootstrap } from "../shared/investor-foundation";
 
 export type ServiceRequestType = "trade_discrepancy" | "account_closure" | "profile_correction" | "tax_document" | "security_concern";
-export type ServiceRequestInput = { requestType: ServiceRequestType; orderId?: string; description: string; files?: File[] };
+export type ServiceRequestInput = { requestType: ServiceRequestType; orderId?: string; description: string; files?: File[]; formalComplaint?: boolean };
 
 function Sheet({ title, eyebrow, intro, onClose, children }: { title: string; eyebrow: string; intro: string; onClose: () => void; children: ReactNode }) {
   return <div className={styles.sheetBackdrop} onClick={onClose}><section className={`${styles.orderSheet} ${styles.recordsSheet}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
@@ -39,13 +39,14 @@ export function StatementsTaxSheet({ onClose, onDownload, onSubmit }: { onClose:
 }
 
 export function DiscrepancySheet({ orders, onClose, onSubmit }: { orders: NonNullable<InvestorBootstrap["account"]>["orders"]; onClose: () => void; onSubmit: (input: ServiceRequestInput) => Promise<boolean> }) {
-  const [orderId, setOrderId] = useState(orders[0]?.id ?? ""); const [issue, setIssue] = useState("execution"); const [details, setDetails] = useState(""); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false);
+  const [orderId, setOrderId] = useState(orders[0]?.id ?? ""); const [issue, setIssue] = useState("execution"); const [details, setDetails] = useState(""); const [files, setFiles] = useState<File[]>([]); const [formalComplaint, setFormalComplaint] = useState(false); const [busy, setBusy] = useState(false);
   const orderOptions = useMemo(() => orders.map((o) => ({ value: o.id, label: `${o.ticker} · ${o.side} ${o.quantity} · ${o.status}` })), [orders]);
   return <Sheet title="Report an order discrepancy" eyebrow="ORDER SUPPORT" intro="Choose the affected order and explain what does not match your instruction or expectation." onClose={onClose}>
     <label className={styles.workflowField}><span>Order</span><BrandSelect value={orderId} onChange={setOrderId} options={orderOptions} placeholder="Select an order" /></label>
     <label className={styles.workflowField}><span>Issue</span><BrandSelect value={issue} onChange={setIssue} options={[{value:"execution",label:"Execution or fill"},{value:"price",label:"Price"},{value:"quantity",label:"Quantity"},{value:"fees",label:"Fees"},{value:"other",label:"Other"}]} /></label>
     <TextArea label="Details" value={details} onChange={setDetails} placeholder="Describe what happened, what you expected, and any relevant timing." /><Evidence files={files} onChange={setFiles} />
-    <Button className={styles.full} disabled={!orderId || details.trim().length < 8 || busy} onClick={() => { setBusy(true); void onSubmit({ requestType: "trade_discrepancy", orderId, description: `Issue: ${issue.replaceAll("_", " ")}\n\n${details.trim()}`, files }).then((ok) => { if (ok) onClose(); }).finally(() => setBusy(false)); }}>{busy ? "Sending…" : "Submit discrepancy"}</Button>
+    <label className={styles.complaintChoice}><input type="checkbox" checked={formalComplaint} onChange={(event) => setFormalComplaint(event.target.checked)} /><span><b>Treat this as a formal complaint</b><small>Select this if you are dissatisfied and want a formal investigation and written resolution.</small></span></label>
+    <Button className={styles.full} disabled={!orderId || details.trim().length < 8 || busy} onClick={() => { setBusy(true); void onSubmit({ requestType: "trade_discrepancy", orderId, description: `Issue: ${issue.replaceAll("_", " ")}\n\n${details.trim()}`, files, formalComplaint }).then((ok) => { if (ok) onClose(); }).finally(() => setBusy(false)); }}>{busy ? "Sending…" : formalComplaint ? "Submit formal complaint" : "Submit discrepancy"}</Button>
   </Sheet>;
 }
 

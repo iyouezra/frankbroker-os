@@ -13,7 +13,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (action === "status") {
       const actor = await requirePermission(request, CRM_PERMISSIONS.caseManage);
-      return Response.json({ ok: true, ...(await changeCaseStatus(actor, id, String(payload.status ?? ""), payload.resolutionSummary)) });
+      return Response.json({ ok: true, ...(await changeCaseStatus(actor, id, String(payload.status ?? ""), payload.resolutionSummary, payload.clientMessage)) });
     }
     if (action === "assign") {
       const actor = await requirePermission(request, CRM_PERMISSIONS.caseManage);
