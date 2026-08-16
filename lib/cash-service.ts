@@ -12,6 +12,9 @@ import {
 import { writeAudit } from "./oms/audit-service";
 import { writeNotification, OPS } from "./oms/notification-service";
 import { lockAccount, persistCashMutation } from "./oms/persistence";
+import { lockPool, lockPosition, persistClientMoneyMutation } from "./client-money-service";
+import { postJournalEntry } from "./gl/posting-service";
+import { manualDepositRecorded, withdrawalPaid } from "./gl/journal-rules";
 import { MAX_DOCUMENT_BYTES, matchesSignature, supportedMimeTypes } from "./onboarding-evidence";
 import { assertCashMonitoringClearance, evaluateCashMovement } from "./monitoring-service";
 
@@ -101,14 +104,6 @@ export async function prepareCashMovementProof(file: File): Promise<CashMovement
 
 async function lockMovement(tx: Prisma.TransactionClient, id: string) {
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "cash_movements" WHERE "id" = ${id} FOR UPDATE`);
-}
-
-async function lockPool(tx: Prisma.TransactionClient, id: string) {
-  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "pooled_bank_accounts" WHERE "id" = ${id} FOR UPDATE`);
-}
-
-async function lockPosition(tx: Prisma.TransactionClient, id: string) {
-  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "client_money_positions" WHERE "id" = ${id} FOR UPDATE`);
 }
 
 export function serializeCashMovement(movement: {
@@ -369,27 +364,38 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
         await lockPosition(tx, position.id);
         position = await tx.clientMoneyPosition.findUniqueOrThrow({ where: { id: position.id } });
       }
-      const nextPositionBalance = money(position.balance.plus(amount));
-      const nextPoolBalance = money(pool.bookBalance.plus(amount));
       await persistCashMutation(tx, {
         accountId: account.id, cashMovementId: movement.id, pooledBankAccountId: pool.id,
         actorId: actor.id, valueDate: now, reason: `Verified against bank evidence ${bankReference}`,
         mutation: creditVerifiedDeposit(cashSnapshot(account), amount),
       });
-      await tx.clientMoneyPosition.update({ where: { id: position.id }, data: { balance: nextPositionBalance, version: { increment: 1 } } });
-      await tx.clientMoneyLedgerEntry.create({ data: {
-        id: crypto.randomUUID(), positionId: position.id, accountId: account.id, pooledBankAccountId: pool.id,
-        cashMovementId: movement.id, entryType: "deposit_credit", amount, balanceImpact: amount,
-        runningBalance: nextPositionBalance, createdBy: actor.id, notes: `Verified bank reference ${bankReference}`,
-      } });
-      await tx.pooledBankAccount.update({ where: { id: pool.id }, data: {
-        bookBalance: nextPoolBalance, statementBalance: money(pool.statementBalance.plus(amount)), version: { increment: 1 }, lastReconciledAt: now,
-      } });
-      await tx.pooledBankLedgerEntry.create({ data: {
-        id: crypto.randomUUID(), pooledBankAccountId: pool.id, cashMovementId: movement.id,
-        entryType: "deposit_credit", amount, balanceImpact: amount, runningBalance: nextPoolBalance,
-        bankReference, createdBy: actor.id, notes: reason,
-      } });
+      const { nextPositionBalance, nextPoolBookBalance: nextPoolBalance } = await persistClientMoneyMutation(tx, {
+        position, pool, accountId: account.id,
+        entryType: "deposit_credit",
+        impact: amount,
+        statementImpact: amount,
+        markReconciled: true,
+        actorId: actor.id,
+        cashMovementId: movement.id,
+        bankReference,
+        notes: `Verified bank reference ${bankReference}`,
+        poolNotes: reason,
+      });
+      await postJournalEntry(tx, {
+        brokerId: actor.brokerId,
+        actorId: actor.id,
+        cashMovementId: movement.id,
+        accountId: account.id,
+        reason: `Verified against bank evidence ${bankReference}`,
+        draft: manualDepositRecorded({
+          movementId: movement.id,
+          clientAccountId: account.id,
+          pooledBankAccountId: pool.id,
+          amount,
+          bankReference,
+          valueDate: now,
+        }),
+      });
       const updated = await tx.cashMovement.update({ where: { id }, data: {
         status: "completed", bankReference, reviewedByUserId: actor.id, completedByUserId: actor.id,
         reviewedAt: now, completedAt: now,
@@ -431,27 +437,38 @@ export async function reviewCashMovement(actor: Actor, id: string, action: Revie
       if (lockedPosition.balance.lt(amount) || pool.bookBalance.lt(amount) || pool.statementBalance.lt(amount)) {
         throw fail("The withdrawal exceeds the beneficial or pooled bank-book balance.", 409);
       }
-      const nextPositionBalance = money(lockedPosition.balance.minus(amount));
-      const nextPoolBalance = money(pool.bookBalance.minus(amount));
       await persistCashMutation(tx, {
         accountId: account.id, cashMovementId: id, pooledBankAccountId: pool.id,
         actorId: actor.id, valueDate: now, reason: `Paid under bank reference ${bankReference}`,
         mutation: completeWithdrawalCash(cashSnapshot(account), amount),
       });
-      await tx.clientMoneyPosition.update({ where: { id: lockedPosition.id }, data: { balance: nextPositionBalance, version: { increment: 1 } } });
-      await tx.clientMoneyLedgerEntry.create({ data: {
-        id: crypto.randomUUID(), positionId: lockedPosition.id, accountId: account.id, pooledBankAccountId: pool.id,
-        cashMovementId: id, entryType: "withdrawal_debit", amount: amount.negated(), balanceImpact: amount.negated(),
-        runningBalance: nextPositionBalance, createdBy: actor.id, notes: `Paid under bank reference ${bankReference}`,
-      } });
-      await tx.pooledBankAccount.update({ where: { id: pool.id }, data: {
-        bookBalance: nextPoolBalance, statementBalance: money(pool.statementBalance.minus(amount)), version: { increment: 1 }, lastReconciledAt: now,
-      } });
-      await tx.pooledBankLedgerEntry.create({ data: {
-        id: crypto.randomUUID(), pooledBankAccountId: pool.id, cashMovementId: id,
-        entryType: "withdrawal_debit", amount: amount.negated(), balanceImpact: amount.negated(), runningBalance: nextPoolBalance,
-        bankReference, createdBy: actor.id, notes: reason,
-      } });
+      const { nextPositionBalance, nextPoolBookBalance: nextPoolBalance } = await persistClientMoneyMutation(tx, {
+        position: lockedPosition, pool, accountId: account.id,
+        entryType: "withdrawal_debit",
+        impact: amount.negated(),
+        statementImpact: amount.negated(),
+        markReconciled: true,
+        actorId: actor.id,
+        cashMovementId: id,
+        bankReference,
+        notes: `Paid under bank reference ${bankReference}`,
+        poolNotes: reason,
+      });
+      await postJournalEntry(tx, {
+        brokerId: actor.brokerId,
+        actorId: actor.id,
+        cashMovementId: id,
+        accountId: account.id,
+        reason: `Paid under bank reference ${bankReference}`,
+        draft: withdrawalPaid({
+          movementId: id,
+          clientAccountId: account.id,
+          pooledBankAccountId: pool.id,
+          amount,
+          bankReference,
+          valueDate: now,
+        }),
+      });
       const updated = await tx.cashMovement.update({ where: { id }, data: { status: "completed", completedByUserId: actor.id, completedAt: now, bankReference }, include: movementInclude });
       await writeAudit(tx, {
         brokerId: actor.brokerId, actorId: actor.id, action: "WITHDRAWAL_PAID_AND_DEBITED", entityType: "cash_movement", entityId: id,

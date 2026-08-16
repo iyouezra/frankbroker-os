@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { addisBusinessDate } from "../lib/addis-date";
+import { ensureChartOfAccounts } from "../lib/gl/chart-seed";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -33,6 +34,12 @@ async function main() {
     ],
     skipDuplicates: true,
   });
+
+  // Every broker gets its chart of control accounts the moment it exists, so
+  // no posting can ever arrive before the accounts it needs.
+  for (const brokerId of ["brk_abyssinia", "brk_blue_nile", "brk_sheba"]) {
+    await ensureChartOfAccounts(prisma, brokerId);
+  }
 
   await prisma.user.createMany({
     data: [
@@ -157,7 +164,11 @@ async function main() {
       { id: "acc_meron", clientId: "cli_meron", accountNumber: "TRD-10041-01", csdReference: "CSD-ET-10041", totalCash: 1_840_500, availableCash: 1_526_850, blockedCash: 313_650, unsettledCash: 0, status: "active" },
       { id: "acc_wegagen", clientId: "cli_wegagen", accountNumber: "TRD-10008-01", totalCash: 12_400_000, availableCash: 10_172_500, blockedCash: 2_227_500, unsettledCash: 0, status: "active" },
       { id: "acc_selam", clientId: "cli_selam", accountNumber: "TRD-10052-01", totalCash: 428_900, availableCash: 428_900, blockedCash: 0, unsettledCash: 0, status: "restricted" },
-      { id: "acc_blue", clientId: "cli_blue", accountNumber: "TRD-10017-01", totalCash: 4_705_300, availableCash: 4_120_300, blockedCash: 585_000, unsettledCash: 0, status: "active" },
+      // Cash is net of ORD-2026-1046: the captured but unsettled buy of 25,000
+      // GOEB-2029 cost 2,508,731.25 (2,496,250 consideration plus 12,481.25 in
+      // fees) and left this account when the trade was captured. The bond sits
+      // in hld_blue_gb2029 as unsettled quantity until settlement.
+      { id: "acc_blue", clientId: "cli_blue", accountNumber: "TRD-10017-01", totalCash: 2_196_568.75, availableCash: 1_611_568.75, blockedCash: 585_000, unsettledCash: 0, status: "active" },
       { id: "acc_investor_demo", clientId: "cli_investor_demo", accountNumber: "INV-00001-01", totalCash: 75_000, availableCash: 75_000, blockedCash: 0, unsettledCash: 0, status: "active" },
       { id: "acc_pending_demo", clientId: "cli_pending_demo", accountNumber: "TRD-2026-P001-01", totalCash: 0, availableCash: 0, blockedCash: 0, unsettledCash: 0, status: "pending_approval", restrictionReason: "Awaiting client onboarding approval" },
       { id: "acc_pending_ready", clientId: "cli_pending_ready", accountNumber: "TRD-2026-P002-01", totalCash: 0, availableCash: 0, blockedCash: 0, unsettledCash: 0, status: "pending_approval", restrictionReason: "Awaiting final client approval" },
@@ -174,7 +185,11 @@ async function main() {
   // positions record each investor's exact beneficial share of each pool.
   await prisma.pooledBankAccount.createMany({
     data: [
-      { id: "pool_aby_general", brokerId: "brk_abyssinia", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", purpose: "general", bookBalance: 16_449_700, statementBalance: 16_449_700, status: "active", lastReconciledAt: new Date("2026-07-14T16:00:00Z") },
+      // The book balance is already net of the unsettled GOEB-2029 purchase;
+      // the statement balance is not, because that cash only leaves the bank
+      // when the trade settles. The 2,508,731.25 gap between them is the trade
+      // in flight, which is exactly what reconciliation expects to see.
+      { id: "pool_aby_general", brokerId: "brk_abyssinia", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Client Money", accountNumberMasked: "•••• 4108", purpose: "general", bookBalance: 13_940_968.75, statementBalance: 16_449_700, status: "active", lastReconciledAt: new Date("2026-07-14T16:00:00Z") },
       { id: "pool_aby_fixed_income", brokerId: "brk_abyssinia", bankName: "Commercial Bank of Ethiopia", accountName: "Abyssinia Securities Fixed Income Client Money", accountNumberMasked: "•••• 7721", purpose: "fixed_income", bookBalance: 3_000_000, statementBalance: 3_000_000, status: "active", lastReconciledAt: new Date("2026-07-14T16:00:00Z") },
     ],
     skipDuplicates: true,
@@ -185,7 +200,7 @@ async function main() {
       { id: "pos_wegagen_general", accountId: "acc_wegagen", pooledBankAccountId: "pool_aby_general", balance: 9_400_000 },
       { id: "pos_wegagen_fixed", accountId: "acc_wegagen", pooledBankAccountId: "pool_aby_fixed_income", balance: 3_000_000 },
       { id: "pos_selam_general", accountId: "acc_selam", pooledBankAccountId: "pool_aby_general", balance: 428_900 },
-      { id: "pos_blue_general", accountId: "acc_blue", pooledBankAccountId: "pool_aby_general", balance: 4_705_300 },
+      { id: "pos_blue_general", accountId: "acc_blue", pooledBankAccountId: "pool_aby_general", balance: 2_196_568.75 },
       { id: "pos_investor_general", accountId: "acc_investor_demo", pooledBankAccountId: "pool_aby_general", balance: 75_000 },
       { id: "pos_pending_general", accountId: "acc_pending_demo", pooledBankAccountId: "pool_aby_general", balance: 0 },
     ],

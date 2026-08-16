@@ -8,6 +8,8 @@ import { settleBuySecurities, settleSellCash, type CashSnapshot, type SecuritySn
 import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
 import { assertTransition } from "./status";
 import { confirmClientMoneyTradeAtSettlement } from "../client-money-service";
+import { postJournalEntry } from "../gl/posting-service";
+import { buySettlementConfirmed, sellSettlementConfirmed } from "../gl/journal-rules";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -76,11 +78,41 @@ export async function settleNextTrade(actor: Actor, orderId: string, requestedTr
       });
     }
 
-    await confirmClientMoneyTradeAtSettlement(tx, {
+    const { poolIds } = await confirmClientMoneyTradeAtSettlement(tx, {
       brokerId: actor.brokerId,
       orderId,
       tradeId: trade.id,
       actorId: actor.id,
+    });
+
+    // General ledger. A buy discharges the exchange obligation out of the pool;
+    // a sell brings cash in, clears the receivable, and moves the client's
+    // proceeds from unsettled to withdrawable.
+    await postJournalEntry(tx, {
+      brokerId: actor.brokerId,
+      actorId: actor.id,
+      orderId,
+      tradeId: trade.id,
+      settlementId: trade.settlement.id,
+      accountId: order.accountId,
+      reason: "Settlement confirmed",
+      draft: order.side === "buy"
+        ? buySettlementConfirmed({
+          settlementId: trade.settlement.id,
+          tradeId: trade.id,
+          pooledBankAccountId: poolIds[0] ?? null,
+          gross: trade.grossAmount,
+          valueDate: trade.settlement.settlementDate,
+        })
+        : sellSettlementConfirmed({
+          settlementId: trade.settlement.id,
+          tradeId: trade.id,
+          clientAccountId: order.accountId,
+          pooledBankAccountId: poolIds[0] ?? null,
+          gross: trade.grossAmount,
+          netToClient: trade.netAmount,
+          valueDate: trade.settlement.settlementDate,
+        }),
     });
 
     await tx.settlement.update({

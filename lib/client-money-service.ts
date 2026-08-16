@@ -4,12 +4,150 @@ import { writeAudit } from "./oms/audit-service";
 
 const fail = (message: string, status = 409) => Response.json({ error: message }, { status });
 
-async function lockPool(tx: Prisma.TransactionClient, id: string) {
+export async function lockPool(tx: Prisma.TransactionClient, id: string) {
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "pooled_bank_accounts" WHERE "id" = ${id} FOR UPDATE`);
 }
 
-async function lockPosition(tx: Prisma.TransactionClient, id: string) {
+export async function lockPosition(tx: Prisma.TransactionClient, id: string) {
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "client_money_positions" WHERE "id" = ${id} FOR UPDATE`);
+}
+
+export type ClientMoneyEntryType = "deposit_credit" | "withdrawal_debit" | "trade_debit" | "trade_credit";
+
+/**
+ * The single choke point for beneficial-owner and pooled-bank book movements.
+ * Mirrors `persistCashMutation`: it takes an open transaction, never opens its
+ * own, and expects the caller to have locked the position and pool already.
+ *
+ * `impact` moves both the client's beneficial balance and the pooled book
+ * balance. `statementImpact` moves the independently confirmed bank balance and
+ * defaults to zero, because most events change our book long before the bank
+ * confirms them.
+ */
+export async function persistClientMoneyMutation(
+  tx: Prisma.TransactionClient,
+  input: {
+    position: { id: string; balance: Prisma.Decimal };
+    pool: { id: string; bookBalance: Prisma.Decimal; statementBalance: Prisma.Decimal };
+    accountId: string;
+    entryType: ClientMoneyEntryType;
+    impact: Prisma.Decimal;
+    statementImpact?: Prisma.Decimal;
+    markReconciled?: boolean;
+    actorId: string;
+    orderId?: string | null;
+    tradeId?: string | null;
+    cashMovementId?: string | null;
+    bankReference?: string | null;
+    notes?: string | null;
+    poolNotes?: string | null;
+    negativeBalanceMessage?: string;
+  },
+) {
+  const impact = money(input.impact);
+  const statementImpact = money(input.statementImpact ?? ZERO);
+  const nextPositionBalance = money(input.position.balance.plus(impact));
+  const nextPoolBookBalance = money(input.pool.bookBalance.plus(impact));
+  const nextStatementBalance = money(input.pool.statementBalance.plus(statementImpact));
+  if (nextPositionBalance.lt(0) || nextPoolBookBalance.lt(0) || nextStatementBalance.lt(0)) {
+    throw fail(input.negativeBalanceMessage ?? "This movement would make a client-money balance negative.");
+  }
+
+  await tx.clientMoneyPosition.update({
+    where: { id: input.position.id },
+    data: { balance: nextPositionBalance, version: { increment: 1 } },
+  });
+  await tx.pooledBankAccount.update({
+    where: { id: input.pool.id },
+    data: {
+      bookBalance: nextPoolBookBalance,
+      statementBalance: nextStatementBalance,
+      version: { increment: 1 },
+      ...(input.markReconciled ? { lastReconciledAt: new Date() } : {}),
+    },
+  });
+  await tx.clientMoneyLedgerEntry.create({
+    data: {
+      id: crypto.randomUUID(),
+      positionId: input.position.id,
+      accountId: input.accountId,
+      pooledBankAccountId: input.pool.id,
+      cashMovementId: input.cashMovementId ?? null,
+      orderId: input.orderId ?? null,
+      tradeId: input.tradeId ?? null,
+      entryType: input.entryType,
+      amount: impact,
+      balanceImpact: impact,
+      runningBalance: nextPositionBalance,
+      createdBy: input.actorId,
+      notes: input.notes ?? null,
+    },
+  });
+  await tx.pooledBankLedgerEntry.create({
+    data: {
+      id: crypto.randomUUID(),
+      pooledBankAccountId: input.pool.id,
+      cashMovementId: input.cashMovementId ?? null,
+      orderId: input.orderId ?? null,
+      tradeId: input.tradeId ?? null,
+      entryType: input.entryType,
+      amount: impact,
+      balanceImpact: impact,
+      runningBalance: nextPoolBookBalance,
+      bankReference: input.bankReference ?? null,
+      createdBy: input.actorId,
+      notes: input.poolNotes ?? input.notes ?? null,
+    },
+  });
+  return { nextPositionBalance, nextPoolBookBalance, nextStatementBalance };
+}
+
+/**
+ * Move only the externally confirmed side of a pooled bank account. The book
+ * balance is untouched, so the ledger row carries a zero balance impact and
+ * records the unchanged book balance as its running balance.
+ */
+export async function persistPooledStatementMutation(
+  tx: Prisma.TransactionClient,
+  input: {
+    pool: { id: string; bookBalance: Prisma.Decimal; statementBalance: Prisma.Decimal };
+    entryType: string;
+    statementImpact: Prisma.Decimal;
+    actorId: string;
+    orderId?: string | null;
+    tradeId?: string | null;
+    cashMovementId?: string | null;
+    bankReference?: string | null;
+    notes?: string | null;
+    negativeBalanceMessage?: string;
+  },
+) {
+  const statementImpact = money(input.statementImpact);
+  const nextStatementBalance = money(input.pool.statementBalance.plus(statementImpact));
+  if (nextStatementBalance.lt(0)) {
+    throw fail(input.negativeBalanceMessage ?? "This movement would make the confirmed pooled bank balance negative.");
+  }
+  await tx.pooledBankAccount.update({
+    where: { id: input.pool.id },
+    data: { statementBalance: nextStatementBalance, lastReconciledAt: new Date(), version: { increment: 1 } },
+  });
+  await tx.pooledBankLedgerEntry.create({
+    data: {
+      id: crypto.randomUUID(),
+      pooledBankAccountId: input.pool.id,
+      cashMovementId: input.cashMovementId ?? null,
+      orderId: input.orderId ?? null,
+      tradeId: input.tradeId ?? null,
+      entryType: input.entryType,
+      amount: statementImpact,
+      balanceImpact: ZERO,
+      runningBalance: input.pool.bookBalance,
+      bankReference: input.bankReference ?? null,
+      createdBy: input.actorId,
+      notes: input.notes ?? null,
+    },
+  });
+  return { nextStatementBalance };
 }
 
 /**
@@ -75,23 +213,18 @@ export async function applyClientMoneyTradeBook(
   }
 
   for (const allocation of allocations) {
-    const nextPosition = money(allocation.position.balance.plus(allocation.impact));
-    const nextPool = money(allocation.pool.bookBalance.plus(allocation.impact));
-    if (nextPosition.lt(0) || nextPool.lt(0)) throw fail("Trade cash allocation would make a pooled balance negative.");
-    await tx.clientMoneyPosition.update({ where: { id: allocation.position.id }, data: { balance: nextPosition, version: { increment: 1 } } });
-    await tx.pooledBankAccount.update({ where: { id: allocation.pool.id }, data: { bookBalance: nextPool, version: { increment: 1 } } });
-    const entryType = allocation.impact.lt(0) ? "trade_debit" : "trade_credit";
-    await tx.clientMoneyLedgerEntry.create({ data: {
-      id: crypto.randomUUID(), positionId: allocation.position.id, accountId: input.accountId, pooledBankAccountId: allocation.pool.id,
-      orderId: input.orderId, tradeId: input.tradeId, entryType, amount: allocation.impact,
-      balanceImpact: allocation.impact, runningBalance: nextPosition, createdBy: input.actorId,
+    await persistClientMoneyMutation(tx, {
+      position: allocation.position,
+      pool: allocation.pool,
+      accountId: input.accountId,
+      entryType: allocation.impact.lt(0) ? "trade_debit" : "trade_credit",
+      impact: allocation.impact,
+      actorId: input.actorId,
+      orderId: input.orderId,
+      tradeId: input.tradeId,
       notes: `Cash book impact from captured trade ${input.tradeId}`,
-    } });
-    await tx.pooledBankLedgerEntry.create({ data: {
-      id: crypto.randomUUID(), pooledBankAccountId: allocation.pool.id, orderId: input.orderId, tradeId: input.tradeId,
-      entryType, amount: allocation.impact, balanceImpact: allocation.impact, runningBalance: nextPool,
-      createdBy: input.actorId, notes: `Cash book impact from captured trade ${input.tradeId}`,
-    } });
+      negativeBalanceMessage: "Trade cash allocation would make a pooled balance negative.",
+    });
   }
   await writeAudit(tx, {
     brokerId: input.brokerId, actorId: input.actorId, action: "CLIENT_MONEY_TRADE_BOOK_UPDATED",
@@ -118,23 +251,24 @@ export async function confirmClientMoneyTradeAtSettlement(
       entityType: "trade", entityId: input.tradeId,
       summary: "Settlement used the signed-off opening client-money balance because this trade predates the pooled ledger",
     });
-    return;
+    return { poolIds: [] as string[] };
   }
   const byPool = new Map<string, Prisma.Decimal>();
   for (const entry of tradeEntries) byPool.set(entry.pooledBankAccountId, (byPool.get(entry.pooledBankAccountId) ?? ZERO).plus(entry.balanceImpact));
   for (const [poolId, impactRaw] of byPool) {
     await lockPool(tx, poolId);
     const pool = await tx.pooledBankAccount.findUniqueOrThrow({ where: { id: poolId } });
-    const impact = money(impactRaw);
-    const nextStatement = money(pool.statementBalance.plus(impact));
-    if (nextStatement.lt(0)) throw fail("Settlement would make the confirmed pooled bank balance negative.");
-    await tx.pooledBankAccount.update({ where: { id: poolId }, data: { statementBalance: nextStatement, lastReconciledAt: new Date(), version: { increment: 1 } } });
-    await tx.pooledBankLedgerEntry.create({ data: {
-      id: crypto.randomUUID(), pooledBankAccountId: poolId, orderId: input.orderId, tradeId: input.tradeId,
-      entryType: "settlement_bank_confirmed", amount: impact, balanceImpact: ZERO, runningBalance: pool.bookBalance,
-      bankReference: `SETTLEMENT-${input.tradeId}`, createdBy: input.actorId,
+    await persistPooledStatementMutation(tx, {
+      pool,
+      entryType: "settlement_bank_confirmed",
+      statementImpact: impactRaw,
+      actorId: input.actorId,
+      orderId: input.orderId,
+      tradeId: input.tradeId,
+      bankReference: `SETTLEMENT-${input.tradeId}`,
       notes: "External cash leg confirmed through the controlled settlement workflow",
-    } });
+      negativeBalanceMessage: "Settlement would make the confirmed pooled bank balance negative.",
+    });
   }
   await writeAudit(tx, {
     brokerId: input.brokerId, actorId: input.actorId, action: "POOLED_BANK_SETTLEMENT_CONFIRMED",
@@ -142,4 +276,5 @@ export async function confirmClientMoneyTradeAtSettlement(
     summary: "Pooled bank statement side updated for the confirmed cash settlement leg",
     newValue: { pools: [...byPool].map(([poolId, impact]) => ({ poolId, impact: toNum(impact) })) },
   });
+  return { poolIds: [...byPool.keys()] };
 }

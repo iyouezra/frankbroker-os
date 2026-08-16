@@ -61,6 +61,9 @@ model Broker {
   conductAttestations    ConductAttestation[]
   withdrawalExceptions   WithdrawalDestinationException[]
   monitoringAuditEvents  MonitoringAuditEvent[]
+  ledgerAccounts         LedgerAccount[]
+  journalEntries         JournalEntry[]
+  journalLines           JournalLine[]
 
   @@map("brokers")
 }
@@ -125,6 +128,8 @@ model User {
   recordedClientScreenings      ClientScreening[]         @relation("ClientScreeningRecorder")
   signedReconciliationBatches   ReconciliationBatch[]     @relation("ReconciliationReviewer")
   employeeConductProfile        EmployeeConductProfile?
+  postedJournalEntries          JournalEntry[]            @relation("JournalPoster")
+  approvedJournalEntries        JournalEntry[]            @relation("JournalApprover")
 
   @@unique([brokerId, employeeId])
   @@index([brokerId, status])
@@ -299,6 +304,8 @@ model Account {
   verificationChallenges   VerificationChallenge[]
   communicationThreads     CommunicationThread[]
   employeeConductProfiles  EmployeeConductProfile[]
+  journalEntries           JournalEntry[]
+  journalLines             JournalLine[]
 
   @@index([clientId])
   @@map("accounts")
@@ -331,6 +338,7 @@ model Instrument {
   tradeClearances         PersonalTradeClearance[]
   restrictedSecurities    RestrictedSecurity[]
   sensitiveInfoAccess     SensitiveInformationAccess[]
+  journalLines            JournalLine[]
 
   @@map("instruments")
 }
@@ -934,6 +942,7 @@ model Order {
   instructionVerification   VerificationChallenge?   @relation(fields: [instructionVerificationId], references: [id], onDelete: Restrict)
   personalTradeClearance    PersonalTradeClearance?  @relation(fields: [personalTradeClearanceId], references: [id], onDelete: SetNull)
   monitoringAlerts          MonitoringAlert[]
+  journalEntries            JournalEntry[]
 
   @@unique([brokerId, submissionReference])
   @@index([brokerId, status])
@@ -1024,6 +1033,7 @@ model Trade {
   securitiesLedgerEntries  SecuritiesLedgerEntry[]
   clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
   pooledBankLedgerEntries  PooledBankLedgerEntry[]
+  journalEntries           JournalEntry[]
 
   @@index([orderId])
   @@map("trades")
@@ -1087,8 +1097,9 @@ model Settlement {
   confirmedAt      DateTime? @map("confirmed_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
-  trade            Trade     @relation(fields: [tradeId], references: [id], onDelete: Restrict)
-  confirmedByUser  User?     @relation("SettlementConfirmer", fields: [confirmedBy], references: [id], onDelete: SetNull)
+  trade            Trade          @relation(fields: [tradeId], references: [id], onDelete: Restrict)
+  confirmedByUser  User?          @relation("SettlementConfirmer", fields: [confirmedBy], references: [id], onDelete: SetNull)
+  journalEntries   JournalEntry[]
 
   @@map("settlements")
 }
@@ -1151,6 +1162,7 @@ model PooledBankAccount {
   ledgerEntries            PooledBankLedgerEntry[]
   cashLedgerEntries        CashLedgerEntry[]
   clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
+  journalLines             JournalLine[]
 
   @@unique([brokerId, bankName, accountNumberMasked])
   @@index([brokerId, status, purpose])
@@ -1221,6 +1233,7 @@ model CashMovement {
   pooledBankLedgerEntries   PooledBankLedgerEntry[]
   monitoringAlerts          MonitoringAlert[]
   withdrawalException       WithdrawalDestinationException?
+  journalEntries            JournalEntry[]
 
   @@unique([brokerId, submissionReference])
   @@index([brokerId, status, submittedAt])
@@ -2011,4 +2024,137 @@ model InvestorAssignment {
   @@index([brokerId, primaryOfficerId, endedAt])
   @@index([clientId, endedAt])
   @@map("investor_assignments")
+}
+
+/// One control account in a broker's brokerage-scoped general ledger.
+///
+/// `role` is the immutable, system-owned semantic key the posting engine joins
+/// on; `code`, `name`, `statementCaption`, and `externalAccountCode` belong to
+/// the tenant and may be renamed or renumbered at any time without disturbing
+/// history, because nothing posts against a code.
+///
+/// There is deliberately no `clientId` and no `accountId` here. Per-client
+/// balances live in the sub-ledgers (`Account`, `ClientMoneyPosition`,
+/// `Holding`); the general ledger only ever holds their aggregate. Likewise
+/// there is no bank dimension: one control account covers every pooled bank
+/// account a broker holds, and per-bank views are reports over
+/// `JournalLine.pooledBankAccountId`.
+model LedgerAccount {
+  id                  String        @id
+  brokerId            String        @map("broker_id")
+  role                String
+  code                String
+  name                String
+  accountClass        String        @map("account_class")
+  normalBalance       String        @map("normal_balance")
+  statementCaption    String        @map("statement_caption")
+  externalAccountCode String?       @map("external_account_code")
+  subLedger           String?       @map("sub_ledger")
+  postingEnabled      Boolean       @default(true) @map("posting_enabled")
+  currency            String        @default("ETB")
+  balance             Decimal       @default(0) @db.Decimal(20, 4)
+  debitTotal          Decimal       @default(0) @map("debit_total") @db.Decimal(20, 4)
+  creditTotal         Decimal       @default(0) @map("credit_total") @db.Decimal(20, 4)
+  version             Int           @default(0)
+  status              String        @default("active")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  broker              Broker        @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  lines               JournalLine[]
+
+  @@unique([brokerId, role])
+  @@unique([brokerId, code])
+  @@index([brokerId, accountClass, code])
+  @@map("ledger_accounts")
+}
+
+/// A balanced, append-only double-entry journal entry, always derived from an
+/// operational event rather than typed by a person.
+///
+/// `idempotencyKey` is `sourceType:sourceId:eventKey`; the unique constraint on
+/// it is what makes replaying an event (a redelivered webhook, a retried trade
+/// capture) a no-op instead of a double posting. Entries are never edited or
+/// deleted — a mistake is corrected by posting the reversal that
+/// `reversesEntryId` points back at. Database triggers enforce this.
+model JournalEntry {
+  id              String        @id
+  brokerId        String        @map("broker_id")
+  entryDate       DateTime      @map("entry_date") @db.Date
+  valueDate       DateTime      @map("value_date") @db.Date
+  sourceType      String        @map("source_type")
+  sourceId        String?       @map("source_id")
+  idempotencyKey  String        @map("idempotency_key")
+  description     String
+  status          String        @default("posted")
+  currency        String        @default("ETB")
+  totalDebit      Decimal       @map("total_debit") @db.Decimal(20, 4)
+  totalCredit     Decimal       @map("total_credit") @db.Decimal(20, 4)
+  reason          String?
+  postedBy        String?       @map("posted_by")
+  postedAt        DateTime      @default(now()) @map("posted_at")
+  approvedBy      String?       @map("approved_by")
+  approvedAt      DateTime?     @map("approved_at")
+  reversesEntryId String?       @unique @map("reverses_entry_id")
+  reversalReason  String?       @map("reversal_reason")
+  orderId         String?       @map("order_id")
+  tradeId         String?       @map("trade_id")
+  settlementId    String?       @map("settlement_id")
+  cashMovementId  String?       @map("cash_movement_id")
+  accountId       String?       @map("account_id")
+  broker          Broker        @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  postedByUser    User?         @relation("JournalPoster", fields: [postedBy], references: [id], onDelete: SetNull)
+  approvedByUser  User?         @relation("JournalApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  reverses        JournalEntry? @relation("JournalReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
+  reversedBy      JournalEntry? @relation("JournalReversal")
+  order           Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  trade           Trade?        @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  settlement      Settlement?   @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  cashMovement    CashMovement? @relation(fields: [cashMovementId], references: [id], onDelete: SetNull)
+  account         Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  lines           JournalLine[]
+
+  @@unique([brokerId, idempotencyKey])
+  @@index([brokerId, valueDate])
+  @@index([brokerId, sourceType, sourceId])
+  @@index([tradeId])
+  @@index([cashMovementId])
+  @@map("journal_entries")
+}
+
+/// One side of a journal entry. `amount` is always positive and `side` carries
+/// the direction, so the balancing check a regulator performs — total debits
+/// equal total credits — is directly expressible. This is deliberately unlike
+/// the sub-ledgers, which use signed impacts; the visible difference stops a
+/// `CashLedgerImpact` being pasted in as a journal line.
+///
+/// `clientAccountId`, `pooledBankAccountId`, and `instrumentId` are provenance
+/// only. They exist so an entry can be traced back to what caused it, never so
+/// a balance can be sliced by them — that is what the sub-ledgers are for.
+model JournalLine {
+  id                  String             @id
+  entryId             String             @map("entry_id")
+  brokerId            String             @map("broker_id")
+  ledgerAccountId     String             @map("ledger_account_id")
+  lineNumber          Int                @map("line_number")
+  side                String
+  amount              Decimal            @db.Decimal(20, 4)
+  runningBalance      Decimal            @map("running_balance") @db.Decimal(20, 4)
+  currency            String             @default("ETB")
+  memo                String
+  clientAccountId     String?            @map("client_account_id")
+  pooledBankAccountId String?            @map("pooled_bank_account_id")
+  instrumentId        String?            @map("instrument_id")
+  valueDate           DateTime           @map("value_date") @db.Date
+  createdAt           DateTime           @default(now()) @map("created_at")
+  entry               JournalEntry       @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  broker              Broker             @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  ledgerAccount       LedgerAccount      @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  clientAccount       Account?           @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
+  pooledBankAccount   PooledBankAccount? @relation(fields: [pooledBankAccountId], references: [id], onDelete: SetNull)
+  instrument          Instrument?        @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
+
+  @@unique([entryId, lineNumber])
+  @@index([ledgerAccountId, valueDate])
+  @@index([brokerId, valueDate])
+  @@map("journal_lines")
 }

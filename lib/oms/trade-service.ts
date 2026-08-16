@@ -19,6 +19,8 @@ import {
 } from "./fee-service";
 import { applyClientMoneyTradeBook } from "../client-money-service";
 import { assertNoEmployeeSelfProcessing } from "../monitoring-service";
+import { postJournalEntry } from "../gl/posting-service";
+import { buyFillCaptured, sellFillCaptured } from "../gl/journal-rules";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -287,6 +289,35 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
       actorId: actor.id,
       impact: cashBookImpact,
       assetClass: order.instrument.assetClass,
+    });
+
+    // General ledger, after the sub-ledgers and after the trade row exists for
+    // the entry to reference. This is where brokerage becomes income and the
+    // ECMA, ESX, and CSD portions become payables we hold as agent.
+    await postJournalEntry(tx, {
+      brokerId: actor.brokerId,
+      actorId: actor.id,
+      orderId,
+      tradeId,
+      accountId: order.accountId,
+      reason: "Trade captured",
+      draft: order.side === "buy"
+        ? buyFillCaptured({
+          tradeId,
+          clientAccountId: order.accountId,
+          instrumentId: order.instrumentId,
+          gross: amounts.gross,
+          breakdown: amounts.breakdown,
+          valueDate,
+        })
+        : sellFillCaptured({
+          tradeId,
+          clientAccountId: order.accountId,
+          instrumentId: order.instrumentId,
+          gross: amounts.gross,
+          breakdown: amounts.breakdown,
+          valueDate,
+        }),
     });
 
     const finalStatus = remainingQuantity.gt(0) ? "partially_filled" : "settlement_pending";
