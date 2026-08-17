@@ -42,6 +42,7 @@ const defaultDemoActors: Record<Role, Omit<Actor, "role" | "brokerId">> = {
   operations: { id: "usr_operations", email: "hana@frankbroker.et", fullName: "Hana Kebede" },
   compliance: { id: "usr_compliance", email: "liya@frankbroker.et", fullName: "Liya Girma" },
   settlement: { id: "usr_settlement", email: "rahel@frankbroker.et", fullName: "Rahel Getachew" },
+  finance: { id: "usr_finance", email: "tigist@frankbroker.et", fullName: "Tigist Bekele" },
   relationship_officer: { id: "usr_relationship", email: "kalkidan@frankbroker.et", fullName: "Kalkidan Alemu" },
   service_officer: { id: "usr_service", email: "bethel@frankbroker.et", fullName: "Bethel Tesfaye" },
   management: { id: "usr_demo_admin", email: "demo.admin@frankbroker.et", fullName: "Mekdes Tadesse" },

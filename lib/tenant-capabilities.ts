@@ -14,8 +14,8 @@ export const MODULE_ENTITLEMENT: Record<TenantModuleKey, EntitlementKey> = {
 };
 
 export const PROFILE_ROLES: Record<BusinessType, Role[]> = {
-  securities_dealer: ["broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "management"],
-  investment_bank: ["broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "advisory_lead", "advisory_analyst", "management"],
+  securities_dealer: ["broker_admin", "trader", "operations", "compliance", "settlement", "finance", "relationship_officer", "service_officer", "management"],
+  investment_bank: ["broker_admin", "trader", "operations", "compliance", "settlement", "finance", "relationship_officer", "service_officer", "advisory_lead", "advisory_analyst", "management"],
   securities_investment_adviser: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"],
 };
 

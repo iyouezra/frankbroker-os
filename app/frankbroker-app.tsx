@@ -57,6 +57,7 @@ import {
 } from "../features/broker/shared/broker-foundation";
 import { Dashboard } from "../features/broker/dashboard/dashboard-screen";
 import { ReconciliationPage, SettlementPage } from "../features/broker/operations/operations-screens";
+import { FinanceLedgerPage } from "../features/broker/finance/ledger-screens";
 import { SettingsPage, UsersPage } from "../features/broker/administration/administration-screens";
 import { AuditPage, ReportsPage } from "../features/broker/oversight/reporting-screens";
 import { PerformancePage } from "../features/broker/oversight/performance-screen";
@@ -164,7 +165,7 @@ export default function FrankBrokerApp() {
       .then((data: { tenants?: DemoTenantSummary[] }) => setDemoTenants(data.tenants ?? []))
       .catch(() => setDemoTenants([
         { id: "brk_abyssinia", tradingName: "Abyssinia Securities", licenseNumber: "ESCA-BR-004", primaryColor: "#0C8189", businessType: "securities_dealer", modules: fallbackModules, availableRoles },
-        { id: "brk_blue_nile", tradingName: "Addis Capital", licenseNumber: "ESCA-BR-011", primaryColor: "#2277C8", businessType: "investment_bank", modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, availableRoles: ["broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "advisory_lead", "advisory_analyst", "management"] },
+        { id: "brk_blue_nile", tradingName: "Addis Capital", licenseNumber: "ESCA-BR-011", primaryColor: "#2277C8", businessType: "investment_bank", modules: { dealer_operations: true, investor_servicing: true, issuer_advisory: true }, availableRoles: ["broker_admin", "trader", "operations", "compliance", "settlement", "finance", "relationship_officer", "service_officer", "advisory_lead", "advisory_analyst", "management"] },
         { id: "brk_sheba", tradingName: "Sheba Advisory", licenseNumber: "PILOT-023", primaryColor: "#0E9F5B", businessType: "securities_investment_adviser", modules: { dealer_operations: false, investor_servicing: false, issuer_advisory: true }, availableRoles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
       ]));
     // The demo tenant catalogue is static for the browser session.
@@ -907,6 +908,7 @@ export default function FrankBrokerApp() {
           {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} focusId={cashFocus} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} role={role} focusId={reconciliationFocus} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} onSignOff={signOffReconciliation} resolvingId={busyAction} />}
+          {view === "ledger" && <FinanceLedgerPage role={role} onOpenSource={(kind, id) => { if (kind === "cash_movement") navigateToTarget({ view: "cash", entityType: "cash_movement", entityId: id }); else navigateToTarget({ view: "orders", entityType: kind === "trade" ? "trade" : "order", entityId: id }); }} />}
           {view === "advisory" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />}
           {view === "issuers" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="issuers" onNotify={notify} />}
           {view === "reports" && <ReportsPage orders={orders} clients={clients} audit={auditEntries} role={role} onDownloaded={(name) => notify(`${name} exported.`)} onNotify={notify} />}

@@ -5,6 +5,7 @@ export type Role =
   | "operations"
   | "compliance"
   | "settlement"
+  | "finance"
   | "relationship_officer"
   | "service_officer"
   | "management"
@@ -40,6 +41,7 @@ export const roleLabels: Record<Role, string> = {
   operations: "Operations officer",
   compliance: "Compliance officer",
   settlement: "Settlement officer",
+  finance: "Finance officer",
   relationship_officer: "Relationship officer",
   service_officer: "Client service officer",
   management: "Read-only management",
@@ -103,6 +105,16 @@ export const COMPLIANCE_PERMISSIONS = {
   statementExport: "compliance.statement.export",
 } as const;
 
+/**
+ * General ledger permissions. The ledger is a read-only projection of events
+ * that already happened, so there is deliberately no "post" verb here: a
+ * correction is a reversal on the source event, never a hand-keyed entry.
+ */
+export const LEDGER_PERMISSIONS = {
+  view: "ledger.view",
+  export: "ledger.export",
+} as const;
+
 export const MONITORING_PERMISSIONS = {
   summary: "monitoring.summary.view",
   sensitive: "monitoring.sensitive.view",
@@ -126,14 +138,17 @@ const CRM_READ_AND_NOTE = [CRM_PERMISSIONS.view, CRM_PERMISSIONS.note, CRM_PERMI
 const CRM_TASK_FULL = [CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.taskAssign, CRM_PERMISSIONS.taskComplete];
 const COMPLIANCE_ALL = Object.values(COMPLIANCE_PERMISSIONS);
 const MONITORING_ALL = Object.values(MONITORING_PERMISSIONS);
+const LEDGER_ALL = Object.values(LEDGER_PERMISSIONS);
+const LEDGER_VIEW = [LEDGER_PERMISSIONS.view];
 
 export const workflowPermissions: Record<Role, string[]> = {
   access_admin: ["access.manage"],
-  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...COMPLIANCE_ALL, MONITORING_PERMISSIONS.summary, MONITORING_PERMISSIONS.clearanceRequest, MONITORING_PERMISSIONS.selfService, ...Object.values(ADVISORY_PERMISSIONS)],
+  broker_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...COMPLIANCE_ALL, ...LEDGER_ALL, MONITORING_PERMISSIONS.summary, MONITORING_PERMISSIONS.clearanceRequest, MONITORING_PERMISSIONS.selfService, ...Object.values(ADVISORY_PERMISSIONS)],
   trader: ["create", "trade", "report", ...CRM_READ_AND_NOTE, ...MARKET_FULL, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.clearanceRequest, MONITORING_PERMISSIONS.selfService],
   operations: ["create", "adjust", "report", ...CRM_READ_AND_NOTE, ...CRM_TASK_FULL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, COMPLIANCE_PERMISSIONS.reportPrepare, COMPLIANCE_PERMISSIONS.escalationCreate, COMPLIANCE_PERMISSIONS.statementExport, MONITORING_PERMISSIONS.clearanceRequest, MONITORING_PERMISSIONS.selfService],
-  compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage, ...MARKET_VIEW, ...COMPLIANCE_ALL, ...MONITORING_ALL, ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.checklistApprove],
-  settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.selfService],
+  compliance: ["approve", "reject", "report", ...CRM_READ_AND_NOTE, CRM_PERMISSIONS.status, CRM_PERMISSIONS.taskCreate, CRM_PERMISSIONS.caseManage, ...MARKET_VIEW, ...COMPLIANCE_ALL, ...MONITORING_ALL, ...LEDGER_ALL, ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.checklistApprove],
+  settlement: ["settle", "adjust", "report", ...CRM_READ_AND_NOTE, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, ...LEDGER_VIEW, MONITORING_PERMISSIONS.selfService, COMPLIANCE_PERMISSIONS.escalationCreate],
+  finance: ["report", ...LEDGER_ALL, ...CRM_READ_AND_NOTE, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, COMPLIANCE_PERMISSIONS.statementExport, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.selfService],
   relationship_officer: [
     "report",
     CRM_PERMISSIONS.view,
@@ -149,10 +164,10 @@ export const workflowPermissions: Record<Role, string[]> = {
     MONITORING_PERMISSIONS.selfService,
   ],
   service_officer: ["create", "report", ...CRM_ALL, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.statementExport, COMPLIANCE_PERMISSIONS.escalationCreate, MONITORING_PERMISSIONS.selfService],
-  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, MONITORING_PERMISSIONS.summary, MONITORING_PERMISSIONS.selfService, ADVISORY_PERMISSIONS.view],
+  management: ["report", CRM_PERMISSIONS.view, CRM_PERMISSIONS.taskView, CRM_PERMISSIONS.caseView, ...MARKET_VIEW, COMPLIANCE_PERMISSIONS.view, ...LEDGER_VIEW, MONITORING_PERMISSIONS.summary, MONITORING_PERMISSIONS.selfService, ADVISORY_PERMISSIONS.view],
   advisory_lead: ["report", ...Object.values(ADVISORY_PERMISSIONS), MONITORING_PERMISSIONS.selfService],
   advisory_analyst: ["report", ADVISORY_PERMISSIONS.view, ADVISORY_PERMISSIONS.issuerManage, ADVISORY_PERMISSIONS.dealManage, ADVISORY_PERMISSIONS.checklistPrepare, ADVISORY_PERMISSIONS.documentManage, ADVISORY_PERMISSIONS.taskManage, MONITORING_PERMISSIONS.selfService],
-  super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...Object.values(ADVISORY_PERMISSIONS)],
+  super_admin: ["create", "approve", "reject", "trade", "settle", "adjust", "report", ...CRM_ALL, ...MARKET_FULL, ...LEDGER_ALL, ...Object.values(ADVISORY_PERMISSIONS)],
 };
 
 /**

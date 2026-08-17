@@ -5,7 +5,7 @@ import { demoClients, demoInstruments, initialOrders, type BrokerClient, type De
 import { hasPermission, type OrderStatus, type Role } from "../../../lib/frank";
 import { orderResponsibility } from "../../../lib/order-log";
 
-export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_my" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
+export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "ledger" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_my" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
 export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
 export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationChannel: "sms" | "email"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
@@ -380,6 +380,9 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "settlement", label: "Settlement", icon: "settlement", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations"] },
     { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations", "compliance"] },
   ] },
+  { label: "Finance", items: [
+    { id: "ledger", label: "General ledger", icon: "ledger", module: "dealer_operations", roles: ["broker_admin", "finance", "compliance", "settlement", "management"] },
+  ] },
   { label: "Issuer advisory", items: [
     { id: "advisory", label: "Advisory pipeline", icon: "advisory", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
     { id: "issuers", label: "Issuers", icon: "issuers", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
@@ -420,6 +423,7 @@ export const roleNames: Record<Role, string> = {
   operations: "Hana Kebede",
   compliance: "Liya Girma",
   settlement: "Rahel Getachew",
+  finance: "Tigist Bekele",
   relationship_officer: "Kalkidan Alemu",
   service_officer: "Bethel Tesfaye",
   management: "Yonas Alemayehu",
@@ -443,6 +447,7 @@ const ICON_PATHS: Record<string, string> = {
   reconciliation: "M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M13 6h3a2 2 0 0 1 2 2v7 M11 18H8a2 2 0 0 1-2-2V9",
   reports: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z M14 2v4a2 2 0 0 0 2 2h4 M16 13H8 M16 17H8 M10 9H8",
   audit: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2",
+  ledger: "M12 3v18 M5 8h4 M5 12h4 M15 8h4 M15 12h4 M3 3h18v18H3z",
   performance: "M3 3v16a2 2 0 0 0 2 2h16 M18 17V9 M13 17V5 M8 17v-3",
   advisory: "M4 20h16 M6 16l4-4 3 3 5-7 M18 8h2v2 M4 4h16v16H4z",
   issuers: "M3 21h18 M5 21V8l7-5 7 5v13 M9 21v-6h6v6 M8 10h1 M12 10h1 M16 10h1",
