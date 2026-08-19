@@ -380,9 +380,6 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "settlement", label: "Settlement", icon: "settlement", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations"] },
     { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations", "compliance"] },
   ] },
-  { label: "Finance", items: [
-    { id: "ledger", label: "General ledger", icon: "ledger", module: "dealer_operations", roles: ["broker_admin", "finance", "compliance", "settlement", "management"] },
-  ] },
   { label: "Issuer advisory", items: [
     { id: "advisory", label: "Advisory pipeline", icon: "advisory", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
     { id: "issuers", label: "Issuers", icon: "issuers", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
@@ -401,6 +398,9 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "performance", label: "Performance", icon: "performance", roles: ["broker_admin"] },
     { id: "reports", label: "Reports", icon: "reports" },
     { id: "audit", label: "Audit trail", icon: "audit", roles: ["broker_admin", "compliance"] },
+  ] },
+  { label: "Finance", items: [
+    { id: "ledger", label: "General ledger", icon: "ledger", module: "dealer_operations", roles: ["broker_admin", "finance", "compliance", "settlement", "management"] },
   ] },
   { label: "Administration", items: [
     { id: "users", label: "Users & roles", icon: "users", roles: ["access_admin", "broker_admin"] },
