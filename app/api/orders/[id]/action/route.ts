@@ -10,6 +10,8 @@ import { settleNextTrade } from "../../../../../lib/oms/settlement-service";
 import { captureTrade } from "../../../../../lib/oms/trade-service";
 import { parseDateOnly, parsePositiveFiniteNumber } from "../../../../../lib/order-input";
 import { requireTenantModule } from "../../../../../lib/tenant-capabilities";
+import { prisma } from "../../../../../lib/prisma";
+import { assertBusinessDayOpen } from "../../../../../lib/reconciliation-service";
 
 export const runtime = "nodejs";
 
@@ -44,6 +46,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return Response.json({ error: "The workflow reason is too long." }, { status: 400 });
     }
     const { actor } = await requireTenantModule(request, "dealer_operations", permissions[payload.action]);
+    if (payload.action !== "contract_note") await assertBusinessDayOpen(prisma, actor.brokerId);
 
     switch (payload.action) {
       case "approve":

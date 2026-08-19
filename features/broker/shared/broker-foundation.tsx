@@ -53,7 +53,9 @@ export type ClientDirectoryResponse = {
 };
 export type TradeValue = { quantity: string; price: string; tradeDate: string; captureReference: string };
 export type ReconException = { id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string | null; status: string; resolutionNotes: string | null };
-export type ReconBatch = { id: string; batchDate: string; fileName: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; reviewedAt?: string | null; reviewedBy?: string | null; evidenceReference?: string | null; exceptions: ReconException[] };
+export type ReconBatch = { id: string; batchDate: string; fileName: string | null; source?: string; feedType?: string; contentHash?: string | null; attemptNumber?: number; supersedesBatchId?: string | null; totalRecords: number; matchedRecords: number; exceptionRecords: number; status: string; reviewedAt?: string | null; reviewedBy?: string | null; evidenceReference?: string | null; exceptions: ReconException[] };
+export type EndOfDayCheck = { key: string; label: string; passed: boolean; detail: string; blocking: boolean };
+export type EndOfDayControl = { businessDate: string; status: string; cutoffAt: string | null; closeEvidence: string | null; closedAt: string | null; closedBy: string | null; reopenedAt: string | null; reopenedBy: string | null; reopenReason: string | null; version: number; ready: boolean; checks: EndOfDayCheck[] };
 export type AuditEntry = { id?: string; time: string; actor: string; action: string; detail: string; entity: string };
 export type BrokerInstrument = { id: string; symbol: string; name: string; asset: string; issuer: string; status: string; currency: string; lot: number; tick: number; cycle: string; price: number; coupon?: string; maturity?: string };
 export type TenantFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
@@ -506,6 +508,7 @@ export const fallbackReconBatch: ReconBatch = {
   ],
 };
 export const emptyReconBatch: ReconBatch = { id: "No batches", batchDate: "", fileName: null, totalRecords: 0, matchedRecords: 0, exceptionRecords: 0, status: "empty", exceptions: [] };
+export const emptyEndOfDayControl: EndOfDayControl = { businessDate: "", status: "open", cutoffAt: null, closeEvidence: null, closedAt: null, closedBy: null, reopenedAt: null, reopenedBy: null, reopenReason: null, version: 0, ready: false, checks: [] };
 
 export const statusLabels: Record<OrderStatus, string> = {
   draft: "Draft", submitted: "Submitted", validation_failed: "Validation failed", pending_broker_review: "Pending review", approved: "Approved", rejected: "Rejected", partially_filled: "Partially filled", filled: "Filled", cancelled: "Cancelled", settlement_pending: "Settlement pending", settled: "Settled", failed: "Failed",

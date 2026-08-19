@@ -16,6 +16,7 @@ import {
   PENDING_CASH_STATUSES,
   calculateConfiguredAmounts,
   displayLabel,
+  emptyEndOfDayControl,
   emptyReconBatch,
   etb,
   fallbackCashOperations,
@@ -42,6 +43,7 @@ import {
   type BrokerInstrument,
   type CashOperationsData,
   type Drawer,
+  type EndOfDayControl,
   type NewClientValue,
   type NewOrderValue,
   type CrmFocus,
@@ -114,6 +116,8 @@ export default function FrankBrokerApp() {
   const [clients, setClients] = useState<BrokerClient[]>(fallbackClients);
   const [selectedClientId, setSelectedClientId] = useState(fallbackClients[0].id);
   const [reconBatch, setReconBatch] = useState<ReconBatch>(fallbackReconBatch);
+  const [reconBatches, setReconBatches] = useState<ReconBatch[]>([fallbackReconBatch]);
+  const [endOfDay, setEndOfDay] = useState<EndOfDayControl>(emptyEndOfDayControl);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
   const [cashOperations, setCashOperations] = useState<CashOperationsData>(fallbackCashOperations);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -231,12 +235,16 @@ export default function FrankBrokerApp() {
       fetch("/api/reconciliation", { signal: controller.signal, headers: brokerHeaders }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/tenant", { signal: controller.signal, headers: brokerHeaders }).then((response) => response.ok ? response.json() : Promise.reject()),
       fetch("/api/audit", { signal: controller.signal, headers: brokerHeaders }).then((response) => response.ok ? response.json() : Promise.reject()),
-    ]).then(([clientResult, reconResult, tenantResult, auditResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[] }, TenantApiResult, { events?: AuditEntry[] }]) => {
+    ]).then(([clientResult, reconResult, tenantResult, auditResult]: [{ clients?: BrokerClient[] }, { batches?: ReconBatch[]; endOfDay?: EndOfDayControl }, TenantApiResult, { events?: AuditEntry[] }]) => {
       if (clientResult.clients) {
         setClients(clientResult.clients);
         setSelectedClientId((current) => clientResult.clients!.some((client) => client.id === current) ? current : clientResult.clients![0]?.id ?? "");
       }
-      if (reconResult.batches) setReconBatch(reconResult.batches[0] ?? emptyReconBatch);
+      if (reconResult.batches) {
+        setReconBatches(reconResult.batches);
+        setReconBatch(reconResult.batches[0] ?? emptyReconBatch);
+      }
+      if (reconResult.endOfDay) setEndOfDay(reconResult.endOfDay);
       if (auditResult.events) setAuditEntries(auditResult.events);
       const nextControls = { ...fallbackControls, ...(tenantResult.tenant?.controls ?? {}) };
       const nextFeatures: TenantFeatures = { ...fallbackFeatures };
@@ -770,21 +778,30 @@ export default function FrankBrokerApp() {
     return lines.slice(1).map(parseLine).map((row) => ({
       reference: row[referenceIndex],
       type: row[typeIndex]?.toLowerCase(),
-      actualValue: Number(row[valueIndex]),
-    })).filter((row) => row.reference && ["cash", "securities"].includes(row.type) && Number.isFinite(row.actualValue));
+      actualValue: row[valueIndex],
+    })).filter((row) => row.reference && row.type && row.actualValue);
   };
 
-  const processReconFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".csv")) return notify("Use the CSV template for this demonstration importer.", "error");
+  const refreshEndOfDay = async () => {
+    const response = await fetch("/api/reconciliation/end-of-day", { headers: { "x-frank-tenant-id": tenantId, "x-frank-demo-role": role } });
+    const result = await response.json() as { endOfDay?: EndOfDayControl; error?: string };
+    if (!response.ok || !result.endOfDay) throw new Error(result.error || "End-of-day status could not be refreshed.");
+    setEndOfDay(result.endOfDay);
+  };
+
+  const processReconFile = async (file: File, feedType: string) => {
+    if (!file.name.toLowerCase().endsWith(".csv")) return notify("Use a CSV reconciliation file.", "error");
     setBusyAction("reconcile");
     try {
       const rows = parseCsv(await file.text());
       const result = await apiRequest<{ batch: ReconBatch; matchRate: number }>("/api/reconciliation", {
         method: "POST",
         headers: { "content-type": "application/json", "x-frank-demo-role": role },
-        body: JSON.stringify({ fileName: file.name, rows }),
+        body: JSON.stringify({ fileName: file.name, feedType, rows }),
       });
       setReconBatch(result.batch);
+      setReconBatches((current) => [result.batch, ...current]);
+      await refreshEndOfDay();
       notify(`${result.batch.matchedRecords}/${result.batch.totalRecords} records matched (${result.matchRate}%).`);
     } catch (error) {
       notify(error instanceof Error ? error.message : "Reconciliation processing failed.", "error");
@@ -805,6 +822,8 @@ export default function FrankBrokerApp() {
         ...current,
         exceptions: current.exceptions.map((item) => item.id === id ? { ...item, status: "resolved", resolutionNotes: "Reviewed and accepted during end-of-day control" } : item),
       }));
+      setReconBatches((current) => current.map((batch) => batch.id === id ? { ...batch, exceptions: batch.exceptions.map((item) => item.id === id ? { ...item, status: "resolved", resolutionNotes: "Reviewed and accepted during end-of-day control" } : item) } : batch));
+      await refreshEndOfDay();
       notify("Exception resolved and audit event recorded.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Exception resolution failed.", "error");
@@ -824,9 +843,49 @@ export default function FrankBrokerApp() {
       const result = await response.json() as { error?: string; reviewedAt?: string };
       if (!response.ok) throw new Error(result.error || "Reconciliation sign-off failed.");
       setReconBatch((current) => ({ ...current, status: "signed_off", reviewedAt: result.reviewedAt ?? new Date().toISOString(), reviewedBy: roleNames[role], evidenceReference }));
+      setReconBatches((current) => current.map((batch) => batch.id === reconBatch.id ? { ...batch, status: "signed_off", reviewedAt: result.reviewedAt ?? new Date().toISOString(), reviewedBy: roleNames[role], evidenceReference } : batch));
+      await refreshEndOfDay();
       notify("Reconciliation independently signed off and audit logged.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Reconciliation sign-off failed.", "error");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const reprocessReconciliation = async (reason: string) => {
+    setBusyAction("reprocess");
+    try {
+      const result = await apiRequest<{ batch: ReconBatch }>(`/api/reconciliation/${encodeURIComponent(reconBatch.id)}/reprocess`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-demo-role": role },
+        body: JSON.stringify({ reason }),
+      });
+      setReconBatch(result.batch);
+      setReconBatches((current) => [result.batch, ...current.map((batch) => batch.id === reconBatch.id ? { ...batch, status: "superseded" } : batch)]);
+      await refreshEndOfDay();
+      notify(`Controlled reprocessing completed as ${result.batch.id}.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Reprocessing failed.", "error");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const actOnBusinessDay = async (action: "close" | "reopen", detail: string) => {
+    setBusyAction(`eod_${action}`);
+    try {
+      const response = await fetch("/api/reconciliation/end-of-day", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-frank-tenant-id": tenantId, "x-frank-demo-role": role },
+        body: JSON.stringify({ action, version: endOfDay.version, ...(action === "close" ? { evidence: detail } : { reason: detail }) }),
+      });
+      const result = await response.json() as { endOfDay?: EndOfDayControl; error?: string };
+      if (!response.ok || !result.endOfDay) throw new Error(result.error || `Business-day ${action} failed.`);
+      setEndOfDay(result.endOfDay);
+      notify(action === "close" ? "Business day closed and cut-off evidence recorded." : "Business day reopened under four-eyes control.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : `Business-day ${action} failed.`, "error");
     } finally {
       setBusyAction(null);
     }
@@ -907,7 +966,7 @@ export default function FrankBrokerApp() {
           {view === "crm_cases" && <ComplaintsPage role={role} focusId={caseFocus} onNotify={notify} onOpenThread={(threadId) => navigateToTarget({ view: "crm", entityType: "communication_thread", entityId: threadId })} />}
           {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} focusId={cashFocus} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
-          {view === "reconciliation" && <ReconciliationPage batch={reconBatch} busy={busyAction === "reconcile"} role={role} focusId={reconciliationFocus} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} onSignOff={signOffReconciliation} resolvingId={busyAction} />}
+          {view === "reconciliation" && <ReconciliationPage batch={reconBatch} batches={reconBatches} endOfDay={endOfDay} busy={busyAction === "reconcile"} role={role} focusId={reconciliationFocus} onSelectBatch={setReconBatch} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} onSignOff={signOffReconciliation} onReprocess={reprocessReconciliation} onBusinessDay={actOnBusinessDay} resolvingId={busyAction} />}
           {view === "ledger" && <FinanceLedgerPage role={role} onOpenSource={(kind, id) => { if (kind === "cash_movement") navigateToTarget({ view: "cash", entityType: "cash_movement", entityId: id }); else navigateToTarget({ view: "orders", entityType: kind === "trade" ? "trade" : "order", entityId: id }); }} />}
           {view === "advisory" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />}
           {view === "issuers" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="issuers" onNotify={notify} />}

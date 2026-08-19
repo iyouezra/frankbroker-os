@@ -12,14 +12,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const exception = await prisma.reconciliationException.findUnique({ where: { id }, include: { batch: true } });
     if (!exception) return Response.json({ error: "Reconciliation exception not found." }, { status: 404 });
     if (exception.batch.brokerId !== actor.brokerId) return Response.json({ error: "Reconciliation exception not found for this tenant." }, { status: 404 });
+    if (exception.batch.status === "superseded") return Response.json({ error: "A superseded reconciliation batch cannot be changed." }, { status: 409 });
+    const day = await prisma.businessDayControl.findUnique({ where: { brokerId_businessDate: { brokerId: actor.brokerId, businessDate: exception.batch.batchDate } } });
+    if (day?.status === "closed") return Response.json({ error: "This business day is closed. Reopen it before resolving exceptions." }, { status: 409 });
     if (exception.status === "resolved") return Response.json({ ok: true, status: "resolved" });
+    const notes = String(payload.notes ?? "").trim();
+    if (notes.length < 10 || notes.length > 1_000) return Response.json({ error: "Record resolution evidence of 10–1,000 characters." }, { status: 400 });
 
     await prisma.$transaction([
       prisma.reconciliationException.update({
         where: { id },
         data: {
           status: "resolved",
-          resolutionNotes: payload.notes?.trim() || "Reviewed and accepted for the demonstration batch",
+          resolutionNotes: notes,
           resolvedBy: actor.id,
           resolvedAt: new Date(),
         },
@@ -33,6 +38,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           entityType: "reconciliation_exception",
           entityId: id,
           summary: `Exception ${id} resolved by ${actor.email}`,
+          reason: notes,
         },
       }),
     ]);

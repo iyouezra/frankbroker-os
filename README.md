@@ -73,7 +73,7 @@ The MVP exposes a non-operational Broker access admin plus Broker admin, Trader/
 ## Current boundaries
 
 - ESX routing and CSD settlement are manual/mocked.
-- CSV reconciliation works for the demo but is not a production-grade file ingestion pipeline.
+- Reconciliation files now retain source evidence, duplicate protection, reprocessing lineage, independent sign-off, and formal end-of-day close/reopen controls; direct ESX, CSD, and bank adapters remain future integrations.
 - Contract notes are printable HTML and can be saved as PDF.
 - Fee schedules, limits, instrument access, and feature switches are tenant-configurable; the seeded values are illustrative and are not regulatory tariffs.
 - Fayda and TIN values entered in the demo are not stored raw. The server retains masked endings and an opaque reference only; production identity verification still needs an Ethiopia-resident provider and formal compliance review.

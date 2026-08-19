@@ -3,6 +3,7 @@ import { serializeCashMovement, submitBrokerCashMovement, type CashMovementInput
 import { toNum } from "../../../lib/money";
 import { prisma } from "../../../lib/prisma";
 import { requireTenantModule } from "../../../lib/tenant-capabilities";
+import { assertBusinessDayOpen } from "../../../lib/reconciliation-service";
 
 export const runtime = "nodejs";
 
@@ -68,6 +69,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { actor } = await requireTenantModule(request, "dealer_operations", "adjust");
+    await assertBusinessDayOpen(prisma, actor.brokerId);
     const payload = await request.json() as CashMovementInput;
     if (!payload || !["deposit", "withdrawal"].includes(payload.movementType)) {
       return Response.json({ error: "Movement type must be deposit or withdrawal." }, { status: 400 });

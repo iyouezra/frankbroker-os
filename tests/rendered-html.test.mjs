@@ -6,7 +6,7 @@ import { readBrokerFrontend, readInvestorFrontend } from "./frontend-source.mjs"
 const root = new URL("../", import.meta.url);
 
 test("ships the FrankBroker product surface and PostgreSQL model", async () => {
-  const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, investorApi, adminApi, tenantApi, ordersApi, orderDetailApi, orderActionApi, auditApi, orderInput, orderService, tradeService, ledgerService, validationService, settlementService, statusMachine, schema, migration, wiringMigration, omsMigration] = await Promise.all([
+  const [app, investorApp, investorData, investorStyles, adminApp, adminData, adminStyles, layout, styles, clientsApi, reconciliationApi, reconciliationService, investorApi, adminApi, tenantApi, ordersApi, orderDetailApi, orderActionApi, auditApi, orderInput, orderService, tradeService, ledgerService, validationService, settlementService, statusMachine, schema, migration, wiringMigration, omsMigration] = await Promise.all([
     readBrokerFrontend(),
     readInvestorFrontend(),
     readFile(new URL("lib/investor-data.ts", root), "utf8"),
@@ -18,6 +18,7 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
     readFile(new URL("app/globals.css", root), "utf8"),
     readFile(new URL("app/api/clients/route.ts", root), "utf8"),
     readFile(new URL("app/api/reconciliation/route.ts", root), "utf8"),
+    readFile(new URL("lib/reconciliation-service.ts", root), "utf8"),
     readFile(new URL("app/api/investor/route.ts", root), "utf8"),
     readFile(new URL("app/api/admin/configuration/route.ts", root), "utf8"),
     readFile(new URL("app/api/tenant/route.ts", root), "utf8"),
@@ -104,7 +105,8 @@ test("ships the FrankBroker product surface and PostgreSQL model", async () => {
   assert.match(styles, /--aqua:/);
   assert.match(styles, /\.client-card\.selected/);
   assert.match(clientsApi, /cashLedgerEntries/);
-  assert.match(reconciliationApi, /RECONCILIATION_IMPORTED/);
+  assert.match(reconciliationApi, /processReconciliationBatch/);
+  assert.match(reconciliationService, /RECONCILIATION_IMPORTED/);
   assert.match(investorApi, /createSubmittedOrder/);
   assert.match(investorApi, /applicationClientId/);
   assert.match(investorApi, /pending_approval/);

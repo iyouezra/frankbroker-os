@@ -16,6 +16,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const batch = await prisma.reconciliationBatch.findFirst({ where: { id, brokerId: actor.brokerId }, include: { exceptions: true } });
     if (!batch) return Response.json({ error: "Reconciliation batch not found for this tenant." }, { status: 404 });
     if (batch.status === "signed_off") return Response.json({ ok: true, status: batch.status });
+    if (batch.status === "superseded") return Response.json({ error: "A superseded reconciliation batch cannot be signed off." }, { status: 409 });
+    const day = await prisma.businessDayControl.findUnique({ where: { brokerId_businessDate: { brokerId: actor.brokerId, businessDate: batch.batchDate } } });
+    if (day?.status === "closed") return Response.json({ error: "This business day is closed. Reopen it before changing reconciliation evidence." }, { status: 409 });
     if (batch.uploadedBy === actor.id) return Response.json({ error: "Four-eyes control: the importer cannot sign off the same reconciliation." }, { status: 409 });
     if (batch.exceptions.some((item) => item.status !== "resolved")) return Response.json({ error: "Resolve every reconciliation exception before sign-off." }, { status: 409 });
     const reviewedAt = new Date();

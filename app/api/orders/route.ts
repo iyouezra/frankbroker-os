@@ -7,6 +7,7 @@ import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { Prisma } from "../../generated/prisma/client";
 import { csvCell, MARKET_LINK_ELIGIBLE_STATUSES, ORDER_STATUS_GROUPS, orderResponsibility } from "../../../lib/order-log";
 import { requireTenantModule } from "../../../lib/tenant-capabilities";
+import { assertBusinessDayOpen } from "../../../lib/reconciliation-service";
 
 export const runtime = "nodejs";
 
@@ -211,6 +212,7 @@ function periodStart(period: string) {
 export async function POST(request: Request) {
   try {
     const { actor } = await requireTenantModule(request, "dealer_operations", "create");
+    await assertBusinessDayOpen(prisma, actor.brokerId);
     const payload = (await request.json()) as {
       accountId?: string;
       instrumentId?: string;

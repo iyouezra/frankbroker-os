@@ -64,6 +64,7 @@ model Broker {
   ledgerAccounts         LedgerAccount[]
   journalEntries         JournalEntry[]
   journalLines           JournalLine[]
+  businessDayControls    BusinessDayControl[]
 
   @@map("brokers")
 }
@@ -127,6 +128,8 @@ model User {
   reviewedComplianceEscalations ComplianceEscalation[]    @relation("ComplianceEscalationReviewer")
   recordedClientScreenings      ClientScreening[]         @relation("ClientScreeningRecorder")
   signedReconciliationBatches   ReconciliationBatch[]     @relation("ReconciliationReviewer")
+  closedBusinessDays            BusinessDayControl[]      @relation("BusinessDayCloser")
+  reopenedBusinessDays          BusinessDayControl[]      @relation("BusinessDayReopener")
   employeeConductProfile        EmployeeConductProfile?
   postedJournalEntries          JournalEntry[]            @relation("JournalPoster")
   approvedJournalEntries        JournalEntry[]            @relation("JournalApprover")
@@ -1086,17 +1089,17 @@ model ClientNote {
 }
 
 model Settlement {
-  id               String    @id
-  tradeId          String    @unique @map("trade_id")
-  status           String    @default("pending")
-  settlementDate   DateTime  @map("settlement_date") @db.Date
-  cashStatus       String    @default("pending") @map("cash_status")
-  securitiesStatus String    @default("pending") @map("securities_status")
-  exceptionNotes   String?   @map("exception_notes")
-  confirmedBy      String?   @map("confirmed_by")
-  confirmedAt      DateTime? @map("confirmed_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  id               String         @id
+  tradeId          String         @unique @map("trade_id")
+  status           String         @default("pending")
+  settlementDate   DateTime       @map("settlement_date") @db.Date
+  cashStatus       String         @default("pending") @map("cash_status")
+  securitiesStatus String         @default("pending") @map("securities_status")
+  exceptionNotes   String?        @map("exception_notes")
+  confirmedBy      String?        @map("confirmed_by")
+  confirmedAt      DateTime?      @map("confirmed_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
   trade            Trade          @relation(fields: [tradeId], references: [id], onDelete: Restrict)
   confirmedByUser  User?          @relation("SettlementConfirmer", fields: [confirmedBy], references: [id], onDelete: SetNull)
   journalEntries   JournalEntry[]
@@ -1664,6 +1667,12 @@ model ReconciliationBatch {
   batchDate         DateTime                  @map("batch_date") @db.Date
   fileName          String?                   @map("file_name")
   source            String                    @default("manual_upload")
+  feedType          String                    @default("esx_executions") @map("feed_type")
+  contentHash       String?                   @map("content_hash")
+  inputRows         Json?                     @map("input_rows")
+  controlTotals     Json?                     @map("control_totals")
+  attemptNumber     Int                       @default(1) @map("attempt_number")
+  supersedesBatchId String?                   @unique @map("supersedes_batch_id")
   totalRecords      Int                       @default(0) @map("total_records")
   matchedRecords    Int                       @default(0) @map("matched_records")
   exceptionRecords  Int                       @default(0) @map("exception_records")
@@ -1677,10 +1686,41 @@ model ReconciliationBatch {
   broker            Broker                    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
   uploadedByUser    User                      @relation("BatchUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
   reviewedByUser    User?                     @relation("ReconciliationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  supersedesBatch   ReconciliationBatch?      @relation("ReconciliationReprocessing", fields: [supersedesBatchId], references: [id], onDelete: Restrict)
+  supersededBy      ReconciliationBatch?      @relation("ReconciliationReprocessing")
   exceptions        ReconciliationException[]
 
+  @@unique([brokerId, batchDate, feedType, contentHash, attemptNumber])
   @@index([brokerId, batchDate])
+  @@index([brokerId, batchDate, feedType, status])
   @@map("reconciliation_batches")
+}
+
+/// The formal control record for one brokerage business day. Reconciliation
+/// batches remain immutable evidence; this row records the cut-off decision and
+/// the tightly controlled exception when a closed day must be reopened.
+model BusinessDayControl {
+  id             String    @id
+  brokerId       String    @map("broker_id")
+  businessDate   DateTime  @map("business_date") @db.Date
+  status         String    @default("open")
+  cutoffAt       DateTime? @map("cutoff_at")
+  closeEvidence  String?   @map("close_evidence")
+  closedBy       String?   @map("closed_by")
+  closedAt       DateTime? @map("closed_at")
+  reopenReason   String?   @map("reopen_reason")
+  reopenedBy     String?   @map("reopened_by")
+  reopenedAt     DateTime? @map("reopened_at")
+  version        Int       @default(0)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  broker         Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  closedByUser   User?     @relation("BusinessDayCloser", fields: [closedBy], references: [id], onDelete: SetNull)
+  reopenedByUser User?     @relation("BusinessDayReopener", fields: [reopenedBy], references: [id], onDelete: SetNull)
+
+  @@unique([brokerId, businessDate])
+  @@index([brokerId, status, businessDate])
+  @@map("business_day_controls")
 }
 
 model ReconciliationException {

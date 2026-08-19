@@ -31,6 +31,7 @@ import {
 import { getFrankCoachHoldingValue } from "../../../lib/frank-coach";
 import { taxIdentityReference } from "../../../lib/monitoring";
 import { openComplaintCaseFromThread } from "../../../lib/crm/complaint-service";
+import { assertBusinessDayOpen } from "../../../lib/reconciliation-service";
 
 export const runtime = "nodejs";
 
@@ -360,6 +361,7 @@ export async function POST(request: Request) {
     }
 
     if (payload.action === "cash_movement") {
+      await assertBusinessDayOpen(prisma, brokerId);
       const movementType = String(payload.movementType ?? "");
       if (!['deposit', 'withdrawal'].includes(movementType)) {
         return Response.json({ error: "Movement type must be deposit or withdrawal." }, { status: 400 });
@@ -732,6 +734,7 @@ export async function POST(request: Request) {
     }
 
     if (payload.action === "order") {
+      await assertBusinessDayOpen(prisma, brokerId);
       const [client, instrument, settings, legalDocument] = await Promise.all([
         prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true, consents: { orderBy: { acceptedAt: "desc" } } } }),
         prisma.instrument.findUnique({ where: { symbol: String(payload.symbol ?? "") } }),
