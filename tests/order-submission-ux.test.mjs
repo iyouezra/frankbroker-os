@@ -72,6 +72,20 @@ test("investor order flow uses an in-app OTP dialog and explicit outcome screens
   assert.match(copy, /"outcome\.viewOrders": "View orders"/);
 });
 
+test("investor buy orders cannot exceed available buying power", async () => {
+  const [orderService, orderSheet, securityDetails] = await Promise.all([
+    readFile(new URL("../lib/oms/order-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../features/investor/orders/order-sheets.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/investor/markets/security-detail-screens.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(orderService, /input\.source === "investor_portal" && input\.side === "buy" && account\.availableCash\.lt\(amounts\.net\)/);
+  assert.match(orderService, /currentAccount\.availableCash\.lt\(amounts\.net\)/);
+  assert.match(orderService, /only \$\{availableCash\.toFixed\(2\)\} ETB is available/);
+  assert.match(orderSheet, /totalCost <= availableCash/);
+  assert.match(orderSheet, /disabled=\{gross <= 0[^}]*!hasBuyingPower/);
+  assert.match(securityDetails, /availableCash=\{availableCash\}/);
+});
+
 test("order authorization supports masked SMS and email delivery", async () => {
   const [verification, investorRoute, brokerRoute] = await Promise.all([
     readFile(new URL("../lib/verification-service.ts", import.meta.url), "utf8"),

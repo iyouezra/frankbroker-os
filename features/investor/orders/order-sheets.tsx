@@ -19,7 +19,7 @@ import type { TranslationKey } from "../../../lib/i18n/en";
 // the chip labels beside them are translated.
 const ORDER_TYPE_LABELS = { Market: "order.typeMarket", Limit: "order.typeLimit", "Stop-loss": "order.typeStopLoss" } satisfies Record<string, TranslationKey>;
 
-export function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrderTypes, onClose, onPlaced }: { stock: InvestorStock; side: "Buy" | "Sell"; holdingQuantity: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
+export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRule, allowedOrderTypes, onClose, onPlaced }: { stock: InvestorStock; side: "Buy" | "Sell"; holdingQuantity: number; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
   const t = useT();
   const [orderType, setOrderType] = useState<"Market" | "Limit" | "Stop-loss">("Market");
   const [quantity, setQuantity] = useState("10");
@@ -37,6 +37,8 @@ export function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrder
   const shares = Number(quantity) || 0;
   const gross = shares * executionPrice;
   const fees = calculateInvestorFees(gross, feeRule);
+  const totalCost = gross + fees.total;
+  const hasBuyingPower = isSell || totalCost <= availableCash;
   const candidateOptions: Array<"Market" | "Limit" | "Stop-loss"> = isSell ? ["Market", "Limit", "Stop-loss"] : ["Market", "Limit"];
   const options = candidateOptions.filter((option) => allowedOrderTypes.includes(option));
   const place = async () => {
@@ -58,7 +60,8 @@ export function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrder
         <p className={styles.orderHint}>{t(orderType === "Market" ? "order.hintMarket" : orderType === "Limit" ? (isSell ? "order.hintLimitSell" : "order.hintLimitBuy") : "order.hintStopLoss")}</p>
         {orderType === "Limit" && <label className={styles.formField}><span>{t(isSell ? "order.limitSell" : "order.limitBuy")}</span><div><em>ETB</em><input inputMode="decimal" value={limitPrice} onChange={(event) => setLimitPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div></label>}
         {isStopLoss && <label className={styles.formField}><span>{t("order.triggerLabel")}</span><div><em>ETB</em><input inputMode="decimal" value={triggerPrice} onChange={(event) => setTriggerPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div><small className={triggerValid ? "" : styles.fieldError}>{t(triggerValid ? "order.currentPrice" : "order.triggerError", { price: formatEtb(stock.price) })}</small></label>}
-        <label className={styles.formField}><span>{t("order.shares")}</span><div><input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))} /><em>× {formatEtb(executionPrice)}</em></div><small>{isSell ? t("order.youHold", { count: holdingQuantity }) : t("order.wholeShares")}</small></label>
+        <label className={styles.formField}><span>{t("order.shares")}</span><div><input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))} /><em>× {formatEtb(executionPrice)}</em></div><small>{isSell ? t("order.youHold", { count: holdingQuantity }) : t("bond.availableCash", { amount: formatEtb(availableCash) })}</small></label>
+        {!hasBuyingPower && <p className={styles.inlineError}>{t("bond.cashError")}</p>}
         <dl className={styles.orderTotals}>
           {isStopLoss && <div><dt>{t("order.triggerPrice")}</dt><dd>{formatEtb(triggerValue)}</dd></div>}
           <div><dt>{t("order.grossConsideration")}</dt><dd>{formatEtb(gross)}</dd></div>
@@ -70,7 +73,7 @@ export function OrderSheet({ stock, side, holdingQuantity, feeRule, allowedOrder
           <div><dt>{t(isSell ? "order.netProceedsEstimated" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div>
         </dl>
         {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>{heldChecks.length === 1 ? t("order.heldOne") : t("order.heldMany", { count: heldChecks.length })}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
-        <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !triggerValid} onClick={() => setReviewing(true)}>{t("order.review")}</Button>
+        <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !hasBuyingPower || !triggerValid} onClick={() => setReviewing(true)}>{t("order.review")}</Button>
       </section>
     </div>
     {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">{t("order.confirmTitle")}</h2><p>{t(isSell ? "order.confirmPrefixSell" : "order.confirmPrefixBuy")}<b>{t("order.confirmSubject", { count: shares.toFixed(0), ticker: stock.ticker })}</b>{t(isSell ? "order.confirmSuffixSell" : "order.confirmSuffixBuy")}{isStopLoss ? <>{t("order.stopLossPrefix")}<b>{formatEtb(triggerValue)}</b>{t("order.stopLossSuffix")}</> : t("order.executionRisk")}</p><dl className={styles.orderTotals}><div><dt>{t("order.orderValue")}</dt><dd>{formatEtb(gross)}</dd></div><div><dt>{t("order.brokerage")}</dt><dd>{formatEtb(fees.brokerage)}</dd></div><div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>{t("order.totalFees")}</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{t(isSell ? "order.netProceeds" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>{t("order.disclosure")}</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>{t("order.cancel")}</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? t("order.sending") : t(isSell ? "order.sell" : "order.buy")}</Button></div></section></div>}

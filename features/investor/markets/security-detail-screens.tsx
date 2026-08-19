@@ -87,6 +87,7 @@ export function StockDetail({ stock, account, restricted, onBack, placeOrder, fe
   const [side, setSide] = useState<"Buy" | "Sell" | null>(null);
   const [range, setRange] = useState<MarketRange>("1M");
   const holding = account?.holdings.find((item) => item.ticker === stock.ticker) ?? (restricted ? undefined : investorHoldings.find((item) => item.ticker === stock.ticker));
+  const availableCash = restricted ? 0 : account?.availableCash ?? 0;
   const session = getInvestorSession(stock);
   const snapshot = getMarketSnapshot(stock);
   return <div className={`${styles.detailScreen} ${restricted ? styles.restrictedDetail : ""}`}>
@@ -129,6 +130,6 @@ export function StockDetail({ stock, account, restricted, onBack, placeOrder, fe
       <p className={styles.disclaimer}>{t("detail.stockDisclaimer")}</p>
     </div>
     <div className={styles.tradeBar}><Button disabled={restricted || !feeRule} onClick={() => setSide("Buy")}>{t(restricted ? "detail.approvalRequired" : "order.buy")}</Button><Button variant="secondary" disabled={restricted || !holding || !feeRule} onClick={() => setSide("Sell")}>{t("order.sell")}</Button></div>
-    {side && feeRule && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
+    {side && feeRule && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
   </div>;
 }

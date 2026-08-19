@@ -35,6 +35,12 @@ function securitySnapshot(holding: { totalQuantity: Prisma.Decimal; availableQua
   return { total: holding.totalQuantity, available: holding.availableQuantity, blocked: holding.blockedQuantity, unsettled: holding.unsettledQuantity };
 }
 
+function investorBuyingPowerError(requiredCash: Prisma.Decimal, availableCash: Prisma.Decimal) {
+  return Response.json({
+    error: `This order requires ${requiredCash.toFixed(2)} ETB including estimated fees, but only ${availableCash.toFixed(2)} ETB is available.`,
+  }, { status: 409 });
+}
+
 export type CreateOrderInput = {
   accountId: string;
   instrumentId: string;
@@ -161,6 +167,9 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
     dailyLimit: settings?.clientDailyLimit,
     sellNet: amounts.net,
   });
+  if (input.source === "investor_portal" && input.side === "buy" && account.availableCash.lt(amounts.net)) {
+    throw investorBuyingPowerError(amounts.net, account.availableCash);
+  }
   const employeeControl = await evaluateEmployeeOrder(prisma, {
     brokerId: actor.brokerId,
     accountId: input.accountId,
@@ -224,6 +233,9 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
       }
     }
     if (valid && input.side === "buy" && currentAccount) {
+      if (currentAccount.availableCash.lt(amounts.net)) {
+        throw investorBuyingPowerError(amounts.net, currentAccount.availableCash);
+      }
       cashBlock = blockBuyCash(cashSnapshot(currentAccount), amounts.net);
     }
     if (valid && input.side === "sell") {
