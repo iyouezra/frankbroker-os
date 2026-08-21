@@ -815,7 +815,7 @@ export default function InvestorApp() {
                       : tab === "markets"
                         ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} />
                         : tab === "portfolio"
-                          ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} demoFallback={activeClientId === INVESTOR_CLIENT_ID} />
+                          ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} servicing={bootstrap?.servicing ?? null} demoFallback={activeClientId === INVESTOR_CLIENT_ID} />
                           : tab === "learn"
                             ? <LearnScreen />
                             : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onOpenRequest={(threadId) => { setSupportOpen(true); void openSupportThread(threadId); }} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={createServiceRequest} onDownloadStatement={downloadStatement} />}

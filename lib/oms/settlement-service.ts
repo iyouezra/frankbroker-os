@@ -10,6 +10,7 @@ import { assertTransition } from "./status";
 import { confirmClientMoneyTradeAtSettlement } from "../client-money-service";
 import { postJournalEntry } from "../gl/posting-service";
 import { buySettlementConfirmed, sellSettlementConfirmed } from "../gl/journal-rules";
+import { recordSettledBuyTaxLot, recordSettledSaleRealizations } from "../tax-lot-service";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -65,6 +66,7 @@ export async function settleNextTrade(actor: Actor, orderId: string, requestedTr
         reason: "Settlement confirmed",
         mutation,
       });
+      await recordSettledBuyTaxLot(tx, { accountId: order.accountId, instrumentId: order.instrumentId, tradeId: trade.id, tradeDate: trade.tradeDate, quantity: trade.quantityFilled, gross: trade.grossAmount, fees: trade.fees, net: trade.netAmount });
     } else {
       const mutation = settleSellCash(cashSnapshot(account), trade.netAmount);
       await persistCashMutation(tx, {
@@ -76,6 +78,7 @@ export async function settleNextTrade(actor: Actor, orderId: string, requestedTr
         reason: "Settlement confirmed",
         mutation,
       });
+      await recordSettledSaleRealizations(tx, { brokerId: actor.brokerId, accountId: order.accountId, instrumentId: order.instrumentId, assetClass: order.instrument.assetClass, tradeId: trade.id, tradeDate: trade.tradeDate, quantity: trade.quantityFilled, gross: trade.grossAmount, fees: trade.fees });
     }
 
     const { poolIds } = await confirmClientMoneyTradeAtSettlement(tx, {

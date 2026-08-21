@@ -253,6 +253,13 @@
 .holdingRow > span:last-child b { font-family: var(--font-mono); }
 .holdingRow small { margin-top: 3px; color: var(--investor-ink-500); font-size: 10px; }
 .disclaimer { margin: 4px 2px 16px; color: var(--investor-ink-400); font-size: 11px; line-height: 1.55; }
+.recordNotice { margin: 0 0 8px; padding: 10px 11px; border-radius: 10px; background: #fff7e8; color: #795418; font-size: 10.5px; line-height: 1.45; }
+.recordRow { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 1px; border-bottom: 1px solid var(--investor-ink-100); }
+.recordRow:last-child { border-bottom: 0; }
+.recordRow > span { min-width: 0; display: flex; flex-direction: column; }
+.recordRow > span:last-child { align-items: flex-end; text-align: right; }
+.recordRow b { font-size: 11.5px; }
+.recordRow small { margin-top: 3px; color: var(--investor-ink-500); font-size: 9.5px; }
 
 .learnIntro { margin: -3px 2px 13px; color: var(--investor-ink-500); font-size: 12px; line-height: 1.5; }
 .lessonList { display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }

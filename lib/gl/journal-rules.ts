@@ -34,6 +34,7 @@ export type LedgerSourceType =
   | "fee_remittance"
   | "fee_sweep"
   | "client_money_funding"
+  | "corporate_action"
   | "opening_balance"
   | "manual_correction"
   | "reversal";
@@ -763,6 +764,29 @@ export function clientMoneyFunded(input: {
     lines: [
       { role: LEDGER_ROLES.clientMoneyPooledBank, side: "debit", amount, memo: "Segregated account topped up", pooledBankAccountId: input.pooledBankAccountId },
       { role: LEDGER_ROLES.brokerOperatingBank, side: "credit", amount, memo: "Funded from broker operating cash" },
+    ],
+  };
+}
+
+/** Cash income received for a beneficial owner and credited to settled funds. */
+export function corporateActionCashReceived(input: {
+  entitlementId: string;
+  accountId: string;
+  pooledBankAccountId: string;
+  amount: DecimalValue;
+  valueDate: Date;
+  description: string;
+}): DraftEntry {
+  const amount = money(input.amount);
+  return {
+    sourceType: "corporate_action",
+    sourceId: input.entitlementId,
+    eventKey: "cash-received",
+    description: input.description,
+    valueDate: input.valueDate,
+    lines: [
+      { role: LEDGER_ROLES.clientMoneyPooledBank, side: "debit", amount, memo: "Corporate-action cash received", pooledBankAccountId: input.pooledBankAccountId, clientAccountId: input.accountId },
+      { role: LEDGER_ROLES.clientMoneyPayableSettled, side: "credit", amount, memo: "Cash due to beneficial owner", clientAccountId: input.accountId },
     ],
   };
 }

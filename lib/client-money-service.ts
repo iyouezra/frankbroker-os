@@ -12,7 +12,7 @@ export async function lockPosition(tx: Prisma.TransactionClient, id: string) {
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "client_money_positions" WHERE "id" = ${id} FOR UPDATE`);
 }
 
-export type ClientMoneyEntryType = "deposit_credit" | "withdrawal_debit" | "trade_debit" | "trade_credit" | "receipt_allocation";
+export type ClientMoneyEntryType = "deposit_credit" | "withdrawal_debit" | "trade_debit" | "trade_credit" | "receipt_allocation" | "corporate_action_credit";
 
 /**
  * The single choke point for beneficial-owner and pooled-bank book movements.

@@ -161,6 +161,31 @@ export function creditVerifiedDeposit(snapshot: CashSnapshot, amount: DecimalVal
   return { next: result.next, entries: [result.entry] };
 }
 
+export function creditCorporateActionCash(snapshot: CashSnapshot, amount: DecimalValue, description: string): CashMutation {
+  assertCashInvariant(snapshot);
+  const credited = money(amount);
+  if (credited.lte(0)) throw new LedgerIntegrityError("Corporate-action cash must be positive.");
+  const result = appendCash(snapshot, { entryType: "adjustment", amount: credited, totalImpact: credited, availableImpact: credited, blockedImpact: ZERO, unsettledImpact: ZERO, description });
+  return { next: result.next, entries: [result.entry] };
+}
+
+export function creditCorporateActionSecurities(snapshot: SecuritySnapshot, quantity: DecimalValue, description: string): SecuritiesMutation {
+  assertSecurityInvariant(snapshot);
+  const credited = D(quantity);
+  if (credited.lte(0)) throw new LedgerIntegrityError("Corporate-action security quantity must be positive.");
+  const result = appendSecurity(snapshot, { entryType: "adjustment", quantity: credited, totalImpact: credited, availableImpact: credited, blockedImpact: ZERO, unsettledImpact: ZERO, description });
+  return { next: result.next, entries: [result.entry] };
+}
+
+export function debitRedeemedSecurities(snapshot: SecuritySnapshot, quantity: DecimalValue, description: string): SecuritiesMutation {
+  assertSecurityInvariant(snapshot);
+  const debited = D(quantity);
+  if (debited.lte(0)) throw new LedgerIntegrityError("Redemption quantity must be positive.");
+  if (snapshot.available.lt(debited)) throw new LedgerIntegrityError("Redemption exceeds available securities.");
+  const result = appendSecurity(snapshot, { entryType: "adjustment", quantity: debited.negated(), totalImpact: debited.negated(), availableImpact: debited.negated(), blockedImpact: ZERO, unsettledImpact: ZERO, description });
+  return { next: result.next, entries: [result.entry] };
+}
+
 /** Reserve withdrawable cash while a payment instruction is reviewed and paid. */
 export function reserveWithdrawalCash(snapshot: CashSnapshot, amount: DecimalValue): CashMutation {
   assertCashInvariant(snapshot);

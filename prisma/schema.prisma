@@ -68,6 +68,8 @@ model Broker {
   paymentProviderEvents  PaymentProviderEvent[]
   accountingPolicies     AccountingPolicyVersion[]
   clientTradingMandates  ClientTradingMandate[]
+  corporateActions       CorporateAction[]
+  taxPolicies            TaxPolicyVersion[]
 
   @@map("brokers")
 }
@@ -314,6 +316,8 @@ model Account {
   employeeConductProfiles  EmployeeConductProfile[]
   journalEntries           JournalEntry[]
   journalLines             JournalLine[]
+  corporateActionEntitlements CorporateActionEntitlement[]
+  taxLots                  TaxLot[]
 
   @@index([clientId])
   @@map("accounts")
@@ -347,6 +351,8 @@ model Instrument {
   restrictedSecurities    RestrictedSecurity[]
   sensitiveInfoAccess     SensitiveInformationAccess[]
   journalLines            JournalLine[]
+  corporateActions        CorporateAction[]
+  taxLots                 TaxLot[]
 
   @@map("instruments")
 }
@@ -1080,6 +1086,8 @@ model Trade {
   clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
   pooledBankLedgerEntries  PooledBankLedgerEntry[]
   journalEntries           JournalEntry[]
+  acquisitionTaxLot        TaxLot?
+  realizedGainAllocations  RealizedGainAllocation[]
 
   @@index([orderId])
   @@map("trades")
@@ -1129,6 +1137,198 @@ model ClientNote {
 
   @@index([clientId, createdAt])
   @@map("client_notes")
+}
+
+/// Issuer or fixed-income event. Dates and terms are preserved exactly as
+/// announced; entitlement snapshots never infer an ex-date or record date.
+model CorporateAction {
+  id                    String                       @id
+  brokerId              String                       @map("broker_id")
+  instrumentId          String                       @map("instrument_id")
+  actionType             String                       @map("action_type")
+  status                 String                       @default("draft")
+  announcementDate       DateTime?                    @map("announcement_date") @db.Date
+  exDate                 DateTime?                    @map("ex_date") @db.Date
+  recordDate             DateTime                     @map("record_date") @db.Date
+  electionDeadline       DateTime?                    @map("election_deadline") @db.Date
+  paymentDate            DateTime                     @map("payment_date") @db.Date
+  currency               String                       @default("ETB")
+  cashRatePerUnit        Decimal?                     @map("cash_rate_per_unit") @db.Decimal(20, 8)
+  securityRatioNumerator Decimal?                     @map("security_ratio_numerator") @db.Decimal(24, 8)
+  securityRatioDenominator Decimal?                   @map("security_ratio_denominator") @db.Decimal(24, 8)
+  defaultElection        String                       @default("cash") @map("default_election")
+  supportsReinvestment   Boolean                      @default(false) @map("supports_reinvestment")
+  taxTreatment           String                       @default("policy") @map("tax_treatment")
+  sourceReference        String                       @map("source_reference")
+  sourceEvidence         Json?                        @map("source_evidence")
+  termsSnapshot          Json?                        @map("terms_snapshot")
+  createdBy              String                       @map("created_by")
+  approvedBy             String?                      @map("approved_by")
+  approvedAt             DateTime?                    @map("approved_at")
+  version                Int                          @default(1)
+  createdAt              DateTime                     @default(now()) @map("created_at")
+  updatedAt              DateTime                     @updatedAt @map("updated_at")
+  broker                 Broker                       @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  instrument             Instrument                   @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  entitlements           CorporateActionEntitlement[]
+
+  @@unique([brokerId, sourceReference])
+  @@index([brokerId, status, paymentDate])
+  @@index([instrumentId, recordDate])
+  @@map("corporate_actions")
+}
+
+/// One immutable record-date position per client account. Internal ledger and
+/// external CSD quantities are kept separately so a break cannot be hidden.
+model CorporateActionEntitlement {
+  id                    String          @id
+  corporateActionId     String          @map("corporate_action_id")
+  accountId             String          @map("account_id")
+  ledgerQuantity        Decimal         @map("ledger_quantity") @db.Decimal(24, 8)
+  externalQuantity      Decimal?        @map("external_quantity") @db.Decimal(24, 8)
+  eligibleQuantity      Decimal         @map("eligible_quantity") @db.Decimal(24, 8)
+  positionSource        String          @map("position_source")
+  reconciliationStatus  String          @default("unverified") @map("reconciliation_status")
+  grossCash             Decimal?        @map("gross_cash") @db.Decimal(20, 4)
+  withholdingAmount     Decimal?        @map("withholding_amount") @db.Decimal(20, 4)
+  netCash               Decimal?        @map("net_cash") @db.Decimal(20, 4)
+  withholdingStatus     String          @default("unconfigured") @map("withholding_status")
+  securityQuantity      Decimal?        @map("security_quantity") @db.Decimal(24, 8)
+  election              String          @default("cash")
+  electionRecordedAt    DateTime?       @map("election_recorded_at")
+  electionEvidence      String?         @map("election_evidence")
+  status                String          @default("calculated")
+  paymentReference      String?         @map("payment_reference")
+  paidAt                DateTime?       @map("paid_at")
+  exceptionReason       String?         @map("exception_reason")
+  calculationSnapshot   Json?           @map("calculation_snapshot")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+  corporateAction       CorporateAction @relation(fields: [corporateActionId], references: [id], onDelete: Cascade)
+  account               Account         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  taxCalculations       TaxCalculation[]
+  realizedGainAllocations RealizedGainAllocation[]
+
+  @@unique([corporateActionId, accountId])
+  @@index([accountId, status])
+  @@map("corporate_action_entitlements")
+}
+
+/// Versioned, effective-dated tax interpretation. A missing policy means
+/// "unknown", never an implicit zero rate.
+model TaxPolicyVersion {
+  id                  String           @id
+  brokerId            String           @map("broker_id")
+  name                String
+  version             String
+  appliesTo           String           @map("applies_to")
+  assetClass          String?          @map("asset_class")
+  ratePct             Decimal          @map("rate_pct") @db.Decimal(8, 4)
+  calculationBasis    String           @default("gain") @map("calculation_basis")
+  withholdingRequired Boolean          @default(false) @map("withholding_required")
+  status              String           @default("draft")
+  effectiveFrom       DateTime         @map("effective_from") @db.Date
+  effectiveTo         DateTime?        @map("effective_to") @db.Date
+  retrospectiveFrom   DateTime?        @map("retrospective_from") @db.Date
+  legalReference      String           @map("legal_reference")
+  sourceEvidence      Json?            @map("source_evidence")
+  approvedBy          String?          @map("approved_by")
+  approvedAt          DateTime?        @map("approved_at")
+  createdBy           String           @map("created_by")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  broker              Broker           @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  calculations        TaxCalculation[]
+
+  @@unique([brokerId, appliesTo, assetClass, version])
+  @@index([brokerId, status, appliesTo, effectiveFrom])
+  @@map("tax_policy_versions")
+}
+
+/// Acquisition layer. Imported/dematerialized positions may intentionally have
+/// null cost until documentary evidence is supplied and reviewed.
+model TaxLot {
+  id                  String                   @id
+  accountId           String                   @map("account_id")
+  instrumentId        String                   @map("instrument_id")
+  acquisitionTradeId  String?                  @unique @map("acquisition_trade_id")
+  acquisitionDate     DateTime?                @map("acquisition_date") @db.Date
+  originalQuantity    Decimal                  @map("original_quantity") @db.Decimal(24, 8)
+  remainingQuantity   Decimal                  @map("remaining_quantity") @db.Decimal(24, 8)
+  acquisitionGross    Decimal?                 @map("acquisition_gross") @db.Decimal(20, 4)
+  acquisitionFees     Decimal?                 @map("acquisition_fees") @db.Decimal(20, 4)
+  costBasis           Decimal?                 @map("cost_basis") @db.Decimal(20, 4)
+  unitCost            Decimal?                 @map("unit_cost") @db.Decimal(20, 8)
+  basisStatus         String                   @default("unknown") @map("basis_status")
+  basisSource         String                   @map("basis_source")
+  sourceReference     String?                  @map("source_reference")
+  evidenceReference   String?                  @map("evidence_reference")
+  verifiedBy          String?                  @map("verified_by")
+  verifiedAt          DateTime?                @map("verified_at")
+  notes               String?
+  version             Int                      @default(1)
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  account             Account                  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  instrument          Instrument               @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  acquisitionTrade    Trade?                   @relation(fields: [acquisitionTradeId], references: [id], onDelete: Restrict)
+  dispositions        RealizedGainAllocation[]
+
+  @@index([accountId, instrumentId, acquisitionDate])
+  @@index([basisStatus, remainingQuantity])
+  @@map("tax_lots")
+}
+
+/// Economic disposal allocation. Tax calculations are append-only revisions,
+/// allowing future or retrospective guidance without changing the trade facts.
+model RealizedGainAllocation {
+  id                  String           @id
+  saleTradeId         String?          @map("sale_trade_id")
+  corporateActionEntitlementId String? @map("corporate_action_entitlement_id")
+  taxLotId            String           @map("tax_lot_id")
+  quantity            Decimal          @db.Decimal(24, 8)
+  grossProceeds       Decimal          @map("gross_proceeds") @db.Decimal(20, 4)
+  allocatedFees       Decimal          @map("allocated_fees") @db.Decimal(20, 4)
+  netProceeds         Decimal          @map("net_proceeds") @db.Decimal(20, 4)
+  costBasis           Decimal?         @map("cost_basis") @db.Decimal(20, 4)
+  realizedGain        Decimal?         @map("realized_gain") @db.Decimal(20, 4)
+  basisStatus         String           @map("basis_status")
+  status              String           @default("provisional")
+  calculationSnapshot Json?            @map("calculation_snapshot")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  saleTrade           Trade?           @relation(fields: [saleTradeId], references: [id], onDelete: Restrict)
+  corporateActionEntitlement CorporateActionEntitlement? @relation(fields: [corporateActionEntitlementId], references: [id], onDelete: Restrict)
+  taxLot              TaxLot           @relation(fields: [taxLotId], references: [id], onDelete: Restrict)
+  taxCalculations     TaxCalculation[]
+
+  @@unique([saleTradeId, taxLotId])
+  @@unique([corporateActionEntitlementId, taxLotId])
+  @@index([saleTradeId])
+  @@index([basisStatus, createdAt])
+  @@map("realized_gain_allocations")
+}
+
+model TaxCalculation {
+  id                         String                      @id
+  realizedGainAllocationId   String?                     @map("realized_gain_allocation_id")
+  corporateActionEntitlementId String?                   @map("corporate_action_entitlement_id")
+  taxPolicyVersionId         String                      @map("tax_policy_version_id")
+  revision                   Int                         @default(1)
+  taxableAmount              Decimal                     @map("taxable_amount") @db.Decimal(20, 4)
+  ratePct                    Decimal                     @map("rate_pct") @db.Decimal(8, 4)
+  taxAmount                  Decimal                     @map("tax_amount") @db.Decimal(20, 4)
+  status                     String                      @default("estimate")
+  supersedesId               String?                     @map("supersedes_id")
+  calculationSnapshot        Json?                       @map("calculation_snapshot")
+  calculatedAt               DateTime                    @default(now()) @map("calculated_at")
+  realizedGainAllocation     RealizedGainAllocation?     @relation(fields: [realizedGainAllocationId], references: [id], onDelete: Restrict)
+  corporateActionEntitlement CorporateActionEntitlement? @relation(fields: [corporateActionEntitlementId], references: [id], onDelete: Restrict)
+  policy                     TaxPolicyVersion            @relation(fields: [taxPolicyVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([realizedGainAllocationId, taxPolicyVersionId, revision])
+  @@unique([corporateActionEntitlementId, taxPolicyVersionId, revision])
+  @@index([taxPolicyVersionId, calculatedAt])
+  @@map("tax_calculations")
 }
 
 model Settlement {

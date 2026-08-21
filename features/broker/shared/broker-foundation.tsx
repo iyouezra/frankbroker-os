@@ -5,7 +5,7 @@ import { demoClients, demoInstruments, initialOrders, type BrokerClient, type De
 import { hasPermission, type OrderStatus, type Role } from "../../../lib/frank";
 import { orderResponsibility } from "../../../lib/order-log";
 
-export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "ledger" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_my" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
+export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "corporate_actions" | "tax_reporting" | "ledger" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_my" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
 export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
 export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: "day" | "gtc" | "gtd"; goodTillDate: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationChannel: "sms" | "email"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
@@ -383,6 +383,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     { id: "orders", label: "Order log", icon: "orders", module: "dealer_operations" },
     { id: "settlement", label: "Settlement", icon: "settlement", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations"] },
     { id: "reconciliation", label: "Reconciliation", icon: "reconciliation", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations", "compliance"] },
+    { id: "corporate_actions", label: "Corporate actions", icon: "cash", module: "dealer_operations", roles: ["broker_admin", "settlement", "operations", "compliance", "finance", "management"] },
   ] },
   { label: "Issuer advisory", items: [
     { id: "advisory", label: "Advisory pipeline", icon: "advisory", module: "issuer_advisory", roles: ["broker_admin", "advisory_lead", "advisory_analyst", "compliance", "management"] },
@@ -405,6 +406,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
   ] },
   { label: "Finance", items: [
     { id: "ledger", label: "General ledger", icon: "ledger", module: "dealer_operations", roles: ["broker_admin", "finance", "compliance", "settlement", "management"] },
+    { id: "tax_reporting", label: "Tax lots & gains", icon: "reports", module: "dealer_operations", roles: ["broker_admin", "finance", "compliance", "operations", "management"] },
   ] },
   { label: "Administration", items: [
     { id: "users", label: "Users & roles", icon: "users", roles: ["access_admin", "broker_admin"] },

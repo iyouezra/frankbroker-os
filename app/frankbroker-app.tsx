@@ -59,6 +59,7 @@ import {
 } from "../features/broker/shared/broker-foundation";
 import { Dashboard } from "../features/broker/dashboard/dashboard-screen";
 import { ReconciliationPage, SettlementPage } from "../features/broker/operations/operations-screens";
+import { AssetServicingWorkspace } from "../features/broker/operations/asset-servicing-screen";
 import { FinanceLedgerPage } from "../features/broker/finance/ledger-screens";
 import { SettingsPage, UsersPage } from "../features/broker/administration/administration-screens";
 import { AuditPage, ReportsPage } from "../features/broker/oversight/reporting-screens";
@@ -971,6 +972,8 @@ export default function FrankBrokerApp() {
           {view === "cash" && <CashOperationsPage data={cashOperations} clients={clients} role={role} busy={busyAction} focusId={cashFocus} onCreate={createCashInstruction} onAction={actOnCashInstruction} />}
           {view === "settlement" && <SettlementPage orders={orders} onOpen={openDetail} onExport={exportOrders} />}
           {view === "reconciliation" && <ReconciliationPage batch={reconBatch} batches={reconBatches} endOfDay={endOfDay} busy={busyAction === "reconcile"} role={role} focusId={reconciliationFocus} onSelectBatch={setReconBatch} onFile={processReconFile} onDownload={downloadReconTemplate} onResolve={resolveReconException} onSignOff={signOffReconciliation} onReprocess={reprocessReconciliation} onBusinessDay={actOnBusinessDay} resolvingId={busyAction} />}
+          {view === "corporate_actions" && <AssetServicingWorkspace mode="corporate_actions" role={role} tenantId={tenantId} onNotify={notify} />}
+          {view === "tax_reporting" && <AssetServicingWorkspace mode="tax_reporting" role={role} tenantId={tenantId} onNotify={notify} />}
           {view === "ledger" && <FinanceLedgerPage role={role} onOpenSource={(kind, id) => { if (kind === "cash_movement") navigateToTarget({ view: "cash", entityType: "cash_movement", entityId: id }); else navigateToTarget({ view: "orders", entityType: kind === "trade" ? "trade" : "order", entityId: id }); }} />}
           {view === "advisory" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="pipeline" onNotify={notify} />}
           {view === "issuers" && <AdvisoryWorkspace role={role} tenantId={tenantId} mode="issuers" onNotify={notify} />}

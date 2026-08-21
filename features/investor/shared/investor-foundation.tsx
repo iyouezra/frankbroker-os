@@ -95,6 +95,11 @@ export type InvestorBootstrap = {
     canMoveCash: boolean;
     reasons: Array<{ code: string; message: string; action?: "accept_terms" | "update_kyc" | null }>;
   };
+  servicing: {
+    basisSummary: { totalLots: number; unknownBasisLots: number; dispositionsNeedingBasis: number };
+    income: Array<{ id: string; actionId: string; instrument: string; type: string; recordDate: string; paymentDate: string; grossCash: number | null; withholdingAmount: number | null; netCash: number | null; securityQuantity: number | null; withholdingStatus: string; status: string; latestTaxEstimate: { amount: number; ratePct: number; revision: number } | null }>;
+    realizations: Array<{ id: string; tradeId: string; tradeDate: string; instrument: string; quantity: number; netProceeds: number; costBasis: number | null; realizedGain: number | null; basisStatus: string; latestTaxEstimate: { amount: number; ratePct: number; revision: number } | null }>;
+  } | null;
   instruments: InvestorInstrument[];
   serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null; threadId?: string | null }>;
   cashPools: CashPool[];
