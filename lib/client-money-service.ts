@@ -12,7 +12,7 @@ export async function lockPosition(tx: Prisma.TransactionClient, id: string) {
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "client_money_positions" WHERE "id" = ${id} FOR UPDATE`);
 }
 
-export type ClientMoneyEntryType = "deposit_credit" | "withdrawal_debit" | "trade_debit" | "trade_credit";
+export type ClientMoneyEntryType = "deposit_credit" | "withdrawal_debit" | "trade_debit" | "trade_credit" | "receipt_allocation";
 
 /**
  * The single choke point for beneficial-owner and pooled-bank book movements.
@@ -148,6 +148,53 @@ export async function persistPooledStatementMutation(
     },
   });
   return { nextStatementBalance };
+}
+
+/** Move a pooled account without changing any identified client's balance. */
+export async function persistPoolOnlyMutation(
+  tx: Prisma.TransactionClient,
+  input: {
+    pool: { id: string; bookBalance: Prisma.Decimal; statementBalance: Prisma.Decimal };
+    entryType: string;
+    bookImpact: Prisma.Decimal;
+    statementImpact: Prisma.Decimal;
+    actorId: string;
+    bankReference?: string | null;
+    notes?: string | null;
+  },
+) {
+  const bookImpact = money(input.bookImpact);
+  const statementImpact = money(input.statementImpact);
+  const nextBookBalance = money(input.pool.bookBalance.plus(bookImpact));
+  const nextStatementBalance = money(input.pool.statementBalance.plus(statementImpact));
+  if (nextBookBalance.lt(0) || nextStatementBalance.lt(0)) throw fail("This movement would make a pooled client-money balance negative.");
+  await tx.pooledBankAccount.update({
+    where: { id: input.pool.id },
+    data: { bookBalance: nextBookBalance, statementBalance: nextStatementBalance, lastReconciledAt: new Date(), version: { increment: 1 } },
+  });
+  await tx.pooledBankLedgerEntry.create({ data: {
+    id: crypto.randomUUID(), pooledBankAccountId: input.pool.id, entryType: input.entryType,
+    amount: bookImpact, balanceImpact: bookImpact, runningBalance: nextBookBalance,
+    bankReference: input.bankReference ?? null, createdBy: input.actorId, notes: input.notes ?? null,
+  } });
+  return { nextBookBalance, nextStatementBalance };
+}
+
+/** Allocate money already present in a pool to its identified beneficial owner. */
+export async function persistBeneficialAllocation(
+  tx: Prisma.TransactionClient,
+  input: { position: { id: string; balance: Prisma.Decimal }; accountId: string; pooledBankAccountId: string; amount: Prisma.Decimal; actorId: string; notes?: string },
+) {
+  const amount = money(input.amount);
+  if (amount.lte(0)) throw fail("A beneficial allocation must be positive.", 400);
+  const nextBalance = money(input.position.balance.plus(amount));
+  await tx.clientMoneyPosition.update({ where: { id: input.position.id }, data: { balance: nextBalance, version: { increment: 1 } } });
+  await tx.clientMoneyLedgerEntry.create({ data: {
+    id: crypto.randomUUID(), positionId: input.position.id, accountId: input.accountId,
+    pooledBankAccountId: input.pooledBankAccountId, entryType: "receipt_allocation",
+    amount, balanceImpact: amount, runningBalance: nextBalance, createdBy: input.actorId, notes: input.notes ?? null,
+  } });
+  return { nextBalance };
 }
 
 /**

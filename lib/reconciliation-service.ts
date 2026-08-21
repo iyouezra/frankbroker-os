@@ -155,58 +155,71 @@ export async function assertBusinessDayOpen(db: Db, brokerId: string, businessDa
   }
 }
 
-const positionReference = (value: string) => {
-  const [accountNumber, symbol, ...rest] = value.split(/[|:]/).map((part) => part.trim());
-  return accountNumber && symbol && rest.length === 0 ? { accountNumber, symbol } : null;
-};
+type ExpectedRecord = { canonicalKey: string; type: string; reference: string; aliases: string[]; value: Prisma.Decimal };
 
-async function expectedValues(db: Db, brokerId: string, rows: ReconciliationInputRow[]) {
-  const tradeIds = [...new Set(rows.filter((row) => ["cash", "securities", "fee", "settlement_obligation"].includes(row.type)).map((row) => row.reference))];
-  const poolRefs = [...new Set(rows.filter((row) => ["bank_balance", "client_money"].includes(row.type)).map((row) => row.reference))];
-  const ledgerRefs = [...new Set(rows.filter((row) => row.type === "general_ledger").map((row) => row.reference))];
-  const positionRefs = rows.filter((row) => row.type === "csd_position").map((row) => positionReference(row.reference)).filter((row): row is { accountNumber: string; symbol: string } => Boolean(row));
-
-  const [trades, pools, ledgerAccounts, holdings] = await Promise.all([
-    tradeIds.length ? db.trade.findMany({ where: { id: { in: tradeIds }, order: { brokerId } } }) : [],
-    poolRefs.length ? db.pooledBankAccount.findMany({
-      where: { brokerId, OR: [{ id: { in: poolRefs } }, { accountNumberMasked: { in: poolRefs } }] },
+/**
+ * Build the complete internal population a source file is expected to cover.
+ * Matching only rows supplied by the uploader lets an incomplete file appear
+ * perfect, so completeness is checked against this independently derived set.
+ */
+export async function expectedReconciliationUniverse(db: Db, brokerId: string, feed: ReconciliationFeed, businessDate: Date): Promise<ExpectedRecord[]> {
+  if (feed === "bank_balances" || feed === "client_money") {
+    const pools = await db.pooledBankAccount.findMany({
+      where: { brokerId, status: "active" },
       include: { positions: { select: { balance: true } } },
-    }) : [],
-    ledgerRefs.length ? db.ledgerAccount.findMany({
-      where: { brokerId, OR: [{ role: { in: ledgerRefs } }, { code: { in: ledgerRefs } }] },
-    }) : [],
-    positionRefs.length ? db.holding.findMany({
-      where: {
-        account: { client: { brokerId }, accountNumber: { in: positionRefs.map((item) => item.accountNumber) } },
-        instrument: { symbol: { in: positionRefs.map((item) => item.symbol) } },
-      },
-      include: { account: { select: { accountNumber: true } }, instrument: { select: { symbol: true } } },
-    }) : [],
-  ]);
+      orderBy: { id: "asc" },
+    });
+    return pools.map((pool) => {
+      const type = feed === "bank_balances" ? "bank_balance" : "client_money";
+      const value = feed === "bank_balances" ? pool.bookBalance : pool.positions.reduce((sum, position) => sum.plus(position.balance), ZERO);
+      return { canonicalKey: `${type}\u0000${pool.id}`, type, reference: pool.id, aliases: [pool.id, pool.accountNumberMasked], value };
+    });
+  }
 
-  const expected = new Map<string, Prisma.Decimal>();
+  if (feed === "general_ledger") {
+    const accounts = await db.ledgerAccount.findMany({ where: { brokerId, status: "active" }, orderBy: { role: "asc" } });
+    return accounts.map((account) => ({
+      canonicalKey: `general_ledger\u0000${account.role}`,
+      type: "general_ledger",
+      reference: account.role,
+      aliases: [account.role, account.code],
+      value: account.balance,
+    }));
+  }
+
+  if (feed === "csd_positions") {
+    const holdings = await db.holding.findMany({
+      where: { account: { client: { brokerId } }, totalQuantity: { not: 0 } },
+      include: { account: { select: { accountNumber: true } }, instrument: { select: { symbol: true } } },
+      orderBy: { id: "asc" },
+    });
+    return holdings.map((holding) => {
+      const reference = `${holding.account.accountNumber}|${holding.instrument.symbol}`;
+      return { canonicalKey: `csd_position\u0000${reference}`, type: "csd_position", reference, aliases: [reference, `${holding.account.accountNumber}:${holding.instrument.symbol}`], value: holding.totalQuantity };
+    });
+  }
+
+  const trades = await db.trade.findMany({
+    where: feed === "esx_executions"
+      ? { tradeDate: businessDate, order: { brokerId } }
+      : { OR: [{ tradeDate: businessDate }, { settlementDate: businessDate }], order: { brokerId } },
+    orderBy: { id: "asc" },
+  });
+  const records: ExpectedRecord[] = [];
   for (const trade of trades) {
-    expected.set(`cash\u0000${trade.id}`, trade.netAmount);
-    expected.set(`securities\u0000${trade.id}`, trade.quantityFilled);
-    expected.set(`fee\u0000${trade.id}`, trade.fees);
-    expected.set(`settlement_obligation\u0000${trade.id}`, trade.netAmount);
+    if (feed === "esx_executions" && trade.tradeDate.getTime() === businessDate.getTime()) {
+      records.push(
+        { canonicalKey: `cash\u0000${trade.id}`, type: "cash", reference: trade.id, aliases: [trade.id], value: trade.netAmount },
+        { canonicalKey: `securities\u0000${trade.id}`, type: "securities", reference: trade.id, aliases: [trade.id], value: trade.quantityFilled },
+        { canonicalKey: `fee\u0000${trade.id}`, type: "fee", reference: trade.id, aliases: [trade.id], value: trade.fees },
+      );
+    }
+    if (feed === "fees_settlement") {
+      if (trade.tradeDate.getTime() === businessDate.getTime()) records.push({ canonicalKey: `fee\u0000${trade.id}`, type: "fee", reference: trade.id, aliases: [trade.id], value: trade.fees });
+      if (trade.settlementDate.getTime() === businessDate.getTime()) records.push({ canonicalKey: `settlement_obligation\u0000${trade.id}`, type: "settlement_obligation", reference: trade.id, aliases: [trade.id], value: trade.netAmount });
+    }
   }
-  for (const pool of pools) {
-    expected.set(`bank_balance\u0000${pool.id}`, pool.bookBalance);
-    expected.set(`bank_balance\u0000${pool.accountNumberMasked}`, pool.bookBalance);
-    const beneficial = pool.positions.reduce((sum, position) => sum.plus(position.balance), ZERO);
-    expected.set(`client_money\u0000${pool.id}`, beneficial);
-    expected.set(`client_money\u0000${pool.accountNumberMasked}`, beneficial);
-  }
-  for (const account of ledgerAccounts) {
-    expected.set(`general_ledger\u0000${account.role}`, account.balance);
-    expected.set(`general_ledger\u0000${account.code}`, account.balance);
-  }
-  for (const holding of holdings) {
-    expected.set(`csd_position\u0000${holding.account.accountNumber}|${holding.instrument.symbol}`, holding.totalQuantity);
-    expected.set(`csd_position\u0000${holding.account.accountNumber}:${holding.instrument.symbol}`, holding.totalQuantity);
-  }
-  return expected;
+  return records;
 }
 
 export async function processReconciliationBatch(input: {
@@ -234,19 +247,24 @@ export async function processReconciliationBatch(input: {
     if (duplicate) throw new Response(`This file content was already imported as ${duplicate.id}. Use controlled reprocessing after correcting the internal book.`, { status: 409 });
   }
 
-  const expected = await expectedValues(input.db, input.brokerId, input.rows);
+  const universe = await expectedReconciliationUniverse(input.db, input.brokerId, input.feedType, businessDate);
+  const expectedByAlias = new Map<string, ExpectedRecord>();
+  for (const record of universe) for (const alias of record.aliases) expectedByAlias.set(`${record.type}\u0000${alias}`, record);
+  const seenExpected = new Set<string>();
   const exceptions: Array<{ id: string; reference: string; exceptionType: string; expectedValue: string | null; actualValue: string }> = [];
   let expectedTotal = ZERO;
   let actualTotal = ZERO;
   for (const row of input.rows) {
     const key = `${row.type}\u0000${row.reference}`;
-    const expectedValue = expected.get(key);
+    const expectedRecord = expectedByAlias.get(key);
+    const expectedValue = expectedRecord?.value;
     const actual = D(row.actualValue);
     actualTotal = actualTotal.plus(actual);
-    if (!expectedValue) {
+    if (!expectedRecord || !expectedValue) {
       exceptions.push({ id: crypto.randomUUID(), reference: row.reference, exceptionType: "missing_internal_reference", expectedValue: null, actualValue: actual.toFixed() });
       continue;
     }
+    seenExpected.add(expectedRecord.canonicalKey);
     expectedTotal = expectedTotal.plus(expectedValue);
     if (!actual.equals(expectedValue)) {
       exceptions.push({
@@ -258,9 +276,22 @@ export async function processReconciliationBatch(input: {
       });
     }
   }
+  for (const record of universe) {
+    if (seenExpected.has(record.canonicalKey)) continue;
+    expectedTotal = expectedTotal.plus(record.value);
+    exceptions.push({
+      id: crypto.randomUUID(),
+      reference: record.reference,
+      exceptionType: `missing_external_${record.type}`,
+      expectedValue: record.value.toFixed(),
+      actualValue: "0",
+    });
+  }
 
   const id = `REC-${businessDate.getUTCFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-  const matchedRecords = input.rows.length - exceptions.length;
+  const suppliedExceptions = exceptions.filter((item) => !item.exceptionType.startsWith("missing_external_")).length;
+  const matchedRecords = input.rows.length - suppliedExceptions;
+  const totalRecords = matchedRecords + exceptions.length;
   return input.db.$transaction(async (tx) => {
     if (input.supersedesBatchId) {
       const prior = await tx.reconciliationBatch.findFirst({ where: { id: input.supersedesBatchId, brokerId: input.brokerId } });
@@ -282,7 +313,7 @@ export async function processReconciliationBatch(input: {
         controlTotals: { expected: expectedTotal.toFixed(), actual: actualTotal.toFixed() },
         attemptNumber,
         supersedesBatchId: input.supersedesBatchId,
-        totalRecords: input.rows.length,
+        totalRecords,
         matchedRecords,
         exceptionRecords: exceptions.length,
         status: exceptions.length ? "exceptions" : "matched",
@@ -296,9 +327,9 @@ export async function processReconciliationBatch(input: {
       action: input.supersedesBatchId ? "RECONCILIATION_REPROCESSED" : "RECONCILIATION_IMPORTED",
       entityType: "reconciliation_batch",
       entityId: id,
-      summary: `${FEED_LABELS[input.feedType]}: ${matchedRecords}/${input.rows.length} records matched`,
+      summary: `${FEED_LABELS[input.feedType]}: ${matchedRecords}/${totalRecords} records matched`,
       reason: input.reprocessReason,
-      newValue: { feedType: input.feedType, contentHash, attemptNumber, supersedesBatchId: input.supersedesBatchId ?? null, totalRecords: input.rows.length, matchedRecords, exceptionRecords: exceptions.length },
+      newValue: { feedType: input.feedType, contentHash, attemptNumber, supersedesBatchId: input.supersedesBatchId ?? null, totalRecords, matchedRecords, exceptionRecords: exceptions.length },
     });
     return created;
   });

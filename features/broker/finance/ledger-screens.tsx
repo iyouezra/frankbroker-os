@@ -22,10 +22,12 @@ type EntrySummary = { id: string; entryDate: string; valueDate: string; sourceTy
 type Position = {
   chartReady: boolean;
   trialBalance: { asAt: string; rows: TrialBalanceRow[]; totalDebit: number; totalCredit: number; variance: number; balanced: boolean };
-  adequacy: { held: number; owed: number; surplus: number; adequate: boolean; components: Array<{ role: string; code: string; name: string; side: "held" | "owed"; amount: number }> };
+  protectedClientMoney: Coverage;
+  settlementCoverage: Coverage;
   ties: Tie[];
   recentEntries: EntrySummary[];
 };
+type Coverage = { held: number; owed: number; surplus: number; adequate: boolean; components: Array<{ role: string; code: string; name: string; side: "held" | "owed"; amount: number }> };
 type LineRow = { id: string; entryId: string; lineNumber: number; side: string; amount: number; runningBalance: number; memo: string; valueDate: string; entryDate: string; description: string; sourceType: string; sourceId: string | null; status: string; clientAccountNumber: string | null; clientName: string | null };
 type AccountStatement = { account: { id: string; role: string; code: string; name: string; accountClass: string; normalBalance: string; statementCaption: string; subLedger: string | null; balance: number; debitTotal: number; creditTotal: number }; lines: LineRow[] };
 type EntryDetail = {
@@ -111,7 +113,7 @@ export function FinanceLedgerPage({ role, onOpenSource }: { role: Role; onOpenSo
     </>;
   }
 
-  const { trialBalance, adequacy, ties } = position;
+  const { trialBalance, protectedClientMoney, settlementCoverage, ties } = position;
   const breaks = ties.filter((tie) => !tie.matched);
 
   return <>
@@ -124,13 +126,13 @@ export function FinanceLedgerPage({ role, onOpenSource }: { role: Role; onOpenSo
 
     <section className="metric-grid">
       <Metric
-        label="Client money surplus"
-        value={signed(adequacy.surplus)}
-        note={adequacy.adequate ? "Client assets are fully covered" : "Segregation deficit — escalate immediately"}
-        tone={adequacy.adequate ? "success" : "danger"}
+        label="Protected-money surplus"
+        value={signed(protectedClientMoney.surplus)}
+        note={protectedClientMoney.adequate ? "Confirmed designated cash covers protected balances" : "Confirmed designated cash is short — escalate immediately"}
+        tone={protectedClientMoney.adequate ? "success" : "danger"}
       />
-      <Metric label="Held for clients" value={etb(adequacy.held)} note="Pooled bank, gateway and CSD receivable" tone="purple" />
-      <Metric label="Owed to clients" value={etb(adequacy.owed)} note="Settled, unsettled and unidentified" tone="warning" />
+      <Metric label="Confirmed client-bank cash" value={etb(protectedClientMoney.held)} note="Designated pooled bank accounts only" tone="purple" />
+      <Metric label="Settlement coverage" value={signed(settlementCoverage.surplus)} note="Includes gateway and CSD receivables" tone={settlementCoverage.adequate ? "success" : "warning"} />
       <Metric
         label="Ledger balance"
         value={trialBalance.balanced ? "In balance" : signed(trialBalance.variance)}

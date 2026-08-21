@@ -5,7 +5,8 @@ import { requireTenantModule } from "../../../lib/tenant-capabilities";
 import { LEDGER_PERMISSIONS } from "../../../lib/frank";
 import {
   buildAccountStatement,
-  buildClientMoneyAdequacy,
+  buildProtectedClientMoneyCoverage,
+  buildSettlementCoverage,
   buildLedgerTies,
   buildTrialBalance,
   getJournalEntry,
@@ -65,7 +66,8 @@ export async function GET(request: Request) {
       // workspace explains what to do rather than showing an empty grid.
       chartReady: trialBalance.rows.length > 0,
       trialBalance,
-      adequacy: buildClientMoneyAdequacy(trialBalance),
+      protectedClientMoney: buildProtectedClientMoneyCoverage(trialBalance),
+      settlementCoverage: buildSettlementCoverage(trialBalance),
       ties,
       recentEntries: entries,
     });

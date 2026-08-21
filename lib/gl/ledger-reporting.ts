@@ -43,11 +43,10 @@ export type TrialBalance = {
 };
 
 /**
- * Client money adequacy: does what we hold for clients cover what we owe them?
- * A negative surplus is a segregation deficit, which is a reportable breach in
- * most regimes and the single number a regulator asks for first.
+ * A shared shape for the narrow protected-money measure and the wider economic
+ * settlement-coverage measure. Their resource definitions deliberately differ.
  */
-export type ClientMoneyAdequacy = {
+export type CoverageMeasure = {
   held: number;
   owed: number;
   surplus: number;
@@ -132,8 +131,8 @@ export async function buildTrialBalance(db: Db, brokerId: string, asAt?: Date): 
   };
 }
 
-export function buildClientMoneyAdequacy(trialBalance: TrialBalance): ClientMoneyAdequacy {
-  const components: ClientMoneyAdequacy["components"] = [];
+export function buildSettlementCoverage(trialBalance: TrialBalance): CoverageMeasure {
+  const components: CoverageMeasure["components"] = [];
   let held = ZERO;
   let owed = ZERO;
 
@@ -152,6 +151,33 @@ export function buildClientMoneyAdequacy(trialBalance: TrialBalance): ClientMone
   const surplus = money(held.minus(owed));
   return { held: toNum(held), owed: toNum(owed), surplus: toNum(surplus), adequate: surplus.gte(0), components };
 }
+
+/**
+ * Narrow safeguarded-money measure. Unlike settlement coverage, this excludes
+ * gateway and CSD receivables: only cash confirmed in designated pooled bank
+ * accounts is treated as a protected resource.
+ */
+export function buildProtectedClientMoneyCoverage(trialBalance: TrialBalance): CoverageMeasure {
+  const resource = trialBalance.rows.find((row) => row.role === LEDGER_ROLES.clientMoneyPooledBank);
+  const requirementRoles: LedgerRole[] = [LEDGER_ROLES.clientMoneyPayableSettled, LEDGER_ROLES.unidentifiedReceipts];
+  const requirements = trialBalance.rows.filter((row) => requirementRoles.includes(row.role as LedgerRole));
+  const held = D(resource?.balance ?? 0);
+  const owed = requirements.reduce((sum, row) => sum.plus(D(row.balance).negated()), ZERO);
+  const surplus = money(held.minus(owed));
+  return {
+    held: toNum(held),
+    owed: toNum(owed),
+    surplus: toNum(surplus),
+    adequate: surplus.gte(0),
+    components: [
+      ...(resource ? [{ role: resource.role, code: resource.code, name: resource.name, side: "held" as const, amount: toNum(held) }] : []),
+      ...requirements.map((row) => ({ role: row.role, code: row.code, name: row.name, side: "owed" as const, amount: toNum(D(row.balance).negated()) })),
+    ],
+  };
+}
+
+/** Backwards-compatible export for code outside the finance workspace. */
+export const buildClientMoneyAdequacy = buildSettlementCoverage;
 
 export type LedgerLineRow = {
   id: string;
@@ -321,14 +347,17 @@ export async function buildLedgerTies(db: Db, brokerId: string): Promise<LedgerT
     return account ? account.balance : ZERO;
   };
 
-  const [pools, accountTotals] = await Promise.all([
+  const [pools, accountTotals, beneficialTotals] = await Promise.all([
     db.pooledBankAccount.aggregate({ where: { brokerId }, _sum: { statementBalance: true } }),
     db.account.aggregate({ where: { client: { brokerId } }, _sum: { availableCash: true, blockedCash: true, unsettledCash: true } }),
+    db.clientMoneyPosition.aggregate({ where: { account: { client: { brokerId } } }, _sum: { balance: true } }),
   ]);
 
   const pooled = pools._sum.statementBalance ?? ZERO;
   const settled = money((accountTotals._sum.availableCash ?? ZERO).plus(accountTotals._sum.blockedCash ?? ZERO));
   const unsettled = accountTotals._sum.unsettledCash ?? ZERO;
+  const accountCash = money(settled.plus(unsettled));
+  const beneficialCash = beneficialTotals._sum.balance ?? ZERO;
 
   const tie = (key: string, label: string, detail: string, gl: Prisma.Decimal, sub: Prisma.Decimal): LedgerTie => {
     const variance = money(gl.minus(sub));
@@ -341,5 +370,6 @@ export async function buildLedgerTies(db: Db, brokerId: string): Promise<LedgerT
     // positive cash figures the sub-ledger reports.
     tie("client_settled", "Client settled cash vs ledger", "Available plus blocked cash across every client account", balanceOf(LEDGER_ROLES.clientMoneyPayableSettled).negated(), settled),
     tie("client_unsettled", "Client unsettled cash vs ledger", "Sale proceeds not yet received from the CSD", balanceOf(LEDGER_ROLES.clientMoneyPayableUnsettled).negated(), unsettled),
+    tie("account_to_beneficial", "Client cash vs beneficial ownership", "All brokerage-account cash buckets against allocations inside pooled accounts", accountCash, beneficialCash),
   ];
 }

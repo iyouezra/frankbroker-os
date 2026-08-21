@@ -58,10 +58,16 @@ export interface PaymentGateway {
     payload: unknown;
   }>;
   describeSettlement(providerEventId: string): Promise<{
+    transactionId: string;
     grossAmount: string;
     providerFee: string;
     currency: string;
     reference: string;
+    providerStatus: "pending" | "clearing" | "bank_settled" | "failed" | "returned";
+    settlementBatchId?: string;
+    destinationAccountRef?: string;
+    finalityAt?: string;
+    originalTransactionId?: string;
   }>;
 }
 
@@ -71,6 +77,32 @@ export class ManualPaymentGateway implements PaymentGateway {
   }
 
   async describeSettlement(providerEventId: string) {
-    return { grossAmount: "0", providerFee: "0", currency: "ETB", reference: `MANUAL-${providerEventId}` };
+    return { transactionId: `MANUAL-${providerEventId}`, grossAmount: "0", providerFee: "0", currency: "ETB", reference: `MANUAL-${providerEventId}`, providerStatus: "pending" as const };
+  }
+}
+
+/**
+ * EthSwitch protocol details are supplied by the contracted transport rather
+ * than guessed here. This adapter fixes the domain shape FrankMoney consumes
+ * while allowing the signature and settlement endpoints to follow the actual
+ * merchant agreement and credentials.
+ */
+export type EthSwitchTransport = {
+  verifySignature(rawBody: string, headers: Headers): Promise<boolean>;
+  parseEvent(rawBody: string): { providerEventId: string; eventType: string; payload: unknown };
+  fetchSettlement(providerEventId: string): ReturnType<PaymentGateway["describeSettlement"]>;
+};
+
+export class EthSwitchPaymentGateway implements PaymentGateway {
+  constructor(private readonly transport: EthSwitchTransport) {}
+
+  async verifyWebhook(rawBody: string, headers: Headers) {
+    const valid = await this.transport.verifySignature(rawBody, headers);
+    const parsed = this.transport.parseEvent(rawBody);
+    return { valid, ...parsed };
+  }
+
+  describeSettlement(providerEventId: string) {
+    return this.transport.fetchSettlement(providerEventId);
   }
 }

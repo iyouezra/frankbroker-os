@@ -65,6 +65,8 @@ model Broker {
   journalEntries         JournalEntry[]
   journalLines           JournalLine[]
   businessDayControls    BusinessDayControl[]
+  paymentProviderEvents  PaymentProviderEvent[]
+  accountingPolicies     AccountingPolicyVersion[]
 
   @@map("brokers")
 }
@@ -133,6 +135,7 @@ model User {
   employeeConductProfile        EmployeeConductProfile?
   postedJournalEntries          JournalEntry[]            @relation("JournalPoster")
   approvedJournalEntries        JournalEntry[]            @relation("JournalApprover")
+  approvedAccountingPolicies    AccountingPolicyVersion[] @relation("AccountingPolicyApprover")
 
   @@unique([brokerId, employeeId])
   @@index([brokerId, status])
@@ -1237,6 +1240,7 @@ model CashMovement {
   monitoringAlerts          MonitoringAlert[]
   withdrawalException       WithdrawalDestinationException?
   journalEntries            JournalEntry[]
+  paymentProviderEvents     PaymentProviderEvent[]
 
   @@unique([brokerId, submissionReference])
   @@index([brokerId, status, submittedAt])
@@ -1245,6 +1249,72 @@ model CashMovement {
   @@index([linkedBankAccountId])
   @@index([sourceLinkedBankAccountId])
   @@map("cash_movements")
+}
+
+/// Immutable evidence received from a payment provider. The cash movement and
+/// ledgers remain the books of record; this row preserves what the provider
+/// said, makes webhook redelivery idempotent, and records when it was applied.
+model PaymentProviderEvent {
+  id                    String        @id
+  brokerId              String        @map("broker_id")
+  cashMovementId        String?       @map("cash_movement_id")
+  provider              String
+  providerEventId       String        @map("provider_event_id")
+  transactionId         String?       @map("transaction_id")
+  merchantReference     String?       @map("merchant_reference")
+  eventType             String        @map("event_type")
+  providerStatus        String        @map("provider_status")
+  grossAmount           Decimal?      @map("gross_amount") @db.Decimal(20, 4)
+  providerFee           Decimal?      @map("provider_fee") @db.Decimal(20, 4)
+  netAmount             Decimal?      @map("net_amount") @db.Decimal(20, 4)
+  currency              String?
+  settlementBatchId     String?       @map("settlement_batch_id")
+  destinationAccountRef String?       @map("destination_account_ref")
+  finalityAt            DateTime?     @map("finality_at")
+  originalTransactionId String?       @map("original_transaction_id")
+  payloadHash           String        @map("payload_hash")
+  payload               Json?
+  processingStatus      String        @default("received") @map("processing_status")
+  failureReason         String?       @map("failure_reason")
+  receivedAt            DateTime      @default(now()) @map("received_at")
+  processedAt           DateTime?     @map("processed_at")
+  broker                Broker        @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  cashMovement          CashMovement? @relation(fields: [cashMovementId], references: [id], onDelete: SetNull)
+
+  @@unique([brokerId, provider, providerEventId])
+  @@index([brokerId, transactionId])
+  @@index([brokerId, settlementBatchId])
+  @@index([brokerId, processingStatus, receivedAt])
+  @@map("payment_provider_events")
+}
+
+/// Versioned broker accounting decisions. Runtime posting code reads the
+/// effective approved version; historical versions remain available to explain
+/// why an event was accounted for as it was at the time.
+model AccountingPolicyVersion {
+  id                           String    @id
+  brokerId                     String    @map("broker_id")
+  version                      String
+  effectiveFrom                DateTime  @map("effective_from") @db.Date
+  status                       String    @default("draft")
+  clientMoneyPresentation      String    @map("client_money_presentation")
+  gatewayRecognitionPoint      String    @map("gateway_recognition_point")
+  depositAvailabilityPoint     String    @map("deposit_availability_point")
+  gatewayFeeTreatment          String    @map("gateway_fee_treatment")
+  protectedResourceDefinition  String    @map("protected_resource_definition")
+  feeSweepTiming               String    @map("fee_sweep_timing")
+  withdrawalDerecognitionPoint String    @map("withdrawal_derecognition_point")
+  rationale                    String?
+  approvedBy                   String?   @map("approved_by")
+  approvedAt                   DateTime? @map("approved_at")
+  createdAt                    DateTime  @default(now()) @map("created_at")
+  updatedAt                    DateTime  @updatedAt @map("updated_at")
+  broker                       Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  approvedByUser               User?     @relation("AccountingPolicyApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@unique([brokerId, version])
+  @@index([brokerId, status, effectiveFrom])
+  @@map("accounting_policy_versions")
 }
 
 /// Structured ownership references used for exact, privacy-preserving shared-
