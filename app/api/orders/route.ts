@@ -2,7 +2,7 @@ import { prisma } from "../../../lib/prisma";
 import { addisBusinessDate, addisDayStart } from "../../../lib/addis-date";
 import { toNum } from "../../../lib/money";
 import { apiError as routeError } from "../../../lib/api";
-import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
+import { normalizeOrderType, orderValidityExpired, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { Prisma } from "../../generated/prisma/client";
 import { csvCell, MARKET_LINK_ELIGIBLE_STATUSES, ORDER_STATUS_GROUPS, orderResponsibility } from "../../../lib/order-log";
@@ -29,6 +29,7 @@ export async function GET(request: Request) {
     const eligibleForMarket = url.searchParams.get("eligibleForMarket") === "true";
     const risk = url.searchParams.get("risk") ?? "all";
     const orderType = url.searchParams.get("orderType")?.trim().slice(0, 40) ?? "all";
+    const validity = url.searchParams.get("validity")?.trim().slice(0, 20) ?? "all";
     const source = url.searchParams.get("source")?.trim().slice(0, 40) ?? "all";
     const period = url.searchParams.get("period") ?? "all";
     const sort = url.searchParams.get("sort") ?? "newest";
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
       ...(eligibleForMarket ? { status: { in: [...MARKET_LINK_ELIGIBLE_STATUSES] }, remainingQuantity: { gt: 0 } } : {}),
       ...(risk === "flagged" ? { riskFlag: { not: "none" } } : {}),
       ...(orderType !== "all" ? { orderType } : {}),
+      ...(validity !== "all" ? { validity } : {}),
       ...(source !== "all" ? { source } : {}),
       ...(since ? { submittedAt: { gte: since } } : {}),
       ...(query ? {
@@ -75,6 +77,7 @@ export async function GET(request: Request) {
       triggerPrice: true,
       orderType: true,
       validity: true,
+      goodTillDate: true,
       estimatedGross: true,
       estimatedFees: true,
       estimatedFeeBreakdown: true,
@@ -105,7 +108,7 @@ export async function GET(request: Request) {
     const total = await prisma.order.count({ where });
     const pageCount = Math.max(1, Math.ceil(total / pageSize));
     const safePage = Math.min(page, pageCount);
-    const [rows, statusGroups, typeGroups, sourceGroups] = await Promise.all([
+    const [rows, statusGroups, typeGroups, validityGroups, sourceGroups] = await Promise.all([
       prisma.order.findMany({
         where,
         select,
@@ -114,10 +117,12 @@ export async function GET(request: Request) {
       }),
       prisma.order.groupBy({ by: ["status"], where: { brokerId: actor.brokerId }, _count: { _all: true } }),
       prisma.order.groupBy({ by: ["orderType"], where: { brokerId: actor.brokerId }, _count: { _all: true } }),
+      prisma.order.groupBy({ by: ["validity"], where: { brokerId: actor.brokerId }, _count: { _all: true } }),
       prisma.order.groupBy({ by: ["source"], where: { brokerId: actor.brokerId }, _count: { _all: true } }),
     ]);
     const orders = rows.map((order) => {
       const trader = order.assignedTrader?.fullName ?? "Unassigned";
+      const instructionExpired = orderValidityExpired({ validity: order.validity, goodTillDate: order.goodTillDate, submittedAt: order.submittedAt ?? order.createdAt });
       return {
         id: order.id,
         createdAt: (order.submittedAt ?? order.createdAt).toISOString(),
@@ -134,6 +139,8 @@ export async function GET(request: Request) {
         triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
         orderType: order.orderType,
         validity: order.validity,
+        goodTillDate: order.goodTillDate?.toISOString().slice(0, 10) ?? null,
+        instructionExpired,
         submissionReference: order.submissionReference,
         estimatedGross: toNum(order.estimatedGross),
         estimatedFees: toNum(order.estimatedFees),
@@ -146,7 +153,9 @@ export async function GET(request: Request) {
         approvedBy: order.approver?.fullName ?? null,
         approvedAt: order.approvedAt?.toISOString() ?? null,
         rejectionReason: order.rejectionReason,
-        ...orderResponsibility(order.status, trader === "Unassigned" ? null : trader),
+        ...(instructionExpired && ["pending_broker_review", "approved", "partially_filled"].includes(order.status)
+          ? { nextAction: "Cancel expired instruction", actionOwner: "Operations review" }
+          : orderResponsibility(order.status, trader === "Unassigned" ? null : trader)),
         filledQuantity: toNum(order.filledQuantity),
         remainingQuantity: toNum(order.remainingQuantity),
         averageFillPrice: order.averageFillPrice ? toNum(order.averageFillPrice) : null,
@@ -159,12 +168,12 @@ export async function GET(request: Request) {
       };
     });
     if (exporting) {
-      const headers = ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated gross", "Brokerage", "ECMA fee", "ESX fee", "CSD fee", "Total estimated fees", "Estimated total/net", "Executed value", "Status", "Source", "Submission reference", "Execution references", "Assigned trader", "Next action", "Action owner", "Exception reason"];
+      const headers = ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Good-till date", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated gross", "Brokerage", "ECMA fee", "ESX fee", "CSD fee", "Total estimated fees", "Estimated total/net", "Executed value", "Status", "Source", "Submission reference", "Execution references", "Assigned trader", "Next action", "Action owner", "Exception reason"];
       const csv = [
         headers,
         ...orders.map((order) => [
           order.id, order.createdAt, order.updatedAt, order.client, order.clientCode, order.accountNumber,
-          order.symbol, order.side, order.orderType, order.validity, order.price, order.triggerPrice ?? "",
+          order.symbol, order.side, order.orderType, order.validity, order.goodTillDate ?? "", order.price, order.triggerPrice ?? "",
           order.quantity, order.filledQuantity, order.remainingQuantity, order.estimatedGross,
           order.estimatedFeeBreakdown?.brokerage ?? order.estimatedFees, order.estimatedFeeBreakdown?.regulator ?? 0,
           order.estimatedFeeBreakdown?.exchange ?? 0, order.estimatedFeeBreakdown?.csd ?? 0, order.estimatedFees, order.estimatedNet, order.executedNet,
@@ -186,6 +195,7 @@ export async function GET(request: Request) {
       facets: {
         statuses: Object.fromEntries(statusGroups.map((group) => [group.status, group._count._all])),
         orderTypes: typeGroups.map((group) => group.orderType).sort(),
+        validities: validityGroups.map((group) => group.validity).sort(),
         sources: sourceGroups.map((group) => group.source).sort(),
       },
     });
@@ -222,6 +232,7 @@ export async function POST(request: Request) {
       triggerPrice?: number;
       orderType?: string;
       validity?: string;
+      goodTillDate?: string;
       notes?: string;
       submissionReference?: string;
       source?: string;
@@ -251,6 +262,7 @@ export async function POST(request: Request) {
       triggerPrice: triggerPriceInput,
       orderType: normalizeOrderType(payload.orderType ?? "limit"),
       validity: payload.validity,
+      goodTillDate: payload.goodTillDate,
       notes: payload.notes,
       source: payload.source,
       verificationId: payload.verificationId,

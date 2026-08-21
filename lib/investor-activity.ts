@@ -16,6 +16,8 @@ export type InvestorOrderActivity = InvestorActivityBase & {
   price: number;
   triggerPrice: number | null;
   orderType: string;
+  validity?: string;
+  goodTillDate?: string | null;
   filledQuantity: number;
   estimatedFees: number;
   estimatedNet: number;

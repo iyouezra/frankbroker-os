@@ -899,6 +899,7 @@ model Order {
   triggerPrice              Decimal?                 @map("trigger_price") @db.Decimal(20, 6)
   orderType                 String                   @default("limit") @map("order_type")
   validity                  String                   @default("day")
+  goodTillDate              DateTime?                @map("good_till_date") @db.Date
   estimatedGross            Decimal                  @map("estimated_gross") @db.Decimal(20, 4)
   estimatedFees             Decimal                  @map("estimated_fees") @db.Decimal(20, 4)
   estimatedNet              Decimal                  @map("estimated_net") @db.Decimal(20, 4)

@@ -2,7 +2,7 @@ import { Prisma } from "../../app/generated/prisma/client";
 import type { Actor } from "../server-auth";
 import { prisma } from "../prisma";
 import { D, toNum, ZERO } from "../money";
-import { normalizeOrderType } from "../order-input";
+import { normalizeOrderType, orderValidityExpired, parseOrderValidity } from "../order-input";
 import { writeAudit, writeOrderEvent } from "./audit-service";
 import { writeNotification, APPROVERS, TRADERS } from "./notification-service";
 import {
@@ -50,6 +50,7 @@ export type CreateOrderInput = {
   triggerPrice?: number | string | Prisma.Decimal | null;
   orderType?: string;
   validity?: string;
+  goodTillDate?: string | null;
   notes?: string;
   source?: string;
   submissionReference?: string;
@@ -97,6 +98,8 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         price: toNum(existingOrder.price),
         triggerPrice: existingOrder.triggerPrice ? toNum(existingOrder.triggerPrice) : null,
         orderType: existingOrder.orderType,
+        validity: existingOrder.validity,
+        goodTillDate: existingOrder.goodTillDate?.toISOString().slice(0, 10) ?? null,
         estimatedGross: toNum(existingOrder.estimatedGross),
         estimatedFees: toNum(existingOrder.estimatedFees),
         estimatedNet: toNum(existingOrder.estimatedNet),
@@ -128,6 +131,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const price = D(input.price);
   const triggerPrice = input.triggerPrice === undefined || input.triggerPrice === null ? null : D(input.triggerPrice);
   const orderType = normalizeOrderType(input.orderType ?? "limit");
+  const validityInstruction = parseOrderValidity({ validity: input.validity, goodTillDate: input.goodTillDate, orderType });
   const feePolicy = await resolveFeePolicy(prisma, actor.brokerId, instrument, settings);
   const amounts = computeConfiguredAmounts(input.side, quantity, price, feePolicy);
   const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
@@ -179,7 +183,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
     value: amounts.gross,
     actorId: actor.id,
   });
-  if (employeeControl.employeeProfile && (input.validity ?? "day").trim().toLowerCase() !== "day") {
+  if (employeeControl.employeeProfile && validityInstruction.validity !== "day") {
     employeeControl.failures.push({ code: "EC_MISSING_CLEARANCE", severity: "high", message: "Employee-account orders must use Day validity." });
   }
   checks.push(...employeeControl.failures.map((failure) => ({
@@ -200,7 +204,8 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   }
   const verificationPayloadHash = orderPayloadHash({
     accountId: input.accountId, instrumentId: input.instrumentId, side: input.side,
-    quantity: toNum(quantity), price: toNum(price), triggerPrice: triggerPrice ? toNum(triggerPrice) : null, orderType, source,
+    quantity: toNum(quantity), price: toNum(price), triggerPrice: triggerPrice ? toNum(triggerPrice) : null, orderType,
+    validity: validityInstruction.validity, goodTillDate: validityInstruction.goodTillDate?.toISOString().slice(0, 10) ?? null, source,
     submissionReference: input.submissionReference ?? "",
   });
   const ledgerActorId = actor.id ?? fallbackLedgerActor?.id;
@@ -259,7 +264,8 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         price,
         triggerPrice,
         orderType,
-        validity: employeeControl.employeeProfile ? "day" : input.validity ?? "day",
+        validity: employeeControl.employeeProfile ? "day" : validityInstruction.validity,
+        goodTillDate: employeeControl.employeeProfile ? null : validityInstruction.goodTillDate,
         estimatedGross: amounts.gross,
         estimatedFees: amounts.fees,
         estimatedNet: amounts.net,
@@ -504,6 +510,8 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
       quantity: toNum(quantity),
       price: toNum(price),
       orderType,
+      validity: validityInstruction.validity,
+      goodTillDate: validityInstruction.goodTillDate?.toISOString().slice(0, 10) ?? null,
       estimatedGross: toNum(amounts.gross),
       estimatedFees: toNum(amounts.fees),
       estimatedNet: toNum(amounts.net),
@@ -546,6 +554,9 @@ export async function approveOrder(actor: Actor, orderId: string) {
     await assertNoEmployeeSelfProcessing(tx, actor.brokerId, orderId, actor.id);
     const { order, settings, entitlement } = await loadApprovalContext(tx, orderId, actor);
     assertTransition(order.status, "approved");
+    if (orderValidityExpired({ validity: order.validity, goodTillDate: order.goodTillDate, submittedAt: order.submittedAt ?? order.createdAt })) {
+      throw new Response("This order instruction has expired and cannot be approved. Cancel it and capture a new client instruction.", { status: 409 });
+    }
     const makerChecker = settings?.makerChecker ?? true;
     const approvalThreshold = settings?.approvalThreshold ?? ZERO;
     if (makerChecker && order.estimatedNet.gte(approvalThreshold)) {

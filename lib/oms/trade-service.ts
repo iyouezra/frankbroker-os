@@ -21,6 +21,7 @@ import { applyClientMoneyTradeBook } from "../client-money-service";
 import { assertNoEmployeeSelfProcessing } from "../monitoring-service";
 import { postJournalEntry } from "../gl/posting-service";
 import { buyFillCaptured, sellFillCaptured } from "../gl/journal-rules";
+import { orderValidityExpired } from "../order-input";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -90,6 +91,9 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
     }
     if (!isExecutableStatus(order.status)) {
       throw new Response("Only approved or partially filled orders can be executed.", { status: 409 });
+    }
+    if (orderValidityExpired({ validity: order.validity, goodTillDate: order.goodTillDate, submittedAt: order.submittedAt ?? order.createdAt })) {
+      throw new Response("This order instruction has expired and cannot be executed. Cancel it and capture a new client instruction.", { status: 409 });
     }
     const settings = await tx.brokerSettings.findUnique({ where: { brokerId: actor.brokerId } });
     const features = (settings?.features ?? {}) as unknown as Record<string, unknown>;

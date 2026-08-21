@@ -14,6 +14,7 @@ import { Card, Icon, ScreenHeader, type IconName } from "../shared/investor-foun
 import { useT, type Translate } from "../../../lib/i18n/context";
 import type { TranslationKey } from "../../../lib/i18n/en";
 import { INVESTOR_STATUS_KEYS } from "../../../lib/i18n/status";
+import { orderValidityLabel } from "../../../lib/order-input";
 
 // Filter values drive filterInvestorActivity, so they stay English.
 const FILTERS = [["all", "activity.filterAll"], ["orders", "activity.filterOrders"], ["trades", "activity.filterTrades"], ["money", "activity.filterMoney"]] as const satisfies ReadonlyArray<readonly [InvestorActivityFilter, TranslationKey]>;
@@ -74,6 +75,7 @@ function ActivityDetail({ item }: { item: InvestorActivity }) {
         [t("activity.companyOrBond"), `${item.instrumentName} (${item.ticker})`],
         [t("activity.action"), t(item.side === "buy" ? "order.buy" : "order.sell")],
         [t("activity.orderTypeLabel"), ORDER_TYPE_KEYS[item.orderType] ? t(ORDER_TYPE_KEYS[item.orderType]) : item.orderType.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())],
+        [t("order.validity"), orderValidityLabel(item.validity, item.goodTillDate)],
         [t("activity.quantity"), formatActivityQuantity(item.quantity)],
         [t("activity.priceLabel"), formatEtb(item.price)],
         ...(item.triggerPrice ? [[t("order.triggerPrice"), formatEtb(item.triggerPrice)] as [string, ReactNode]] : []),
@@ -140,4 +142,3 @@ export function ActivityScreen({ activity, initialItem, onBack }: { activity: In
     </>}
   </div>;
 }
-

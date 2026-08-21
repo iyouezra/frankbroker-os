@@ -121,7 +121,7 @@ export default function FrankBrokerApp() {
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(demoAudit);
   const [cashOperations, setCashOperations] = useState<CashOperationsData>(fallbackCashOperations);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "Day", notes: "", submissionReference: crypto.randomUUID(), source: "phone", verificationChannel: "sms", verificationId: "", verificationCode: "", demoCode: "" });
+  const [newOrder, setNewOrder] = useState<NewOrderValue>({ accountId: "acc_meron", instrumentId: "ins_tele", side: "buy", quantity: "1000", price: "312.5", orderType: "Limit", validity: "day", goodTillDate: "", notes: "", submissionReference: crypto.randomUUID(), source: "phone", verificationChannel: "sms", verificationId: "", verificationCode: "", demoCode: "" });
   const [newClient, setNewClient] = useState<NewClientValue>(newClientDefaults);
   const [checks, setChecks] = useState<{ label: string; passed: boolean; message: string }[] | null>(null);
   const [controls, setControls] = useState<TenantControls>(fallbackControls);
@@ -587,6 +587,9 @@ export default function FrankBrokerApp() {
     const amounts = calculateConfiguredAmounts(newOrder.side, quantity, price, controls.brokerageFeePct, controls.minimumFee, controls.feeRules.find((rule) => rule.assetClass === assetClass));
     const owned = client && instrument ? client.holdings.find((holding) => holding.symbol === instrument.symbol)?.available ?? 0 : 0;
     const orderTypeAllowed = controls.allowedOrderTypes.some((item) => normalizedOrderType(item) === normalizedOrderType(newOrder.orderType));
+    const validityAllowed = normalizedOrderType(newOrder.orderType) === "market"
+      ? newOrder.validity === "day"
+      : newOrder.validity !== "gtd" || Boolean(newOrder.goodTillDate && newOrder.goodTillDate > addisBusinessDate());
     const results = [
       { label: "Platform fee schedule", passed: Boolean(controls.marketFeeScheduleConfigured && controls.feeRules.some((rule) => rule.assetClass === assetClass)), message: controls.marketFeeScheduleConfigured ? "Active Platform Admin schedule applies to this tenant and asset class" : "Publish a Platform Admin schedule and confirm tenant licence, entitlement, and module eligibility" },
       { label: "Client and account", passed: Boolean(client), message: client ? `${client.code} · ${client.status}` : "Select an available client account" },
@@ -594,6 +597,7 @@ export default function FrankBrokerApp() {
       { label: "Account active", passed: client?.status === "active", message: client?.status ?? "Client unavailable" },
       { label: "Instrument tradable", passed: instrument?.status === "Tradable", message: instrument ? `${instrument.symbol} · ${instrument.status}` : "No instruments are enabled for this tenant" },
       { label: "Order type enabled", passed: orderTypeAllowed, message: orderTypeAllowed ? `${newOrder.orderType} is enabled` : "Enable an order type in the admin console" },
+      { label: "Order validity", passed: validityAllowed, message: validityAllowed ? `${newOrder.validity.toUpperCase()} instruction is valid for this order type` : normalizedOrderType(newOrder.orderType) === "market" ? "Market orders must use Day validity" : "Choose a future expiry date for the GTD instruction" },
       { label: "Quantity valid", passed: Boolean(instrument && quantity > 0 && quantity % instrument.lot === 0), message: instrument ? `Lot size ${instrument.lot}` : "Instrument unavailable" },
       { label: "Price valid", passed: Boolean(instrument && price > 0 && Math.abs(price / instrument.tick - Math.round(price / instrument.tick)) < 0.001), message: instrument ? `Tick size ${instrument.tick} ETB` : "Instrument unavailable" },
       newOrder.side === "buy"

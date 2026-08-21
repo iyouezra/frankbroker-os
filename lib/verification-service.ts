@@ -10,7 +10,8 @@ export type OtpDeliveryChannel = typeof OTP_DELIVERY_CHANNELS[number];
 
 export type OrderAuthorizationPayload = {
   accountId: string; instrumentId: string; side: string; quantity: number | string;
-  price: number | string; triggerPrice?: number | string | null; orderType: string; source: string; submissionReference: string;
+  price: number | string; triggerPrice?: number | string | null; orderType: string;
+  validity: string; goodTillDate?: string | null; source: string; submissionReference: string;
 };
 
 function normalizedOrderPayload(value: OrderAuthorizationPayload) {
@@ -24,6 +25,8 @@ function normalizedOrderPayload(value: OrderAuthorizationPayload) {
       ? null
       : Number(value.triggerPrice).toFixed(6),
     orderType: value.orderType.trim().toLowerCase().replaceAll(" ", "-"),
+    validity: value.validity.trim().toLowerCase().replaceAll(" ", "-"),
+    goodTillDate: value.goodTillDate || null,
     source: value.source,
     submissionReference: value.submissionReference,
   };

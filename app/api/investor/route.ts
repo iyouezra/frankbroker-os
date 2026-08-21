@@ -5,7 +5,7 @@ import { toNum } from "../../../lib/money";
 import { resolveInvestorContext } from "../../../lib/server-auth";
 import { resolveTenantContext } from "../../../lib/tenant-capabilities";
 import { apiError as routeError } from "../../../lib/api";
-import { normalizeOrderType, parseOrderSide, parsePositiveFiniteNumber } from "../../../lib/order-input";
+import { normalizeOrderType, parseOrderSide, parseOrderValidity, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { prepareCashMovementProof, serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
 import { confirmOtpChallenge, createOtpChallenge, OTP_DELIVERY_CHANNELS, otpDestinationHint, orderPayloadHash, type OtpDeliveryChannel } from "../../../lib/verification-service";
@@ -155,6 +155,8 @@ export async function GET(request: Request) {
           price: toNum(order.price),
           triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
           orderType: order.orderType,
+          validity: order.validity,
+          goodTillDate: order.goodTillDate?.toISOString().slice(0, 10) ?? null,
           filledQuantity: toNum(order.filledQuantity),
           estimatedFees: toNum(order.estimatedFees),
           estimatedNet: toNum(order.estimatedNet),
@@ -352,11 +354,12 @@ export async function POST(request: Request) {
       ]);
       const account = client?.accounts[0];
       if (!client || !account || !instrument) return Response.json({ error: "Investor account or instrument not found." }, { status: 404 });
+      const validity = parseOrderValidity({ validity: payload.validity, goodTillDate: payload.goodTillDate, orderType: payload.orderType });
       const deliveryChannel = String(payload.deliveryChannel ?? "sms") as OtpDeliveryChannel;
       if (!OTP_DELIVERY_CHANNELS.includes(deliveryChannel)) return Response.json({ error: "Choose SMS or email for the verification code." }, { status: 400 });
       const destination = deliveryChannel === "email" ? client.email : client.phone;
       if (!destination) return Response.json({ error: `No registered ${deliveryChannel === "email" ? "email address" : "mobile number"} is available for this account.` }, { status: 409 });
-      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", deliveryChannel, destination, destinationHint: otpDestinationHint(deliveryChannel, destination), payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
+      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", deliveryChannel, destination, destinationHint: otpDestinationHint(deliveryChannel, destination), payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), validity: validity.validity, goodTillDate: validity.goodTillDate?.toISOString().slice(0, 10) ?? null, source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
       return Response.json(challenge, { status: 201 });
     }
 
@@ -761,6 +764,7 @@ export async function POST(request: Request) {
       const quantityInput = parsePositiveFiniteNumber(payload.quantity);
       const priceInput = parsePositiveFiniteNumber(payload.price ?? toNum(instrument.lastPrice));
       const orderType = normalizeOrderType(payload.orderType, "market");
+      const validity = parseOrderValidity({ validity: payload.validity, goodTillDate: payload.goodTillDate, orderType });
       const triggerPriceInput = payload.triggerPrice === undefined || payload.triggerPrice === null || payload.triggerPrice === ""
         ? null
         : parsePositiveFiniteNumber(payload.triggerPrice);
@@ -781,7 +785,8 @@ export async function POST(request: Request) {
           price: priceInput,
           triggerPrice: orderType === "stop_loss" ? triggerPriceInput : null,
           orderType,
-          validity: "day",
+          validity: validity.validity,
+          goodTillDate: validity.goodTillDate?.toISOString().slice(0, 10) ?? null,
           source: "investor_portal",
           submissionReference,
           termsVersion: legalDocument?.version,

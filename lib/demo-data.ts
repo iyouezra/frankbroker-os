@@ -16,6 +16,8 @@ export type DemoOrder = {
   triggerPrice?: number | null;
   orderType: string;
   validity?: string;
+  goodTillDate?: string | null;
+  instructionExpired?: boolean;
   submissionReference?: string | null;
   estimatedGross: number;
   estimatedFees: number;
@@ -129,7 +131,7 @@ export type DemoOrder = {
 export type OrderLogResponse = {
   orders: DemoOrder[];
   pagination: { page: number; pageSize: number; total: number; pageCount: number };
-  facets: { statuses: Record<string, number>; orderTypes: string[]; sources: string[] };
+  facets: { statuses: Record<string, number>; orderTypes: string[]; validities: string[]; sources: string[] };
 };
 
 export type BrokerClient = {

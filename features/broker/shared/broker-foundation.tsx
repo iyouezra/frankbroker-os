@@ -7,7 +7,7 @@ import { orderResponsibility } from "../../../lib/order-log";
 
 export type View = "dashboard" | "performance" | "market" | "orders" | "clients" | "crm" | "crm_tasks" | "crm_cases" | "cash" | "settlement" | "reconciliation" | "ledger" | "advisory" | "issuers" | "reports" | "audit" | "users" | "settings" | "risk_my" | "risk_overview" | "risk_monitoring" | "risk_clients" | "risk_employee" | "risk_reports" | "risk_controls";
 export type Drawer = "new" | "client" | "detail" | "trade" | "contract" | "crm_thread" | null;
-export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationChannel: "sms" | "email"; verificationId: string; verificationCode: string; demoCode: string };
+export type NewOrderValue = { accountId: string; instrumentId: string; side: "buy" | "sell"; quantity: string; price: string; orderType: string; validity: "day" | "gtc" | "gtd"; goodTillDate: string; notes: string; submissionReference: string; source: "digital" | "in_person" | "neway" | "phone"; verificationChannel: "sms" | "email"; verificationId: string; verificationCode: string; demoCode: string };
 export type OnboardingDocumentType = "proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association";
 export type NewClientBank = { id: string; bankName: string; accountNumber: string; accountHolderName: string };
 export type NewClientValue = {
@@ -555,7 +555,7 @@ export function hydrateOrders(rows: Array<Omit<DemoOrder, "time">>) {
     source: order.source.charAt(0).toUpperCase() + order.source.slice(1),
     trader: order.trader ?? "Unassigned",
     updatedAt: order.updatedAt ?? order.createdAt,
-    validity: order.validity ? displayLabel(order.validity) : "Day",
+    validity: order.validity ?? "day",
     ...(order.nextAction && order.actionOwner ? {} : orderResponsibility(order.status, order.trader === "Unassigned" ? null : order.trader)),
   })) as DemoOrder[];
 }

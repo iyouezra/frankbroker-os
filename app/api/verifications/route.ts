@@ -2,6 +2,7 @@ import { apiError } from "../../../lib/api";
 import { prisma } from "../../../lib/prisma";
 import { requireTenantModule } from "../../../lib/tenant-capabilities";
 import { confirmOtpChallenge, createOtpChallenge, ORDER_SOURCES, OTP_DELIVERY_CHANNELS, otpDestinationHint, orderPayloadHash, type OtpDeliveryChannel } from "../../../lib/verification-service";
+import { parseOrderValidity } from "../../../lib/order-input";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
     if (!OTP_DELIVERY_CHANNELS.includes(deliveryChannel)) return Response.json({ error: "Choose SMS or email for the client authorization code." }, { status: 400 });
     const destination = deliveryChannel === "email" ? account.client.email : account.client.phone;
     if (!destination) return Response.json({ error: `This client has no registered ${deliveryChannel === "email" ? "email address" : "mobile number"}.` }, { status: 409 });
+    const validity = parseOrderValidity({ validity: payload.validity, goodTillDate: payload.goodTillDate, orderType: payload.orderType });
     const challenge = await createOtpChallenge({
       brokerId: actor.brokerId, clientId: account.clientId, accountId: account.id,
       purpose: "order_instruction", source, deliveryChannel, createdBy: actor.id,
@@ -35,6 +37,8 @@ export async function POST(request: Request) {
         quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""),
         triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice),
         orderType: String(payload.orderType ?? ""),
+        validity: validity.validity,
+        goodTillDate: validity.goodTillDate?.toISOString().slice(0, 10) ?? null,
         source, submissionReference: String(payload.submissionReference ?? ""),
       }),
     });

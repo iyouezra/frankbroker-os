@@ -4,6 +4,7 @@ import { availableActions } from "../../../../lib/oms/status";
 import { orderResponsibility } from "../../../../lib/order-log";
 import { prisma } from "../../../../lib/prisma";
 import { requireTenantModule } from "../../../../lib/tenant-capabilities";
+import { orderValidityExpired } from "../../../../lib/order-input";
 
 const feeBreakdown = (value: unknown) => {
   const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -48,6 +49,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     });
     const latestTrade = order.trades.at(-1);
     const baseActions: readonly string[] = availableActions(order.status);
+    const instructionExpired = orderValidityExpired({ validity: order.validity, goodTillDate: order.goodTillDate, submittedAt: order.submittedAt ?? order.createdAt });
     const trader = order.assignedTrader?.fullName ?? "Unassigned";
 
     return Response.json({
@@ -67,6 +69,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         triggerPrice: order.triggerPrice ? toNum(order.triggerPrice) : null,
         orderType: order.orderType,
         validity: order.validity,
+        goodTillDate: order.goodTillDate?.toISOString().slice(0, 10) ?? null,
+        instructionExpired,
         submissionReference: order.submissionReference,
         estimatedGross: toNum(order.estimatedGross),
         estimatedFees: toNum(order.estimatedFees),
@@ -80,7 +84,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         approvedAt: order.approvedAt?.toISOString() ?? null,
         rejectionReason: order.rejectionReason,
         notes: order.notes,
-        ...orderResponsibility(order.status, trader === "Unassigned" ? null : trader),
+        ...(instructionExpired && ["pending_broker_review", "approved", "partially_filled"].includes(order.status)
+          ? { nextAction: "Cancel expired instruction", actionOwner: "Operations review" }
+          : orderResponsibility(order.status, trader === "Unassigned" ? null : trader)),
         filledQuantity: toNum(order.filledQuantity),
         remainingQuantity: toNum(order.remainingQuantity),
         averageFillPrice: order.averageFillPrice ? toNum(order.averageFillPrice) : null,
@@ -92,7 +98,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         contractNoteNumber: order.contractNoteNumber,
         contractNoteGeneratedAt: order.contractNoteGeneratedAt?.toISOString(),
         availableActions: [
-          ...baseActions,
+          ...baseActions.filter((action) => !instructionExpired || !["approve", "execute"].includes(action)),
           ...(!baseActions.includes("contract_note") && order.trades.length && (order.remainingQuantity.isZero() || ["cancelled", "failed"].includes(order.status)) ? ["contract_note"] : []),
           ...(!baseActions.includes("settle") && order.trades.some((trade) => trade.settlement?.status !== "settled") ? ["settle"] : []),
         ],

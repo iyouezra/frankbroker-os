@@ -14,10 +14,17 @@ import {
 } from "../shared/investor-foundation";
 import { useT } from "../../../lib/i18n/context";
 import type { TranslationKey } from "../../../lib/i18n/en";
+import { addisBusinessDate } from "../../../lib/addis-date";
 
 // Order types are submitted to the API as these exact English values, so only
 // the chip labels beside them are translated.
 const ORDER_TYPE_LABELS = { Market: "order.typeMarket", Limit: "order.typeLimit", "Stop-loss": "order.typeStopLoss" } satisfies Record<string, TranslationKey>;
+const VALIDITIES = ["day", "gtc", "gtd"] as const;
+const minimumGtdDate = () => {
+  const date = new Date(`${addisBusinessDate()}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+};
 
 export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRule, allowedOrderTypes, onClose, onPlaced }: { stock: InvestorStock; side: "Buy" | "Sell"; holdingQuantity: number; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
   const t = useT();
@@ -25,6 +32,8 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
   const [quantity, setQuantity] = useState("10");
   const [limitPrice, setLimitPrice] = useState(String(Math.round(stock.price * .98)));
   const [triggerPrice, setTriggerPrice] = useState(String(Number((stock.price * .95).toFixed(stock.price >= 1_000 ? 0 : 2))));
+  const [validity, setValidity] = useState<"day" | "gtc" | "gtd">("day");
+  const [goodTillDate, setGoodTillDate] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [disclosureAccepted, setDisclosureAccepted] = useState(false);
@@ -41,11 +50,12 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
   const hasBuyingPower = isSell || totalCost <= availableCash;
   const candidateOptions: Array<"Market" | "Limit" | "Stop-loss"> = isSell ? ["Market", "Limit", "Stop-loss"] : ["Market", "Limit"];
   const options = candidateOptions.filter((option) => allowedOrderTypes.includes(option));
+  const validityReady = validity !== "gtd" || goodTillDate >= minimumGtdDate();
   const place = async () => {
     setPlacing(true);
     setHeldChecks([]);
     try {
-      const result = await onPlaced({ symbol: stock.ticker, side: isSell ? "sell" : "buy", quantity: shares, price: executionPrice, triggerPrice: isStopLoss ? triggerValue : undefined, orderType, disclosureAccepted: true, disclosureVersion: "order-v1" });
+      const result = await onPlaced({ symbol: stock.ticker, side: isSell ? "sell" : "buy", quantity: shares, price: executionPrice, triggerPrice: isStopLoss ? triggerValue : undefined, orderType, validity, goodTillDate: validity === "gtd" ? goodTillDate : undefined, disclosureAccepted: true, disclosureVersion: "order-v1" });
       const failed = (result?.checks ?? []).filter((check) => !check.passed);
       if (failed.length) { setHeldChecks(failed); setReviewing(false); }
     }
@@ -56,8 +66,10 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
       <section className={styles.orderSheet} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="order-title">
         <i className={styles.sheetHandle} />
         <h2 id="order-title">{t(isSell ? "order.titleSell" : "order.titleBuy", { ticker: stock.ticker })}</h2>
-        <div className={styles.chips}>{options.map((option) => <button key={option} className={orderType === option ? styles.chipActive : ""} onClick={() => setOrderType(option)}>{t(ORDER_TYPE_LABELS[option])}</button>)}</div>
+        <div className={styles.chips}>{options.map((option) => <button key={option} className={orderType === option ? styles.chipActive : ""} onClick={() => { setOrderType(option); if (option === "Market") { setValidity("day"); setGoodTillDate(""); } }}>{t(ORDER_TYPE_LABELS[option])}</button>)}</div>
         <p className={styles.orderHint}>{t(orderType === "Market" ? "order.hintMarket" : orderType === "Limit" ? (isSell ? "order.hintLimitSell" : "order.hintLimitBuy") : "order.hintStopLoss")}</p>
+        <label className={styles.formField}><span>{t("order.validity")}</span><div className={styles.chips}>{(orderType === "Market" ? VALIDITIES.slice(0, 1) : VALIDITIES).map((item) => <button type="button" key={item} className={validity === item ? styles.chipActive : ""} onClick={() => { setValidity(item); if (item !== "gtd") setGoodTillDate(""); }}>{t(`order.validity.${item}` as TranslationKey)}</button>)}</div><small>{t(orderType === "Market" ? "order.validity.marketNote" : "order.validity.note")}</small></label>
+        {validity === "gtd" && <label className={styles.formField}><span>{t("order.goodTillDate")}</span><div><input type="date" min={minimumGtdDate()} value={goodTillDate} onChange={(event) => setGoodTillDate(event.target.value)} /></div></label>}
         {orderType === "Limit" && <label className={styles.formField}><span>{t(isSell ? "order.limitSell" : "order.limitBuy")}</span><div><em>ETB</em><input inputMode="decimal" value={limitPrice} onChange={(event) => setLimitPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div></label>}
         {isStopLoss && <label className={styles.formField}><span>{t("order.triggerLabel")}</span><div><em>ETB</em><input inputMode="decimal" value={triggerPrice} onChange={(event) => setTriggerPrice(event.target.value.replace(/[^0-9.]/g, ""))} /></div><small className={triggerValid ? "" : styles.fieldError}>{t(triggerValid ? "order.currentPrice" : "order.triggerError", { price: formatEtb(stock.price) })}</small></label>}
         <label className={styles.formField}><span>{t("order.shares")}</span><div><input inputMode="numeric" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))} /><em>× {formatEtb(executionPrice)}</em></div><small>{isSell ? t("order.youHold", { count: holdingQuantity }) : t("bond.availableCash", { amount: formatEtb(availableCash) })}</small></label>
@@ -73,10 +85,10 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
           <div><dt>{t(isSell ? "order.netProceedsEstimated" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div>
         </dl>
         {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>{heldChecks.length === 1 ? t("order.heldOne") : t("order.heldMany", { count: heldChecks.length })}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
-        <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !hasBuyingPower || !triggerValid} onClick={() => setReviewing(true)}>{t("order.review")}</Button>
+        <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !hasBuyingPower || !triggerValid || !validityReady} onClick={() => setReviewing(true)}>{t("order.review")}</Button>
       </section>
     </div>
-    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">{t("order.confirmTitle")}</h2><p>{t(isSell ? "order.confirmPrefixSell" : "order.confirmPrefixBuy")}<b>{t("order.confirmSubject", { count: shares.toFixed(0), ticker: stock.ticker })}</b>{t(isSell ? "order.confirmSuffixSell" : "order.confirmSuffixBuy")}{isStopLoss ? <>{t("order.stopLossPrefix")}<b>{formatEtb(triggerValue)}</b>{t("order.stopLossSuffix")}</> : t("order.executionRisk")}</p><dl className={styles.orderTotals}><div><dt>{t("order.orderValue")}</dt><dd>{formatEtb(gross)}</dd></div><div><dt>{t("order.brokerage")}</dt><dd>{formatEtb(fees.brokerage)}</dd></div><div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>{t("order.totalFees")}</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{t(isSell ? "order.netProceeds" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>{t("order.disclosure")}</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>{t("order.cancel")}</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? t("order.sending") : t(isSell ? "order.sell" : "order.buy")}</Button></div></section></div>}
+    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">{t("order.confirmTitle")}</h2><p>{t(isSell ? "order.confirmPrefixSell" : "order.confirmPrefixBuy")}<b>{t("order.confirmSubject", { count: shares.toFixed(0), ticker: stock.ticker })}</b>{t(isSell ? "order.confirmSuffixSell" : "order.confirmSuffixBuy")}{isStopLoss ? <>{t("order.stopLossPrefix")}<b>{formatEtb(triggerValue)}</b>{t("order.stopLossSuffix")}</> : t("order.executionRisk")}</p><dl className={styles.orderTotals}><div><dt>{t("order.validity")}</dt><dd>{t(`order.validity.${validity}` as TranslationKey)}{validity === "gtd" ? ` · ${goodTillDate}` : ""}</dd></div><div><dt>{t("order.orderValue")}</dt><dd>{formatEtb(gross)}</dd></div><div><dt>{t("order.brokerage")}</dt><dd>{formatEtb(fees.brokerage)}</dd></div><div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>{t("order.totalFees")}</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{t(isSell ? "order.netProceeds" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>{t("order.disclosure")}</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>{t("order.cancel")}</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? t("order.sending") : t(isSell ? "order.sell" : "order.buy")}</Button></div></section></div>}
   </>;
 }
 
@@ -88,6 +100,8 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
   const [reviewing, setReviewing] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [disclosureAccepted, setDisclosureAccepted] = useState(false);
+  const [validity, setValidity] = useState<"day" | "gtc" | "gtd">("day");
+  const [goodTillDate, setGoodTillDate] = useState("");
   const [heldChecks, setHeldChecks] = useState<OrderCheck[]>([]);
   const value = Number(amount) || 0;
   const allocation = calculateBondOrder(value, pricePerBond, (gross) => calculateInvestorFees(gross, feeRule).total);
@@ -95,12 +109,13 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
   const meetsMinimum = allocation.gross >= bond.minimumInvestment;
   const hasCash = allocation.total <= availableCash;
   const limitAllowed = allowedOrderTypes.includes("Limit");
-  const valid = bond.status === "tradable" && allocation.units > 0 && meetsMinimum && hasCash && limitAllowed;
+  const validityReady = validity !== "gtd" || goodTillDate >= minimumGtdDate();
+  const valid = bond.status === "tradable" && allocation.units > 0 && meetsMinimum && hasCash && limitAllowed && validityReady;
   const place = async () => {
     setPlacing(true);
     setHeldChecks([]);
     try {
-      const result = await onPlaced({ symbol: bond.ticker, side: "buy", quantity: allocation.units, price: pricePerBond, orderType: "Limit", disclosureAccepted: true, disclosureVersion: "order-v1" });
+      const result = await onPlaced({ symbol: bond.ticker, side: "buy", quantity: allocation.units, price: pricePerBond, orderType: "Limit", validity, goodTillDate: validity === "gtd" ? goodTillDate : undefined, disclosureAccepted: true, disclosureVersion: "order-v1" });
       const failed = (result?.checks ?? []).filter((check) => !check.passed);
       if (failed.length) {
         setHeldChecks(failed);
@@ -114,6 +129,8 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
         <i className={styles.sheetHandle} />
         <div className={styles.bondOrderHead}><span><small>{t("bond.eyebrow")}</small><h2 id="bond-order-title">{bond.ticker}</h2></span><em>{t("bond.limitOrder")}</em></div>
         <p className={styles.orderHint}>{t("bond.hint")}</p>
+        <label className={styles.formField}><span>{t("order.validity")}</span><div className={styles.chips}>{VALIDITIES.map((item) => <button type="button" key={item} className={validity === item ? styles.chipActive : ""} onClick={() => { setValidity(item); if (item !== "gtd") setGoodTillDate(""); }}>{t(`order.validity.${item}` as TranslationKey)}</button>)}</div><small>{t("order.validity.note")}</small></label>
+        {validity === "gtd" && <label className={styles.formField}><span>{t("order.goodTillDate")}</span><div><input type="date" min={minimumGtdDate()} value={goodTillDate} onChange={(event) => setGoodTillDate(event.target.value)} /></div></label>}
         <label className={styles.formField}><span>{t("bond.amountLabel")}</span><div><em>ETB</em><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))} /></div><small>{t("bond.availableCash", { amount: formatEtb(availableCash) })}</small></label>
         {!meetsMinimum && value > 0 && <p className={styles.inlineError}>{t("bond.minimumError", { amount: formatEtb(bond.minimumInvestment) })}</p>}
         {!hasCash && <p className={styles.inlineError}>{t("bond.cashError")}</p>}

@@ -42,7 +42,7 @@ export type InvestorKyc = {
   pepStatus: "not_declared" | "not_pep" | "pep" | "related_to_pep";
   verificationId?: string;
 };
-export type InvestorOrderInput = { symbol: string; side: "buy" | "sell"; quantity: number; price: number; triggerPrice?: number; orderType: string; disclosureAccepted: boolean; disclosureVersion: "order-v1" };
+export type InvestorOrderInput = { symbol: string; side: "buy" | "sell"; quantity: number; price: number; triggerPrice?: number; orderType: string; validity: "day" | "gtc" | "gtd"; goodTillDate?: string; disclosureAccepted: boolean; disclosureVersion: "order-v1" };
 export type OrderCheck = { code: string; passed: boolean; message: string };
 export type PlaceResult = { status?: string; checks?: OrderCheck[] };
 export type CashPool = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; beneficialBalance: number };

@@ -366,6 +366,13 @@ export const en = {
   "order.typeMarket": "Market",
   "order.typeLimit": "Limit",
   "order.typeStopLoss": "Stop-loss",
+  "order.validity": "Validity",
+  "order.validity.day": "Day",
+  "order.validity.gtc": "GTC",
+  "order.validity.gtd": "GTD",
+  "order.validity.marketNote": "Market orders are valid for the current trading day only.",
+  "order.validity.note": "GTC stays open until cancelled. GTD stays open through its selected date.",
+  "order.goodTillDate": "Good-till date",
   "order.hintMarket": "Trades at the best available ESX price.",
   "order.hintLimitBuy": "Buys only at your selected price or better.",
   "order.hintLimitSell": "Sells only at your selected price or better.",
@@ -403,7 +410,7 @@ export const en = {
   "order.orderValue": "Order value",
   "order.totalFees": "Total fees",
   "order.netProceeds": "Net proceeds",
-  "order.disclosure": "I reviewed the instrument, quantity, order type, estimated value, fee breakdown, and execution risk and authorize this instruction.",
+  "order.disclosure": "I reviewed the instrument, quantity, order type, validity, estimated value, fee breakdown, and execution risk and authorize this instruction.",
   "order.cancel": "Cancel",
   "order.sending": "Sending…",
 
@@ -425,7 +432,7 @@ export const en = {
   "bond.confirmSubjectOne": "{count} bond of {ticker}",
   "bond.confirmSubjectMany": "{count} bonds of {ticker}",
   "bond.confirmSuffix": ". This limit order may not fill.",
-  "bond.disclosure": "I reviewed the bond, quantity, price, estimated value, fees, maturity, and execution risk and authorize this instruction.",
+  "bond.disclosure": "I reviewed the bond, quantity, price, validity, estimated value, fees, maturity, and execution risk and authorize this instruction.",
   "bond.buy": "Buy bond",
 
   // Security detail screens. The indicator blocks (Open / Day range / Volume /

@@ -8,12 +8,14 @@ import { ACTIVE_ORDER_STATUSES, waitingTime } from "../../../lib/order-log";
 import { addisBusinessDate } from "../../../lib/addis-date";
 import { BROKER_TENANT_ID, EmptyState, SectionHeader, StatusBadge, displayLabel, etb, fmt, hydrateOrders, normalizedOrderType } from "../shared/broker-foundation";
 import type { OrderFocus } from "../market/market-watch-screen";
+import { normalizeOrderValidity, orderValidityLabel } from "../../../lib/order-input";
 
 export function OrdersPage({ orders, query, role, refreshKey, focus, initialStatus, onInitialStatusConsumed, onClearFocus, onOpen, onNewOrder }: { orders: DemoOrder[]; query: string; role: Role; refreshKey: number; focus?: OrderFocus | null; initialStatus?: "all" | "review" | "approved" | "executed" | "exceptions" | "open" | "history" | null; onInitialStatusConsumed?: () => void; onClearFocus?: () => void; onOpen: (order: DemoOrder) => void; onNewOrder: () => void }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "review" | "approved" | "executed" | "exceptions" | "open" | "history">(focus?.status ?? initialStatus ?? "all");
   const [sideFilter, setSideFilter] = useState<"all" | "buy" | "sell">(focus?.side ?? "all");
   const [riskFilter, setRiskFilter] = useState<"all" | "flagged">("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState("all");
+  const [validityFilter, setValidityFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState<"all" | "today" | "7d" | "30d">("all");
   const [sort, setSort] = useState<"newest" | "oldest" | "value" | "updated">("newest");
@@ -27,6 +29,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
   const [facets, setFacets] = useState<OrderLogResponse["facets"]>({
     statuses: Object.fromEntries([...new Set(orders.map((order) => order.status))].map((status) => [status, orders.filter((order) => order.status === status).length])),
     orderTypes: [...new Set(orders.map((order) => normalizedOrderType(order.orderType)))],
+    validities: [...new Set(orders.map((order) => normalizeOrderValidity(order.validity) ?? "day"))],
     sources: [...new Set(orders.map((order) => order.source.toLowerCase().replaceAll(" ", "_")))],
   });
   const statusMatches = (order: DemoOrder) => statusFilter === "all"
@@ -44,6 +47,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
     side: sideFilter,
     risk: riskFilter,
     orderType: orderTypeFilter,
+    validity: validityFilter,
     source: sourceFilter,
     period: periodFilter,
     sort,
@@ -59,6 +63,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
         && (sideFilter === "all" || order.side === sideFilter)
         && (riskFilter === "all" || order.riskFlag !== "none")
         && (orderTypeFilter === "all" || normalizedOrderType(order.orderType) === normalizedOrderType(orderTypeFilter))
+        && (validityFilter === "all" || (normalizeOrderValidity(order.validity) ?? "day") === validityFilter)
         && (sourceFilter === "all" || order.source.toLowerCase().replaceAll(" ", "_") === sourceFilter)
         && (!focus?.instrumentId || order.instrumentId === focus.instrumentId)
         && (periodFilter === "all" || (periodFilter === "today" ? order.createdAt.slice(0, 10) === today : new Date(order.createdAt).getTime() >= cutoff))
@@ -88,7 +93,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, statusFilter, sideFilter, riskFilter, orderTypeFilter, sourceFilter, periodFilter, sort, page, role, refreshKey, orders, focus]);
+  }, [query, statusFilter, sideFilter, riskFilter, orderTypeFilter, validityFilter, sourceFilter, periodFilter, sort, page, role, refreshKey, orders, focus]);
 
   const chooseStatus = (value: typeof statusFilter) => { setStatusFilter(value); setPage(1); };
   const exportFiltered = async () => {
@@ -99,8 +104,8 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
       ? await response.blob()
       : new Blob([
         [
-          ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated value", "Executed value", "Status", "Source", "Submission reference", "Assigned trader", "Next action", "Action owner", "Exception reason"],
-          ...fallbackFilteredOrders().map((order) => [order.id, order.createdAt, order.updatedAt ?? order.createdAt, order.client, order.clientCode, order.accountNumber ?? order.accountId, order.symbol, order.side, order.orderType, order.validity ?? "Day", order.price, order.triggerPrice ?? "", order.quantity, order.filledQuantity ?? 0, order.remainingQuantity ?? order.quantity, order.estimatedNet, order.executedNet ?? 0, order.status, order.source, order.submissionReference ?? "", order.trader, order.nextAction ?? "", order.actionOwner ?? "", order.rejectionReason ?? ""]),
+          ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Good-till date", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated value", "Executed value", "Status", "Source", "Submission reference", "Assigned trader", "Next action", "Action owner", "Exception reason"],
+          ...fallbackFilteredOrders().map((order) => [order.id, order.createdAt, order.updatedAt ?? order.createdAt, order.client, order.clientCode, order.accountNumber ?? order.accountId, order.symbol, order.side, order.orderType, normalizeOrderValidity(order.validity) ?? "day", order.goodTillDate ?? "", order.price, order.triggerPrice ?? "", order.quantity, order.filledQuantity ?? 0, order.remainingQuantity ?? order.quantity, order.estimatedNet, order.executedNet ?? 0, order.status, order.source, order.submissionReference ?? "", order.trader, order.nextAction ?? "", order.actionOwner ?? "", order.rejectionReason ?? ""]),
         ].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n"),
       ], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -124,6 +129,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
     <div className="blotter-controls order-log-controls">
       <label>Side<BrandSelect className="bselect-inline" value={sideFilter} onChange={(next) => { setSideFilter(next as typeof sideFilter); setPage(1); }} ariaLabel="Filter by side" options={[{ value: "all", label: "All sides" }, { value: "buy", label: "Buy" }, { value: "sell", label: "Sell" }]} /></label>
       <label>Order type<BrandSelect className="bselect-inline" value={orderTypeFilter} onChange={(next) => { setOrderTypeFilter(next); setPage(1); }} ariaLabel="Filter by order type" options={[{ value: "all", label: "All types" }, ...facets.orderTypes.map((type) => ({ value: type, label: displayLabel(type) }))]} /></label>
+      <label>Validity<BrandSelect className="bselect-inline" value={validityFilter} onChange={(next) => { setValidityFilter(next); setPage(1); }} ariaLabel="Filter by validity" options={[{ value: "all", label: "All validity" }, ...facets.validities.map((validity) => ({ value: validity, label: orderValidityLabel(validity) }))]} /></label>
       <label>Source<BrandSelect className="bselect-inline" value={sourceFilter} onChange={(next) => { setSourceFilter(next); setPage(1); }} ariaLabel="Filter by source" options={[{ value: "all", label: "All sources" }, ...facets.sources.map((source) => ({ value: source, label: displayLabel(source) }))]} /></label>
       <label>Period<BrandSelect className="bselect-inline" value={periodFilter} onChange={(next) => { setPeriodFilter(next as typeof periodFilter); setPage(1); }} ariaLabel="Filter by period" options={[{ value: "all", label: "All dates" }, { value: "today", label: "Today" }, { value: "7d", label: "Last 7 days" }, { value: "30d", label: "Last 30 days" }]} /></label>
       <label>Risk<BrandSelect className="bselect-inline" value={riskFilter} onChange={(next) => { setRiskFilter(next as typeof riskFilter); setPage(1); }} ariaLabel="Filter by risk" options={[{ value: "all", label: "All risk levels" }, { value: "flagged", label: "Flagged only" }]} /></label>
@@ -143,7 +149,7 @@ function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: D
     return <tr key={order.id} onClick={() => onOpen(order)}>
       <td><b>{order.id}</b><small>Submitted {new Date(order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small><small>Updated {new Date(order.updatedAt ?? order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small></td>
       <td><b>{order.client}</b><small>{order.clientCode} · {order.accountNumber ?? order.accountId.replace("acc_", "TRD-").toUpperCase()}</small></td>
-      <td><b>{order.symbol} · {order.orderType}</b><small>{order.validity ?? "Day"} · {fmt.format(order.price)} ETB{order.triggerPrice ? ` · Trigger ${fmt.format(order.triggerPrice)}` : ""}</small></td>
+      <td><b>{order.symbol} · {order.orderType}</b><small>{orderValidityLabel(order.validity, order.goodTillDate)} · {fmt.format(order.price)} ETB{order.triggerPrice ? ` · Trigger ${fmt.format(order.triggerPrice)}` : ""}</small>{order.instructionExpired && <small className="risk-note">Expired instruction</small>}</td>
       <td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td>
       <td><b>{displayLabel(order.source)}</b><small>Instruction source</small></td>
       <td className="num"><b>{fmt.format(order.filledQuantity ?? 0)} / {fmt.format(order.quantity)}</b><small>{fmt.format(order.remainingQuantity ?? order.quantity)} remaining</small></td>

@@ -26,6 +26,8 @@ test("order authorization binds the Stop-Loss trigger price", () => {
     quantity: 10,
     price: 305,
     orderType: "Stop-loss",
+    validity: "gtd",
+    goodTillDate: "2026-08-28",
     source: "investor_portal",
     submissionReference: "submit-1",
   };
