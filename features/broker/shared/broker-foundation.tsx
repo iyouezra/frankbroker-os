@@ -58,7 +58,7 @@ export type EndOfDayCheck = { key: string; label: string; passed: boolean; detai
 export type EndOfDayControl = { businessDate: string; status: string; cutoffAt: string | null; closeEvidence: string | null; closedAt: string | null; closedBy: string | null; reopenedAt: string | null; reopenedBy: string | null; reopenReason: string | null; version: number; ready: boolean; checks: EndOfDayCheck[] };
 export type AuditEntry = { id?: string; time: string; actor: string; action: string; detail: string; entity: string };
 export type BrokerInstrument = { id: string; symbol: string; name: string; asset: string; issuer: string; status: string; currency: string; lot: number; tick: number; cycle: string; price: number; coupon?: string; maturity?: string };
-export type TenantFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
+export type TenantFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null; tiers?: Array<{ minimumOrderValue: number; maximumOrderValue: number | null; brokeragePct: number }> };
 export type TenantControls = { makerChecker: boolean; approvalThreshold: number; clientDailyLimit: number; brokerageFeePct: number; minimumFee: number; settlementCycle: string; allowedOrderTypes: string[]; feeRules: TenantFeeRule[]; marketFeeScheduleConfigured: boolean };
 export type TenantFeatures = { manualTradeCapture: boolean; [key: string]: boolean };
 export type TenantModules = { dealer_operations: boolean; investor_servicing: boolean; issuer_advisory: boolean };
@@ -255,6 +255,7 @@ export const fallbackCrmThreads: CrmThreadDetail[] = [
 export type Client360Detail = {
   client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string; createdBy: string | null; submittedAt: string | null; approvedBy: string | null; approvedAt: string | null; rejectionReason: string | null; onboardingChannel?: string; address?: string | null; identityMasked?: string | null; taxIdMasked?: string | null; businessRegistrationNumber?: string | null; authorizedRepresentativeName?: string | null; beneficialOwners?: unknown; signatoryAuthorityConfirmed?: boolean; pepStatus?: string };
   readiness: { canTrade: boolean; blockingReasons: string[]; items: Array<{ key: string; label: string; state: "pass" | "fail" | "warning"; detail: string }> };
+  tradingMandate?: { status: string; buyEnabled: boolean; sellEnabled: boolean; maxOrderValue: number | null; dailyGrossLimit: number | null; effectiveDailyGrossLimit: number; allowedAssetClasses: string[]; allowedMarketSegments: string[]; allowedOrderTypes: string[]; commissionSource: "tenant_default"; version: number };
   cash: { total: number; available: number; blocked: number; unsettled: number; pendingDeposits: number; pendingWithdrawals: number; currency: string } | null;
   holdings: Array<{ id: string; instrumentId: string; symbol: string; name: string; assetClass: string; total: number; available: number; blocked: number; unsettled: number; averageCost: number; lastPrice: number; marketValue: number; updatedAt: string }>;
   orders: Array<{ id: string; createdAt: string; instrumentId: string; symbol: string; side: "buy" | "sell"; quantity: number; price: number; filledQuantity: number; remainingQuantity: number; status: OrderStatus; source: string; trader: string; actionRequired: string | null; availableActions: string[] }>;
@@ -349,7 +350,8 @@ export function normalizedOrderType(value: string) {
 export function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, price: number, feePct: number, minimumFee = 0, feeRule?: TenantFeeRule) {
   const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
   const gross = quantity * price;
-  const brokeragePct = feeRule?.brokeragePct ?? feePct;
+  const tier = feeRule?.tiers?.find((item) => gross >= item.minimumOrderValue && (item.maximumOrderValue === null || gross < item.maximumOrderValue));
+  const brokeragePct = tier?.brokeragePct ?? feeRule?.brokeragePct ?? feePct;
   const brokerageMinimum = feeRule?.minimumFee ?? minimumFee;
   const percentageFee = money(gross * (brokeragePct / 100));
   const brokerage = gross > 0 ? money(Math.min(feeRule?.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(brokerageMinimum, percentageFee))) : 0;
@@ -511,10 +513,10 @@ export const emptyReconBatch: ReconBatch = { id: "No batches", batchDate: "", fi
 export const emptyEndOfDayControl: EndOfDayControl = { businessDate: "", status: "open", cutoffAt: null, closeEvidence: null, closedAt: null, closedBy: null, reopenedAt: null, reopenedBy: null, reopenReason: null, version: 0, ready: false, checks: [] };
 
 export const statusLabels: Record<OrderStatus, string> = {
-  draft: "Draft", submitted: "Submitted", validation_failed: "Validation failed", pending_broker_review: "Pending review", approved: "Approved", rejected: "Rejected", partially_filled: "Partially filled", filled: "Filled", cancelled: "Cancelled", settlement_pending: "Settlement pending", settled: "Settled", failed: "Failed",
+  draft: "Draft", submitted: "Submitted", validation_failed: "Validation failed", pending_broker_review: "Pending review", approved: "Approved", rejected: "Rejected", partially_filled: "Partially filled", filled: "Filled", cancelled: "Cancelled", expired: "Expired", settlement_pending: "Settlement pending", settled: "Settled", failed: "Failed",
 };
 const statusTone: Record<OrderStatus, string> = {
-  draft: "neutral", submitted: "info", validation_failed: "danger", pending_broker_review: "warning", approved: "brand", rejected: "danger", partially_filled: "purple", filled: "success", cancelled: "neutral", settlement_pending: "warning", settled: "success", failed: "danger",
+  draft: "neutral", submitted: "info", validation_failed: "danger", pending_broker_review: "warning", approved: "brand", rejected: "danger", partially_filled: "purple", filled: "success", cancelled: "neutral", expired: "neutral", settlement_pending: "warning", settled: "success", failed: "danger",
 };
 
 export const fmt = new Intl.NumberFormat("en-ET", { maximumFractionDigits: 2 });

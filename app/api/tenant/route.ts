@@ -40,7 +40,7 @@ export async function GET(request: Request) {
         instrumentAccess: { where: { enabled: true }, include: { instrument: true } },
         feeSchedules: {
           where: { status: "published", effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }] },
-          include: { rules: true },
+          include: { rules: { include: { tiers: { orderBy: { minimumOrderValue: "asc" } } } } },
           orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
           take: 1,
         },
@@ -124,8 +124,22 @@ export async function PATCH(request: Request) {
       brokeragePct: Number(rule.brokeragePct),
       minimumFee: Number(rule.minimumFee),
       maximumFee: rule.maximumFee === null || rule.maximumFee === "" || rule.maximumFee === undefined ? null : Number(rule.maximumFee),
+      tiers: Array.isArray(rule.tiers) ? rule.tiers.map((tier) => {
+        const value = tier as Record<string, unknown>;
+        return {
+          minimumOrderValue: Number(value.minimumOrderValue),
+          maximumOrderValue: value.maximumOrderValue === null || value.maximumOrderValue === "" || value.maximumOrderValue === undefined ? null : Number(value.maximumOrderValue),
+          brokeragePct: Number(value.brokeragePct),
+        };
+      }) : [],
     }));
-    if (normalized.some((rule) => !["equity", "bond"].includes(rule.assetClass) || !Number.isFinite(rule.brokeragePct) || rule.brokeragePct < 0 || !Number.isFinite(rule.minimumFee) || rule.minimumFee < 0 || (rule.maximumFee !== null && (!Number.isFinite(rule.maximumFee) || rule.maximumFee < rule.minimumFee)))) {
+    const invalidTier = normalized.some((rule) => rule.tiers.some((tier, index, tiers) =>
+      !Number.isFinite(tier.minimumOrderValue) || tier.minimumOrderValue < 0
+      || !Number.isFinite(tier.brokeragePct) || tier.brokeragePct < 0
+      || (tier.maximumOrderValue !== null && (!Number.isFinite(tier.maximumOrderValue) || tier.maximumOrderValue <= tier.minimumOrderValue))
+      || tiers.some((other, otherIndex) => otherIndex !== index && tier.minimumOrderValue < (other.maximumOrderValue ?? Number.POSITIVE_INFINITY) && other.minimumOrderValue < (tier.maximumOrderValue ?? Number.POSITIVE_INFINITY))
+    ));
+    if (invalidTier || normalized.some((rule) => !["equity", "bond"].includes(rule.assetClass) || !Number.isFinite(rule.brokeragePct) || rule.brokeragePct < 0 || !Number.isFinite(rule.minimumFee) || rule.minimumFee < 0 || (rule.maximumFee !== null && (!Number.isFinite(rule.maximumFee) || rule.maximumFee < rule.minimumFee)))) {
       return Response.json({ error: "Enter valid non-negative brokerage rates and fee limits." }, { status: 400 });
     }
     const existing = await prisma.feeSchedule.findUnique({ where: { brokerId_version: { brokerId: actor.brokerId, version } } });
@@ -144,7 +158,11 @@ export async function PATCH(request: Request) {
         create: { id, brokerId: actor.brokerId, name: "Brokerage commission schedule", version, status: "published", effectiveFrom: effectiveDate },
       });
       await tx.feeRule.deleteMany({ where: { feeScheduleId: id } });
-      await tx.feeRule.createMany({ data: normalized.map((rule) => ({ id: crypto.randomUUID(), feeScheduleId: id, ...rule, regulatorPct: 0, exchangePct: 0, csdPct: 0 })) });
+      for (const rule of normalized) {
+        const ruleId = crypto.randomUUID();
+        await tx.feeRule.create({ data: { id: ruleId, feeScheduleId: id, assetClass: rule.assetClass, marketSegment: rule.marketSegment, brokeragePct: rule.brokeragePct, minimumFee: rule.minimumFee, maximumFee: rule.maximumFee, regulatorPct: 0, exchangePct: 0, csdPct: 0 } });
+        if (rule.tiers.length) await tx.feeTier.createMany({ data: rule.tiers.map((tier) => ({ id: crypto.randomUUID(), feeRuleId: ruleId, ...tier })) });
+      }
       const primary = normalized.find((rule) => rule.assetClass === "equity") ?? normalized[0];
       await tx.brokerSettings.update({ where: { brokerId: actor.brokerId }, data: { brokerageFeePct: primary.brokeragePct, minimumFee: primary.minimumFee } });
       await tx.auditLog.create({ data: {

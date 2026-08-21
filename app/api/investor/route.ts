@@ -62,7 +62,7 @@ export async function GET(request: Request) {
           },
           feeSchedules: {
             where: { status: "published", effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }] },
-            include: { rules: true },
+            include: { rules: { include: { tiers: { orderBy: { minimumOrderValue: "asc" } } } } },
             orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
             take: 1,
           },
@@ -581,6 +581,7 @@ export async function POST(request: Request) {
               brokerId,
               clientCode: applicationClientCode,
               ...clientData,
+              tradingMandate: { create: { id: `mandate_${applicationClientId}`, brokerId, commissionSource: "tenant_default" } },
             },
           })
           : await tx.client.update({ where: { id: client.id }, data: clientData });

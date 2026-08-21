@@ -9,6 +9,14 @@ export async function lockAccount(tx: Prisma.TransactionClient, accountId: strin
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "accounts" WHERE "id" = ${accountId} FOR UPDATE`);
 }
 
+export async function lockClientAccounts(tx: Prisma.TransactionClient, clientId: string) {
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "accounts" WHERE "client_id" = ${clientId} ORDER BY "id" FOR UPDATE`);
+}
+
+export async function lockClientTradingMandate(tx: Prisma.TransactionClient, clientId: string) {
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "client_trading_mandates" WHERE "client_id" = ${clientId} FOR UPDATE`);
+}
+
 export async function lockThread(tx: Prisma.TransactionClient, threadId: string) {
   await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "communication_threads" WHERE "id" = ${threadId} FOR UPDATE`);
 }

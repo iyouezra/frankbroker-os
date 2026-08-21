@@ -54,7 +54,7 @@ export type OnboardingSubmission = {
   linkedBanks: LinkedBankAccount[];
   documents: Partial<Record<"proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association", File>>;
 };
-export type InvestorFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
+export type InvestorFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null; tiers?: Array<{ minimumOrderValue: number; maximumOrderValue: number | null; brokeragePct: number }> };
 export type InvestorInstrument = {
   ticker: string;
   name: string;
@@ -108,7 +108,8 @@ export type InvestorBootstrap = {
 
 export function calculateInvestorFees(gross: number, rule: InvestorFeeRule) {
   const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-  const brokerage = gross > 0 ? money(Math.min(rule.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(rule.minimumFee, gross * rule.brokeragePct / 100))) : 0;
+  const tier = rule.tiers?.find((item) => gross >= item.minimumOrderValue && (item.maximumOrderValue === null || gross < item.maximumOrderValue));
+  const brokerage = gross > 0 ? money(Math.min(rule.maximumFee ?? Number.POSITIVE_INFINITY, Math.max(rule.minimumFee, gross * (tier?.brokeragePct ?? rule.brokeragePct) / 100))) : 0;
   const regulator = money(gross * rule.regulatorPct / 100);
   const exchange = money(gross * rule.exchangePct / 100);
   const csd = money(gross * rule.csdPct / 100);

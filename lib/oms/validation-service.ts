@@ -45,7 +45,7 @@ export function validatePreTrade(input: PreTradeValidationInput): ValidationChec
       ? { code: "SUFFICIENT_CASH", label: "Sufficient available cash", passed: input.availableCash.gte(input.requiredCash), message: `${input.availableCash.toString()} ETB available including estimated fees` }
       : { code: "SUFFICIENT_HOLDINGS", label: "Sufficient available holdings", passed: input.availableHoldings.gte(input.quantity), message: `${input.availableHoldings.toString()} units available and unblocked` },
     { code: "POSITIVE_SELL_PROCEEDS", label: "Positive net proceeds", passed: input.side === "buy" || input.sellNet.gt(0), message: input.side === "buy" || input.sellNet.gt(0) ? "Estimated proceeds remain positive after fees" : "Fees exceed the estimated sell consideration" },
-    { code: "DAILY_LIMIT", label: "Within daily trading limit", passed: !input.dailyLimit || input.projectedDailyGross.lte(input.dailyLimit), message: input.dailyLimit ? `${input.projectedDailyGross.toString()} / ${input.dailyLimit.toString()} ETB used today` : "No daily limit configured" },
+    { code: "DAILY_LIMIT", label: "Within daily trading limit", passed: input.dailyLimit === null || input.dailyLimit === undefined || input.projectedDailyGross.lte(input.dailyLimit), message: input.dailyLimit === null || input.dailyLimit === undefined ? "No daily limit configured" : `${input.projectedDailyGross.toString()} / ${input.dailyLimit.toString()} ETB used today` },
   ];
 }
 

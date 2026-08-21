@@ -84,6 +84,12 @@ async function main() {
     skipDuplicates: true,
   });
 
+  const seededClients = await prisma.client.findMany({ select: { id: true, brokerId: true } });
+  await prisma.clientTradingMandate.createMany({
+    data: seededClients.map((client) => ({ id: `mandate_${client.id}`, brokerId: client.brokerId, clientId: client.id, commissionSource: "tenant_default" })),
+    skipDuplicates: true,
+  });
+
   await prisma.clientScreening.createMany({
     data: [
       { id: "SCR-DEMO-BACKFILL-cli_meron", brokerId: "brk_abyssinia", clientId: "cli_meron", screeningType: "sanctions_pep", provider: "Frank demo screening fixture", result: "clear", reference: "DEMO-SCR-CL-10041", notes: "Demonstration evidence only. Not produced by an external screening provider.", screenedAt: new Date("2026-07-14T08:30:00Z"), recordedBy: "usr_compliance" },

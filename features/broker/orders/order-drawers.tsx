@@ -116,7 +116,7 @@ export function OrderDetail({ order, client, role, busy, controls, manualTradeCa
   ];
   const responsibility = order.nextAction && order.actionOwner ? { nextAction: order.nextAction, actionOwner: order.actionOwner } : orderResponsibility(order.status, order.trader === "Unassigned" ? null : order.trader);
   const lastChangedAt = events.at(-1)?.createdAt ?? order.updatedAt ?? order.createdAt;
-  const exceptionReason = order.rejectionReason ?? (["validation_failed", "rejected", "cancelled", "failed"].includes(order.status) ? events.at(-1)?.reason : null);
+  const exceptionReason = order.rejectionReason ?? (["validation_failed", "rejected", "cancelled", "expired", "failed"].includes(order.status) ? events.at(-1)?.reason : null);
   const maker = events.find((event) => event.fromStatus === null)?.actor;
   // Mirror the server rule: four-eyes applies only when the tenant has maker-checker
   // on and the order value meets the approval threshold.

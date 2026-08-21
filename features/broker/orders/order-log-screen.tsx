@@ -34,11 +34,11 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
   });
   const statusMatches = (order: DemoOrder) => statusFilter === "all"
     || (statusFilter === "open" && ["draft", "submitted", "validation_failed", "pending_broker_review", "approved", "partially_filled"].includes(order.status))
-    || (statusFilter === "history" && ["filled", "cancelled", "settlement_pending", "settled", "rejected", "failed"].includes(order.status))
+    || (statusFilter === "history" && ["filled", "cancelled", "expired", "settlement_pending", "settled", "rejected", "failed"].includes(order.status))
     || (statusFilter === "review" && order.status === "pending_broker_review")
     || (statusFilter === "approved" && order.status === "approved")
     || (statusFilter === "executed" && ["partially_filled", "filled", "settlement_pending", "settled"].includes(order.status))
-    || (statusFilter === "exceptions" && ["validation_failed", "rejected", "cancelled", "failed"].includes(order.status));
+    || (statusFilter === "exceptions" && ["validation_failed", "rejected", "cancelled", "expired", "failed"].includes(order.status));
   const buildParams = (requestedPage = page) => new URLSearchParams({
     page: String(requestedPage),
     pageSize: "25",
@@ -124,7 +124,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
       <button className={`filter ${statusFilter === "review" ? "active" : ""}`} onClick={() => chooseStatus("review")}>Pending review <b>{count(["pending_broker_review"])}</b></button>
       <button className={`filter ${statusFilter === "approved" ? "active" : ""}`} onClick={() => chooseStatus("approved")}>Approved <b>{count(["approved"])}</b></button>
       <button className={`filter ${statusFilter === "executed" ? "active" : ""}`} onClick={() => chooseStatus("executed")}>Executed <b>{count(["partially_filled", "filled", "settlement_pending", "settled"])}</b></button>
-      <button className={`filter ${statusFilter === "exceptions" ? "active" : ""}`} onClick={() => chooseStatus("exceptions")}>Exceptions <b>{count(["validation_failed", "rejected", "cancelled", "failed"])}</b></button>
+      <button className={`filter ${statusFilter === "exceptions" ? "active" : ""}`} onClick={() => chooseStatus("exceptions")}>Exceptions <b>{count(["validation_failed", "rejected", "cancelled", "expired", "failed"])}</b></button>
     </div>
     <div className="blotter-controls order-log-controls">
       <label>Side<BrandSelect className="bselect-inline" value={sideFilter} onChange={(next) => { setSideFilter(next as typeof sideFilter); setPage(1); }} ariaLabel="Filter by side" options={[{ value: "all", label: "All sides" }, { value: "buy", label: "Buy" }, { value: "sell", label: "Sell" }]} /></label>

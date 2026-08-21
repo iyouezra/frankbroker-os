@@ -23,6 +23,7 @@ export type OrderStatus =
   | "partially_filled"
   | "filled"
   | "cancelled"
+  | "expired"
   | "settlement_pending"
   | "settled"
   | "failed";

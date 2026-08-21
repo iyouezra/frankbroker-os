@@ -15,7 +15,7 @@ import {
 
 export const runtime = "nodejs";
 
-const terminalOrderStatuses = ["validation_failed", "rejected", "cancelled", "settled", "failed"];
+const terminalOrderStatuses = ["validation_failed", "rejected", "cancelled", "expired", "settled", "failed"];
 
 function latestDate(values: Array<Date | null | undefined>) {
   const timestamps = values.flatMap((value) => value ? [value.getTime()] : []);
@@ -46,6 +46,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         cashMovements: { include: { pooledBankAccount: true }, orderBy: { submittedAt: "desc" } },
         documents: { include: { content: { select: { documentId: true } } }, orderBy: { uploadedAt: "desc" } },
         linkedBankAccounts: { orderBy: { createdAt: "asc" } },
+        tradingMandate: true,
         screenings: { include: { recorder: { select: { fullName: true } } }, orderBy: { screenedAt: "desc" } },
         notes: { include: { author: true }, orderBy: { createdAt: "desc" } },
         accounts: {
@@ -220,6 +221,19 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         signatoryAuthorityConfirmed: client.signatoryAuthorityConfirmed,
       },
       readiness: { canTrade: readiness.canTrade, blockingReasons: readiness.blockingReasons, items: readiness.items },
+      tradingMandate: {
+        status: client.tradingMandate?.status ?? "active",
+        buyEnabled: client.tradingMandate?.buyEnabled ?? true,
+        sellEnabled: client.tradingMandate?.sellEnabled ?? true,
+        maxOrderValue: client.tradingMandate?.maxOrderValue === null || client.tradingMandate?.maxOrderValue === undefined ? null : toNum(client.tradingMandate.maxOrderValue),
+        dailyGrossLimit: client.tradingMandate?.dailyGrossLimit === null || client.tradingMandate?.dailyGrossLimit === undefined ? null : toNum(client.tradingMandate.dailyGrossLimit),
+        effectiveDailyGrossLimit: client.tradingMandate?.dailyGrossLimit === null || client.tradingMandate?.dailyGrossLimit === undefined ? toNum(client.broker.settings?.clientDailyLimit) : toNum(client.tradingMandate.dailyGrossLimit),
+        allowedAssetClasses: Array.isArray(client.tradingMandate?.allowedAssetClasses) ? client.tradingMandate.allowedAssetClasses : [],
+        allowedMarketSegments: Array.isArray(client.tradingMandate?.allowedMarketSegments) ? client.tradingMandate.allowedMarketSegments : [],
+        allowedOrderTypes: Array.isArray(client.tradingMandate?.allowedOrderTypes) ? client.tradingMandate.allowedOrderTypes : [],
+        commissionSource: "tenant_default",
+        version: client.tradingMandate?.version ?? 1,
+      },
       cash: account ? {
         total: toNum(account.totalCash),
         available: toNum(account.availableCash),

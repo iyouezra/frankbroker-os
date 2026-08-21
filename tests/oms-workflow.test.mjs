@@ -215,12 +215,13 @@ test("partial sell fill debits only the fill and settlement releases net proceed
 test("state machine rejects execution and edits from terminal states", () => {
   assert.deepEqual(ORDER_STATUSES, [
     "draft", "submitted", "validation_failed", "pending_broker_review", "approved", "rejected",
-    "cancelled", "partially_filled", "filled", "settlement_pending", "settled", "failed",
+    "cancelled", "expired", "partially_filled", "filled", "settlement_pending", "settled", "failed",
   ]);
   assert.equal(isExecutableStatus("approved"), true);
   assert.equal(isExecutableStatus("partially_filled"), true);
   assert.equal(isExecutableStatus("rejected"), false);
   assert.equal(isExecutableStatus("cancelled"), false);
+  assert.equal(isExecutableStatus("expired"), false);
   assert.equal(isExecutableStatus("failed"), false);
   assert.equal(canTransition("approved", "partially_filled"), true);
   assert.equal(canTransition("partially_filled", "filled"), true);

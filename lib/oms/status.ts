@@ -6,6 +6,7 @@ export const ORDER_STATUSES = [
   "approved",
   "rejected",
   "cancelled",
+  "expired",
   "partially_filled",
   "filled",
   "settlement_pending",
@@ -26,11 +27,12 @@ const transitions: Record<OmsOrderStatus, readonly OmsOrderStatus[]> = {
   draft: ["submitted", "cancelled", "failed"],
   submitted: ["validation_failed", "pending_broker_review", "cancelled", "failed"],
   validation_failed: ["submitted", "cancelled", "failed"],
-  pending_broker_review: ["approved", "rejected", "cancelled", "validation_failed", "failed"],
-  approved: ["partially_filled", "filled", "cancelled", "failed"],
+  pending_broker_review: ["approved", "rejected", "cancelled", "expired", "validation_failed", "failed"],
+  approved: ["partially_filled", "filled", "cancelled", "expired", "failed"],
   rejected: [],
   cancelled: [],
-  partially_filled: ["partially_filled", "filled", "cancelled", "failed"],
+  expired: [],
+  partially_filled: ["partially_filled", "filled", "cancelled", "expired", "failed"],
   filled: ["settlement_pending", "failed"],
   settlement_pending: ["settlement_pending", "settled", "failed"],
   settled: [],
@@ -58,7 +60,7 @@ export function assertTransition(from: string, to: string) {
 }
 
 export function isTerminalStatus(status: string) {
-  return status === "rejected" || status === "cancelled" || status === "settled" || status === "failed";
+  return status === "rejected" || status === "cancelled" || status === "expired" || status === "settled" || status === "failed";
 }
 
 export function isExecutableStatus(status: string) {

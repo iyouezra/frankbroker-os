@@ -19,7 +19,7 @@ export const PERIODS: { id: Period; label: string; days: number }[] = [
 
 // Statuses that represent an executed instruction (turnover + earned commission).
 const EXECUTED = new Set(["settlement_pending", "settled", "partially_filled"]);
-const REJECTED = new Set(["rejected", "validation_failed", "cancelled"]);
+const REJECTED = new Set(["rejected", "validation_failed", "cancelled", "expired"]);
 
 type Tone = "good" | "warning" | "serious";
 

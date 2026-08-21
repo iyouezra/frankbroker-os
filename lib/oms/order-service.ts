@@ -13,13 +13,13 @@ import {
   type CashSnapshot,
   type SecuritySnapshot,
 } from "./ledger-service";
-import { lockAccount, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
+import { lockAccount, lockClientAccounts, lockClientTradingMandate, lockHolding, lockOrder, persistCashMutation, persistSecuritiesMutation } from "./persistence";
 import { assertTransition, isTerminalStatus } from "./status";
 import { validatePreTrade, validationPassed, type ValidationCheck } from "./validation-service";
 import { computeConfiguredAmounts, resolveFeePolicy, serializeFeeBreakdown } from "./fee-service";
 import { consumeOrderVerification, ORDER_SOURCES, orderPayloadHash } from "../verification-service";
 import { assertNoEmployeeSelfProcessing, createMonitoringAlert, evaluateEmployeeOrder } from "../monitoring-service";
-import { addisDateOnly, addisYear } from "../addis-date";
+import { addisDateOnly, addisDayStart, addisYear } from "../addis-date";
 
 const transactionOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 
@@ -66,7 +66,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const [account, instrument, entitlement, settings, fallbackLedgerActor, existingOrder] = await Promise.all([
     prisma.account.findUnique({
       where: { id: input.accountId },
-      include: { client: { include: { screenings: { orderBy: { screenedAt: "desc" }, take: 1 } } }, holdings: { where: { instrumentId: input.instrumentId } } },
+      include: { client: { include: { tradingMandate: true, screenings: { orderBy: { screenedAt: "desc" }, take: 1 } } }, holdings: { where: { instrumentId: input.instrumentId } } },
     }),
     prisma.instrument.findUnique({ where: { id: input.instrumentId } }),
     prisma.brokerInstrument.findUnique({
@@ -132,20 +132,25 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const triggerPrice = input.triggerPrice === undefined || input.triggerPrice === null ? null : D(input.triggerPrice);
   const orderType = normalizeOrderType(input.orderType ?? "limit");
   const validityInstruction = parseOrderValidity({ validity: input.validity, goodTillDate: input.goodTillDate, orderType });
-  const feePolicy = await resolveFeePolicy(prisma, actor.brokerId, instrument, settings);
+  const feePolicy = await resolveFeePolicy(prisma, actor.brokerId, instrument, settings, new Date(), quantity.times(price));
   const amounts = computeConfiguredAmounts(input.side, quantity, price, feePolicy);
   const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
     ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
     : ["Limit"];
   const holding = account.holdings[0];
+  const mandate = account.client.tradingMandate;
+  const mandateValues = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  const mandateAssetClasses = mandateValues(mandate?.allowedAssetClasses);
+  const mandateMarketSegments = mandateValues(mandate?.allowedMarketSegments);
+  const mandateOrderTypes = mandateValues(mandate?.allowedOrderTypes);
+  const effectiveDailyLimit = mandate?.dailyGrossLimit ?? settings?.clientDailyLimit ?? null;
 
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
+  const startOfDay = addisDayStart();
   const dayAgg = await prisma.order.aggregate({
     where: {
-      accountId: account.id,
+      account: { clientId: account.clientId },
       submittedAt: { gte: startOfDay },
-      status: { notIn: ["rejected", "validation_failed", "cancelled", "failed"] },
+      status: { notIn: ["rejected", "validation_failed", "cancelled", "expired", "failed"] },
     },
     _sum: { estimatedGross: true },
   });
@@ -168,9 +173,17 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
     availableCash: account.availableCash,
     availableHoldings: holding?.availableQuantity ?? ZERO,
     projectedDailyGross,
-    dailyLimit: settings?.clientDailyLimit,
+    dailyLimit: effectiveDailyLimit,
     sellNet: amounts.net,
   });
+  checks.push(
+    { code: "CLIENT_MANDATE_ACTIVE", label: "Client trading mandate", passed: !mandate || mandate.status === "active", message: !mandate || mandate.status === "active" ? "Client mandate is active" : "Client trading mandate is suspended" },
+    { code: "CLIENT_SIDE_ALLOWED", label: "Trading direction permitted", passed: !mandate || (input.side === "buy" ? mandate.buyEnabled : mandate.sellEnabled), message: !mandate || (input.side === "buy" ? mandate.buyEnabled : mandate.sellEnabled) ? `${input.side.toUpperCase()} instructions are permitted` : `${input.side.toUpperCase()} instructions are disabled for this client` },
+    { code: "CLIENT_ORDER_LIMIT", label: "Within per-order mandate", passed: mandate?.maxOrderValue === null || mandate?.maxOrderValue === undefined || amounts.gross.lte(mandate.maxOrderValue), message: mandate?.maxOrderValue === null || mandate?.maxOrderValue === undefined ? "Tenant has not set a client-specific order cap" : `${amounts.gross.toString()} / ${mandate.maxOrderValue.toString()} ETB order value` },
+    { code: "CLIENT_ASSET_MANDATE", label: "Asset class permitted", passed: !mandateAssetClasses.length || mandateAssetClasses.includes(instrument.assetClass), message: !mandateAssetClasses.length || mandateAssetClasses.includes(instrument.assetClass) ? `${instrument.assetClass} is permitted` : `${instrument.assetClass} is outside this client's mandate` },
+    { code: "CLIENT_MARKET_MANDATE", label: "Market segment permitted", passed: !mandateMarketSegments.length || mandateMarketSegments.includes(instrument.marketSegment), message: !mandateMarketSegments.length || mandateMarketSegments.includes(instrument.marketSegment) ? `${instrument.marketSegment} is permitted` : `${instrument.marketSegment} is outside this client's mandate` },
+    { code: "CLIENT_ORDER_TYPE_MANDATE", label: "Order type permitted by client mandate", passed: !mandateOrderTypes.length || mandateOrderTypes.some((item) => normalizeOrderType(item) === orderType), message: !mandateOrderTypes.length || mandateOrderTypes.some((item) => normalizeOrderType(item) === orderType) ? `${orderType} is permitted` : `${orderType} is outside this client's mandate` },
+  );
   if (input.source === "investor_portal" && input.side === "buy" && account.availableCash.lt(amounts.net)) {
     throw investorBuyingPowerError(amounts.net, account.availableCash);
   }
@@ -221,19 +234,32 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
     let holdingId: string | null = null;
     let currentAccount: Awaited<ReturnType<typeof tx.account.findUnique>> = null;
     if (valid) {
-      await lockAccount(tx, input.accountId);
+      await lockClientAccounts(tx, account.clientId);
+      await lockClientTradingMandate(tx, account.clientId);
       currentAccount = await tx.account.findUnique({ where: { id: input.accountId } });
       if (!currentAccount) throw new Response("Account not found.", { status: 404 });
+      const currentMandate = await tx.clientTradingMandate.findUnique({ where: { clientId: account.clientId } });
+      const currentAssets = mandateValues(currentMandate?.allowedAssetClasses);
+      const currentMarkets = mandateValues(currentMandate?.allowedMarketSegments);
+      const currentOrderTypes = mandateValues(currentMandate?.allowedOrderTypes);
+      const mandateChanged = Boolean(currentMandate && currentMandate.status !== "active")
+        || Boolean(currentMandate && !(input.side === "buy" ? currentMandate.buyEnabled : currentMandate.sellEnabled))
+        || (currentMandate?.maxOrderValue !== null && currentMandate?.maxOrderValue !== undefined && amounts.gross.gt(currentMandate.maxOrderValue))
+        || (currentAssets.length > 0 && !currentAssets.includes(instrument.assetClass))
+        || (currentMarkets.length > 0 && !currentMarkets.includes(instrument.marketSegment))
+        || (currentOrderTypes.length > 0 && !currentOrderTypes.some((item) => normalizeOrderType(item) === orderType));
+      if (mandateChanged) throw new Response("The client trading mandate changed before reservation. Revalidate the order.", { status: 409 });
+      const currentDailyLimit = currentMandate?.dailyGrossLimit ?? settings?.clientDailyLimit ?? null;
       const currentDayAgg = await tx.order.aggregate({
         where: {
-          accountId: input.accountId,
+          account: { clientId: account.clientId },
           submittedAt: { gte: startOfDay },
-          status: { notIn: ["rejected", "validation_failed", "cancelled", "failed"] },
+          status: { notIn: ["rejected", "validation_failed", "cancelled", "expired", "failed"] },
         },
         _sum: { estimatedGross: true },
       });
       const currentProjectedGross = (currentDayAgg._sum.estimatedGross ?? ZERO).plus(amounts.gross);
-      if (settings?.clientDailyLimit && currentProjectedGross.gt(settings.clientDailyLimit)) {
+      if (currentDailyLimit !== null && currentProjectedGross.gt(currentDailyLimit)) {
         throw new Response("The client daily trading limit changed before reservation. Revalidate the order.", { status: 409 });
       }
     }
@@ -536,7 +562,7 @@ async function loadApprovalContext(tx: Prisma.TransactionClient, orderId: string
   const order = await tx.order.findUnique({
     where: { id: orderId },
     include: {
-      account: { include: { client: { include: { screenings: { orderBy: { screenedAt: "desc" }, take: 1 } } } } },
+      account: { include: { client: { include: { tradingMandate: true, screenings: { orderBy: { screenedAt: "desc" }, take: 1 } } } } },
       instrument: true,
       events: { orderBy: { createdAt: "asc" } },
     },
@@ -568,6 +594,10 @@ export async function approveOrder(actor: Actor, orderId: string) {
     const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
       ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
       : ["Limit"];
+    const mandate = order.account.client.tradingMandate;
+    const mandateOrderTypes = Array.isArray(mandate?.allowedOrderTypes) ? mandate.allowedOrderTypes.filter((item): item is string => typeof item === "string") : [];
+    const mandateAssets = Array.isArray(mandate?.allowedAssetClasses) ? mandate.allowedAssetClasses.filter((item): item is string => typeof item === "string") : [];
+    const mandateMarkets = Array.isArray(mandate?.allowedMarketSegments) ? mandate.allowedMarketSegments.filter((item): item is string => typeof item === "string") : [];
     const controlFailure = order.account.client.brokerId !== actor.brokerId
       ? "The account no longer belongs to this tenant."
       : order.account.client.kycStatus !== "approved"
@@ -584,6 +614,18 @@ export async function approveOrder(actor: Actor, orderId: string) {
                   ? "The stored order direction, quantity, or price is invalid."
                   : !order.quantity.mod(order.instrument.lotSize).isZero() || !order.price.div(order.instrument.tickSize).isInteger()
                     ? "The order no longer meets the instrument lot or tick-size rules."
+                    : mandate?.status && mandate.status !== "active"
+                      ? "The client trading mandate is suspended."
+                      : mandate && !(order.side === "buy" ? mandate.buyEnabled : mandate.sellEnabled)
+                        ? `${order.side.toUpperCase()} instructions are disabled for this client.`
+                        : mandate?.maxOrderValue !== null && mandate?.maxOrderValue !== undefined && order.estimatedGross.gt(mandate.maxOrderValue)
+                          ? "The order exceeds the client's per-order mandate."
+                          : mandateAssets.length && !mandateAssets.includes(order.instrument.assetClass)
+                            ? "The instrument asset class is outside the client's mandate."
+                            : mandateMarkets.length && !mandateMarkets.includes(order.instrument.marketSegment)
+                              ? "The instrument market segment is outside the client's mandate."
+                              : mandateOrderTypes.length && !mandateOrderTypes.some((item) => normalizeOrderType(item) === normalizeOrderType(order.orderType))
+                                ? "The order type is outside the client's mandate."
                     : null;
     if (controlFailure) throw new Response(`${controlFailure} Run validation again before approval.`, { status: 409 });
 
@@ -779,6 +821,24 @@ export async function cancelOrder(actor: Actor, orderId: string, reason: string)
   }, transactionOptions);
 }
 
+export async function expireOrder(actor: Actor, orderId: string, now = new Date()) {
+  return prisma.$transaction(async (tx) => {
+    await lockOrder(tx, orderId);
+    const order = await tx.order.findUnique({ where: { id: orderId }, include: { account: { select: { clientId: true } }, instrument: { select: { symbol: true } } } });
+    if (!order || order.brokerId !== actor.brokerId) return { expired: false } as const;
+    if (!["pending_broker_review", "approved", "partially_filled"].includes(order.status)) return { expired: false } as const;
+    if (!orderValidityExpired({ validity: order.validity, goodTillDate: order.goodTillDate, submittedAt: order.submittedAt ?? order.createdAt, now })) return { expired: false } as const;
+    const reason = order.validity === "gtd" ? "GTD instruction reached its expiry date" : "Day instruction expired at the end of its submission day";
+    assertTransition(order.status, "expired");
+    await releaseOrderReservation(tx, actor, order, reason);
+    await tx.order.update({ where: { id: orderId }, data: { status: "expired", rejectionReason: reason, blockedCash: ZERO, blockedQuantity: ZERO, version: { increment: 1 } } });
+    await writeOrderEvent(tx, { orderId, fromStatus: order.status, toStatus: "expired", actorId: actor.id, reason, detail: { validity: order.validity, goodTillDate: order.goodTillDate?.toISOString().slice(0, 10) ?? null } });
+    await writeAudit(tx, { brokerId: actor.brokerId, actorId: actor.id, action: "ORDER_EXPIRED", entityType: "order", entityId: orderId, summary: `Order ${orderId} expired automatically`, previousValue: { status: order.status, blockedCash: toNum(order.blockedCash), blockedQuantity: toNum(order.blockedQuantity) }, newValue: { status: "expired", blockedCash: 0, blockedQuantity: 0 }, reason });
+    await writeNotification(tx, { scope: "investor", brokerId: actor.brokerId, clientId: order.account.clientId, category: "order", severity: "info", title: "Order expired", body: `Your ${order.side} order for ${order.instrument.symbol} expired. Any remaining reservation has been released.`, entityType: "order", entityId: orderId, dedupeKey: `order-expired:${orderId}` });
+    return { expired: true } as const;
+  }, transactionOptions);
+}
+
 export async function failOrder(actor: Actor, orderId: string, reason: string) {
   return prisma.$transaction(async (tx) => {
     await lockOrder(tx, orderId);
@@ -813,7 +873,7 @@ export async function generateContractNote(actor: Actor, orderId: string) {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { trades: true } });
     if (!order || order.brokerId !== actor.brokerId) throw new Response("Order not found for this tenant.", { status: 404 });
     if (!order.trades.length) throw new Response("A contract note cannot be generated before a trade is captured.", { status: 409 });
-    if (order.remainingQuantity.gt(0) && !["cancelled", "failed"].includes(order.status)) {
+    if (order.remainingQuantity.gt(0) && !["cancelled", "expired", "failed"].includes(order.status)) {
       throw new Response("Finalize or cancel the remaining order quantity before generating the final contract note.", { status: 409 });
     }
     const noteNumber = order.contractNoteNumber ?? `CN-${order.id}`;

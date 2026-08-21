@@ -40,7 +40,7 @@ export async function completeServiceRequest(
 
     if (input.decision === "approve_closure") {
       if (request.requestType !== "account_closure" || !request.account) throw new Response("This is not an account closure request.", { status: 400 });
-      const activeOrders = request.account.orders.filter((order) => !["rejected", "cancelled", "settled", "failed", "validation_failed"].includes(order.status));
+      const activeOrders = request.account.orders.filter((order) => !["rejected", "cancelled", "expired", "settled", "failed", "validation_failed"].includes(order.status));
       const hasCash = !request.account.totalCash.eq(ZERO) || !request.account.blockedCash.eq(ZERO) || !request.account.unsettledCash.eq(ZERO);
       const hasSecurities = request.account.holdings.some((holding) => !holding.totalQuantity.eq(ZERO) || !holding.blockedQuantity.eq(ZERO) || !holding.unsettledQuantity.eq(ZERO));
       if (activeOrders.length || hasCash || hasSecurities) {

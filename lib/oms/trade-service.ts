@@ -121,7 +121,7 @@ export async function captureTrade(actor: Actor, orderId: string, input: Capture
       throw new Response(`Execution price must align to the ${order.instrument.tickSize.toString()} tick size.`, { status: 400 });
     }
 
-    const feePolicy = await resolveFeePolicy(tx, actor.brokerId, order.instrument, settings, dateOnly(input.tradeDate));
+    const feePolicy = await resolveFeePolicy(tx, actor.brokerId, order.instrument, settings, dateOnly(input.tradeDate), order.estimatedGross);
     const priorFeeBreakdown = addFeeBreakdowns(order.trades.map((trade) => {
       if (trade.feeBreakdown) return feeBreakdownFromJson(trade.feeBreakdown);
       return { brokerage: trade.fees, regulator: ZERO, exchange: ZERO, csd: ZERO, total: trade.fees };

@@ -2,6 +2,7 @@ import { addisDateOnly } from "../../../../lib/addis-date";
 import { apiError } from "../../../../lib/api";
 import { COMPLIANCE_PERMISSIONS } from "../../../../lib/frank";
 import { writeAudit } from "../../../../lib/oms/audit-service";
+import { runOrderExpirySweep } from "../../../../lib/oms/order-expiry-service";
 import { prisma } from "../../../../lib/prisma";
 import { getEndOfDayReadiness } from "../../../../lib/reconciliation-service";
 import { requireTenantModule } from "../../../../lib/tenant-capabilities";
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const { actor } = await requireTenantModule(request, "dealer_operations", "report");
+    await runOrderExpirySweep({ brokerId: actor.brokerId });
     return Response.json({ endOfDay: await getEndOfDayReadiness(prisma, actor.brokerId) });
   } catch (error) {
     return apiError(error);
@@ -29,6 +31,8 @@ export async function POST(request: Request) {
     }
 
     if (payload.action === "close") {
+      const expiry = await runOrderExpirySweep({ brokerId: actor.brokerId });
+      if (expiry.errors.length) return Response.json({ error: "End-of-day close is blocked because one or more expired orders could not release their reservations.", expiry }, { status: 409 });
       if (current?.status === "closed") return Response.json({ endOfDay: await getEndOfDayReadiness(prisma, actor.brokerId, businessDate) });
       const evidence = String(payload.evidence ?? "").trim();
       if (evidence.length < 3 || evidence.length > 160) return Response.json({ error: "Record the end-of-day evidence or control-pack reference." }, { status: 400 });

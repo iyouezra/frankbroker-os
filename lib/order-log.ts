@@ -11,11 +11,11 @@ export const ACTIVE_ORDER_STATUSES = new Set([
 
 export const ORDER_STATUS_GROUPS: Record<string, readonly string[]> = {
   open: ["draft", "submitted", "validation_failed", "pending_broker_review", "approved", "partially_filled"],
-  history: ["filled", "cancelled", "settlement_pending", "settled", "rejected", "failed"],
+  history: ["filled", "cancelled", "expired", "settlement_pending", "settled", "rejected", "failed"],
   review: ["pending_broker_review"],
   approved: ["approved"],
   executed: ["partially_filled", "filled", "settlement_pending", "settled"],
-  exceptions: ["validation_failed", "rejected", "cancelled", "failed"],
+  exceptions: ["validation_failed", "rejected", "cancelled", "expired", "failed"],
 };
 
 export const MARKET_LINK_ELIGIBLE_STATUSES = ["pending_broker_review", "approved", "partially_filled"] as const;

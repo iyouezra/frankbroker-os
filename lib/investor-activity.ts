@@ -67,6 +67,7 @@ export type InvestorActivity =
 const statusLabels: Record<string, string> = {
   approved: "Open",
   cancelled: "Cancelled",
+  expired: "Expired",
   completed: "Completed",
   failed: "Failed",
   filled: "Completed",

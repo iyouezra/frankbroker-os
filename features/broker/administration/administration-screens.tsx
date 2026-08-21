@@ -6,7 +6,8 @@ import { BROKER_ASSIGNABLE_ROLES, fallbackBrokerUsers, formatAccessDate, type Br
 import { BrandSelect } from "../../shared/brand-select";
 import { BROKER_TENANT_ID, SectionHeader, etb } from "../shared/broker-foundation";
 
-type SettingsFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null };
+type CommissionTier = { minimumOrderValue: number; maximumOrderValue: number | null; brokeragePct: number };
+type SettingsFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null; tiers?: CommissionTier[] };
 type SettingsControls = { brokerageFeePct: number; minimumFee: number; approvalThreshold: number; clientDailyLimit: number; makerChecker: boolean; allowedOrderTypes: string[]; settlementCycle: string; feeRules: SettingsFeeRule[]; feeScheduleVersion: string; feeScheduleEffectiveFrom: string | null; regulatoryFeeScheduleVersion: string; marketFeeScheduleConfigured: boolean };
 const STAFF_ROLES: Role[] = ["access_admin", "broker_admin", "trader", "operations", "compliance", "settlement", "relationship_officer", "service_officer", "management"];
 const PERMISSION_COLUMNS: [string, string][] = [["create", "Create"], ["approve", "Approve"], ["reject", "Reject"], ["trade", "Trade"], ["settle", "Settle"], ["adjust", "Adjust"], ["report", "Report"]];
@@ -35,11 +36,23 @@ export function SettingsPage() {
     if (!controls) return;
     updateControl({ feeRules: controls.feeRules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, [field]: field === "maximumFee" && value === "" ? null : Number(value) } : rule) });
   };
+  const updateTier = (ruleIndex: number, tierIndex: number, field: keyof CommissionTier, value: string) => {
+    if (!controls) return;
+    updateControl({ feeRules: controls.feeRules.map((rule, index) => index !== ruleIndex ? rule : { ...rule, tiers: (rule.tiers ?? []).map((tier, current) => current !== tierIndex ? tier : { ...tier, [field]: field === "maximumOrderValue" && value === "" ? null : Number(value) }) }) });
+  };
+  const addTier = (ruleIndex: number) => {
+    if (!controls) return;
+    updateControl({ feeRules: controls.feeRules.map((rule, index) => index !== ruleIndex ? rule : { ...rule, tiers: [...(rule.tiers ?? []), { minimumOrderValue: 0, maximumOrderValue: null, brokeragePct: rule.brokeragePct }] }) });
+  };
+  const removeTier = (ruleIndex: number, tierIndex: number) => {
+    if (!controls) return;
+    updateControl({ feeRules: controls.feeRules.map((rule, index) => index !== ruleIndex ? rule : { ...rule, tiers: (rule.tiers ?? []).filter((_, current) => current !== tierIndex) }) });
+  };
   const publishBrokerageFees = async () => {
     if (!controls) return;
     setSavingFees(true); setFeeMessage("");
     try {
-      const response = await fetch("/api/tenant", { method: "PATCH", headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": "broker_admin" }, body: JSON.stringify({ action: "brokerage_fee_schedule", version: controls.feeScheduleVersion, effectiveFrom: controls.feeScheduleEffectiveFrom, rules: controls.feeRules.map(({ assetClass, marketSegment, brokeragePct, minimumFee, maximumFee }) => ({ assetClass, marketSegment, brokeragePct, minimumFee, maximumFee })) }) });
+      const response = await fetch("/api/tenant", { method: "PATCH", headers: { "content-type": "application/json", "x-frank-tenant-id": BROKER_TENANT_ID, "x-frank-demo-role": "broker_admin" }, body: JSON.stringify({ action: "brokerage_fee_schedule", version: controls.feeScheduleVersion, effectiveFrom: controls.feeScheduleEffectiveFrom, rules: controls.feeRules.map(({ assetClass, marketSegment, brokeragePct, minimumFee, maximumFee, tiers }) => ({ assetClass, marketSegment, brokeragePct, minimumFee, maximumFee, tiers: tiers ?? [] })) }) });
       const result = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Unable to publish the brokerage fee schedule.");
       setFeeMessage(`Brokerage commission schedule ${controls.feeScheduleVersion} published and audit logged.`);
@@ -62,6 +75,7 @@ export function SettingsPage() {
     {controls && <section className="panel brokerage-settings"><div className="panel-head"><div><span className="eyebrow">TENANT-MANAGED · VERSIONED</span><h2>Brokerage commission</h2><p>Set your own commission and minimum by instrument class. Market and regulatory rates are shown for context and cannot be edited here.</p></div><button className="btn primary" disabled={savingFees} onClick={() => void publishBrokerageFees()}>{savingFees ? "Publishing…" : "Publish commission schedule"}</button></div>
       <div className="brokerage-version-fields"><label>Version<input value={controls.feeScheduleVersion} onChange={(event) => updateControl({ feeScheduleVersion: event.target.value })} /></label><label>Effective from<input type="date" value={controls.feeScheduleEffectiveFrom ?? ""} onChange={(event) => updateControl({ feeScheduleEffectiveFrom: event.target.value })} /></label><span><small>Platform fee version</small><b>{controls.regulatoryFeeScheduleVersion}</b></span></div>
       <div className="table-scroll"><table><thead><tr><th>Instrument class</th><th className="num">Commission %</th><th className="num">Minimum ETB</th><th className="num">Maximum ETB</th><th className="num">ECMA %</th><th className="num">ESX %</th><th className="num">CSD %</th></tr></thead><tbody>{controls.feeRules.map((rule, index) => <tr key={`${rule.assetClass}-${rule.marketSegment}`}><td><b>{rule.assetClass === "bond" ? "Government bond" : "Equity"}</b><small>{rule.marketSegment}</small></td><td className="num"><input aria-label={`${rule.assetClass} commission percent`} type="number" min="0" step="0.01" value={rule.brokeragePct} onChange={(event) => updateFeeRule(index, "brokeragePct", event.target.value)} /></td><td className="num"><input aria-label={`${rule.assetClass} minimum commission`} type="number" min="0" value={rule.minimumFee} onChange={(event) => updateFeeRule(index, "minimumFee", event.target.value)} /></td><td className="num"><input aria-label={`${rule.assetClass} maximum commission`} type="number" min="0" placeholder="No cap" value={rule.maximumFee ?? ""} onChange={(event) => updateFeeRule(index, "maximumFee", event.target.value)} /></td><td className="num">{rule.regulatorPct}%</td><td className="num">{rule.exchangePct}%</td><td className="num">{rule.csdPct}%</td></tr>)}</tbody></table></div>
+      <div className="brokerage-tier-list">{controls.feeRules.map((rule, ruleIndex) => <section key={`tiers-${rule.assetClass}`} className="settings-note"><div><b>{rule.assetClass === "bond" ? "Government bond" : "Equity"} value tiers</b><p>Optional. The matching tier replaces the base commission percentage for the total order value.</p></div>{(rule.tiers ?? []).map((tier, tierIndex) => <div className="brokerage-version-fields" key={tierIndex}><label>From ETB<input type="number" min="0" value={tier.minimumOrderValue} onChange={(event) => updateTier(ruleIndex, tierIndex, "minimumOrderValue", event.target.value)} /></label><label>Up to ETB<input type="number" min="0" placeholder="No upper bound" value={tier.maximumOrderValue ?? ""} onChange={(event) => updateTier(ruleIndex, tierIndex, "maximumOrderValue", event.target.value)} /></label><label>Commission %<input type="number" min="0" step="0.01" value={tier.brokeragePct} onChange={(event) => updateTier(ruleIndex, tierIndex, "brokeragePct", event.target.value)} /></label><button className="btn secondary small" onClick={() => removeTier(ruleIndex, tierIndex)}>Remove</button></div>)}<button className="btn secondary small" onClick={() => addTier(ruleIndex)}>＋ Add value tier</button></section>)}</div>
       {feeMessage && <div className="settings-note" role="status">{feeMessage}</div>}
     </section>}
     <section className="panel"><div className="panel-head"><div><span className="eyebrow">CAPABILITIES</span><h2>Feature access</h2></div></div>

@@ -89,6 +89,18 @@ test("combines tenant brokerage with the platform-wide regulatory schedule", asy
   assert.equal(policy.regulatoryScheduleVersion, "4.0");
 });
 
+test("selects a tenant commission tier from total order value and keeps it across partial fills", async () => {
+  const policy = await resolveFeePolicy({
+    feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "3.0", rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), minimumFee: D(0), maximumFee: null, tiers: [{ minimumOrderValue: D(100_000), maximumOrderValue: null, brokeragePct: D(.25) }] }] }) },
+    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(0), exchangePct: D(0), csdPct: D(0) }] }) },
+  }, "brk_1", { assetClass: "equity", marketSegment: "main" }, { brokerageFeePct: D(.5), minimumFee: D(0) }, new Date("2026-08-21"), D(120_000));
+  assert.equal(toNum(policy.brokeragePct), .25);
+  const empty = { brokerage: D(0), regulator: D(0), exchange: D(0), csd: D(0), total: D(0) };
+  const first = computeCumulativeConfiguredFill("buy", 60, 1_000, 0, empty, policy);
+  const second = computeCumulativeConfiguredFill("buy", 60, 1_000, first.gross, first.breakdown, policy);
+  assert.deepEqual([toNum(first.breakdown.brokerage), toNum(second.breakdown.brokerage)], [150, 150]);
+});
+
 test("rejects order pricing when Platform Admin has not published a market schedule", async () => {
   await assert.rejects(() => resolveFeePolicy({
     feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "1.0", rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), regulatorPct: D(0), exchangePct: D(0), csdPct: D(0), minimumFee: D(25), maximumFee: null }] }) },

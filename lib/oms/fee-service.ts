@@ -14,6 +14,7 @@ export type FeePolicy = {
   csdPct: Prisma.Decimal;
   minimumFee: Prisma.Decimal;
   maximumFee: Prisma.Decimal | null;
+  brokerageTiers?: Array<{ minimumOrderValue: Prisma.Decimal; maximumOrderValue: Prisma.Decimal | null; brokeragePct: Prisma.Decimal }>;
 };
 
 export type FeeBreakdown = {
@@ -37,6 +38,7 @@ export async function resolveFeePolicy(
   instrument: InstrumentLike,
   settings: SettingsLike,
   valueDate = new Date(),
+  orderValue?: DecimalValue,
 ): Promise<FeePolicy> {
   const [schedule, regulatorySchedule] = await Promise.all([
     db.feeSchedule.findFirst({
@@ -46,7 +48,7 @@ export async function resolveFeePolicy(
         effectiveFrom: { lte: valueDate },
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: valueDate } }],
       },
-      include: { rules: true },
+      include: { rules: { include: { tiers: { orderBy: { minimumOrderValue: "asc" } } } } },
       orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
     }),
     db.platformFeeSchedule.findFirst({
@@ -70,6 +72,7 @@ export async function resolveFeePolicy(
   if (!regulatoryRule) {
     throw new Response(`No platform fee rule is configured for ${instrument.assetClass} / ${instrument.marketSegment}.`, { status: 409 });
   }
+  const selectedTier = orderValue === undefined ? null : rule?.tiers?.find((tier) => D(orderValue).gte(tier.minimumOrderValue) && (!tier.maximumOrderValue || D(orderValue).lt(tier.maximumOrderValue)));
   return {
     scheduleId: schedule?.id ?? null,
     scheduleVersion: schedule?.version ?? "legacy",
@@ -77,12 +80,13 @@ export async function resolveFeePolicy(
     regulatoryScheduleVersion: regulatorySchedule.version,
     assetClass: instrument.assetClass,
     marketSegment: instrument.marketSegment,
-    brokeragePct: rule?.brokeragePct ?? settings?.brokerageFeePct ?? D(0.5),
+    brokeragePct: selectedTier?.brokeragePct ?? rule?.brokeragePct ?? settings?.brokerageFeePct ?? D(0.5),
     regulatorPct: regulatoryRule.regulatorPct,
     exchangePct: regulatoryRule.exchangePct,
     csdPct: regulatoryRule.csdPct,
     minimumFee: rule?.minimumFee ?? settings?.minimumFee ?? ZERO,
     maximumFee: rule?.maximumFee ?? null,
+    brokerageTiers: rule?.tiers ?? [],
   };
 }
 
@@ -178,6 +182,11 @@ export function serializeFeeBreakdown(breakdown: FeeBreakdown, policy?: FeePolic
         },
         minimumBrokerage: policy.minimumFee.toString(),
         maximumBrokerage: policy.maximumFee?.toString() ?? null,
+        brokerageTiers: (policy.brokerageTiers ?? []).map((tier) => ({
+          minimumOrderValue: tier.minimumOrderValue.toString(),
+          maximumOrderValue: tier.maximumOrderValue?.toString() ?? null,
+          brokeragePct: tier.brokeragePct.toString(),
+        })),
       },
     } : {}),
   };

@@ -6,6 +6,7 @@ export type BrokerageRuleLike = {
   brokeragePct: NumericValue;
   minimumFee: NumericValue;
   maximumFee: NumericValue | null;
+  tiers?: Array<{ minimumOrderValue: NumericValue; maximumOrderValue: NumericValue | null; brokeragePct: NumericValue }>;
 };
 
 export type MarketRuleLike = {
@@ -37,6 +38,11 @@ export function composeFeeRules(
       csdPct: numeric(marketRule.csdPct),
       minimumFee: numeric(brokerageRule?.minimumFee ?? settings!.minimumFee),
       maximumFee: brokerageRule?.maximumFee === null || brokerageRule?.maximumFee === undefined ? null : numeric(brokerageRule.maximumFee),
+      tiers: (brokerageRule?.tiers ?? []).map((tier) => ({
+        minimumOrderValue: numeric(tier.minimumOrderValue),
+        maximumOrderValue: tier.maximumOrderValue === null ? null : numeric(tier.maximumOrderValue),
+        brokeragePct: numeric(tier.brokeragePct),
+      })),
     }];
   });
 }

@@ -19,7 +19,7 @@ export type Report = {
 };
 
 const EXECUTED = new Set(["settlement_pending", "settled", "partially_filled"]);
-const REJECTED = new Set(["rejected", "validation_failed", "cancelled", "failed"]);
+const REJECTED = new Set(["rejected", "validation_failed", "cancelled", "expired", "failed"]);
 const humanize = (value: string) => value.replaceAll("_", " ").replace(/^\w/, (c) => c.toUpperCase());
 const money = (value: number) => Number(value ?? 0).toFixed(2);
 const breakdown = (order: DemoOrder) => order.estimatedFeeBreakdown ?? { brokerage: order.estimatedFees ?? 0, regulator: 0, exchange: 0, csd: 0, total: order.estimatedFees ?? 0 };

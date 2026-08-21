@@ -67,6 +67,7 @@ model Broker {
   businessDayControls    BusinessDayControl[]
   paymentProviderEvents  PaymentProviderEvent[]
   accountingPolicies     AccountingPolicyVersion[]
+  clientTradingMandates  ClientTradingMandate[]
 
   @@map("brokers")
 }
@@ -213,6 +214,7 @@ model Client {
   beneficialOwnerRecords       BeneficialOwner[]
   monitoringAlerts             MonitoringAlert[]
   employeeConductProfiles      EmployeeConductProfile[]
+  tradingMandate               ClientTradingMandate?
 
   @@unique([brokerId, identityReference])
   @@unique([brokerId, portalAuthSubject])
@@ -800,9 +802,46 @@ model FeeRule {
   minimumFee    Decimal     @default(0) @map("minimum_fee") @db.Decimal(20, 4)
   maximumFee    Decimal?    @map("maximum_fee") @db.Decimal(20, 4)
   schedule      FeeSchedule @relation(fields: [feeScheduleId], references: [id], onDelete: Cascade)
+  tiers         FeeTier[]
 
   @@unique([feeScheduleId, assetClass, marketSegment])
   @@map("fee_rules")
+}
+
+model FeeTier {
+  id                String   @id
+  feeRuleId         String   @map("fee_rule_id")
+  minimumOrderValue Decimal  @default(0) @map("minimum_order_value") @db.Decimal(20, 4)
+  maximumOrderValue Decimal? @map("maximum_order_value") @db.Decimal(20, 4)
+  brokeragePct      Decimal  @map("brokerage_pct") @db.Decimal(8, 4)
+  rule              FeeRule  @relation(fields: [feeRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([feeRuleId, minimumOrderValue])
+  @@index([feeRuleId, maximumOrderValue])
+  @@map("fee_tiers")
+}
+
+model ClientTradingMandate {
+  id                    String   @id
+  brokerId              String   @map("broker_id")
+  clientId              String   @unique @map("client_id")
+  status                String   @default("active")
+  buyEnabled            Boolean  @default(true) @map("buy_enabled")
+  sellEnabled           Boolean  @default(true) @map("sell_enabled")
+  maxOrderValue         Decimal? @map("max_order_value") @db.Decimal(20, 4)
+  dailyGrossLimit       Decimal? @map("daily_gross_limit") @db.Decimal(20, 4)
+  allowedAssetClasses   Json?    @map("allowed_asset_classes")
+  allowedMarketSegments Json?    @map("allowed_market_segments")
+  allowedOrderTypes     Json?    @map("allowed_order_types")
+  commissionSource      String   @default("tenant_default") @map("commission_source")
+  version               Int      @default(1)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  broker                Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  client                Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([brokerId, status])
+  @@map("client_trading_mandates")
 }
 
 model PlatformFeeSchedule {

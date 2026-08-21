@@ -162,6 +162,9 @@ export async function createClientForApproval(actor: Actor, input: CreateClientI
         bankAccountName: input.bankAccountName?.trim() || null,
         bankAccountLast4: normalizedDigits(input.bankAccountNumber ?? "").slice(-4) || null,
         phoneVerifiedAt: input.phoneVerifiedAt ?? null,
+        tradingMandate: {
+          create: { id: `mandate_${clientId}`, brokerId: actor.brokerId, commissionSource: "tenant_default" },
+        },
         accounts: {
           create: {
             id: accountId,
