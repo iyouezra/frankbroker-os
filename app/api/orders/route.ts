@@ -102,7 +102,7 @@ export async function GET(request: Request) {
       instrument: { select: { symbol: true } },
       assignedTrader: { select: { fullName: true } },
       approver: { select: { fullName: true } },
-      trades: { select: { id: true, captureReference: true }, orderBy: { capturedAt: "asc" as const } },
+      trades: { select: { id: true, captureReference: true, fees: true, feeBreakdown: true }, orderBy: { capturedAt: "asc" as const } },
     } satisfies Prisma.OrderSelect;
     const exporting = url.searchParams.get("format") === "csv";
     const total = await prisma.order.count({ where });
@@ -123,6 +123,14 @@ export async function GET(request: Request) {
     const orders = rows.map((order) => {
       const trader = order.assignedTrader?.fullName ?? "Unassigned";
       const instructionExpired = orderValidityExpired({ validity: order.validity, goodTillDate: order.goodTillDate, submittedAt: order.submittedAt ?? order.createdAt });
+      const executedFeeBreakdown = order.trades.reduce((total, trade) => {
+        const fee = trade.feeBreakdown && typeof trade.feeBreakdown === "object" ? trade.feeBreakdown as Record<string, unknown> : null;
+        const brokerage = Number(fee?.brokerage ?? trade.fees);
+        const regulator = Number(fee?.regulator ?? 0);
+        const exchange = Number(fee?.exchange ?? 0);
+        const csd = Number(fee?.csd ?? 0);
+        return { brokerage: total.brokerage + brokerage, regulator: total.regulator + regulator, exchange: total.exchange + exchange, csd: total.csd + csd, total: total.total + brokerage + regulator + exchange + csd };
+      }, { brokerage: 0, regulator: 0, exchange: 0, csd: 0, total: 0 });
       return {
         id: order.id,
         createdAt: (order.submittedAt ?? order.createdAt).toISOString(),
@@ -161,6 +169,9 @@ export async function GET(request: Request) {
         averageFillPrice: order.averageFillPrice ? toNum(order.averageFillPrice) : null,
         executedGross: toNum(order.executedGross),
         executedFees: toNum(order.executedFees),
+        executedBrokerage: executedFeeBreakdown.brokerage,
+        executedMarketCharges: executedFeeBreakdown.regulator + executedFeeBreakdown.exchange + executedFeeBreakdown.csd,
+        executedFeeBreakdown,
         executedNet: toNum(order.executedNet),
         blockedCash: toNum(order.blockedCash),
         blockedQuantity: toNum(order.blockedQuantity),

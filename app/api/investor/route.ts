@@ -32,6 +32,7 @@ import { getFrankCoachHoldingValue } from "../../../lib/frank-coach";
 import { taxIdentityReference } from "../../../lib/monitoring";
 import { openComplaintCaseFromThread } from "../../../lib/crm/complaint-service";
 import { assertBusinessDayOpen } from "../../../lib/reconciliation-service";
+import { selectCommissionPromotion } from "../../../lib/oms/fee-service";
 
 export const runtime = "nodejs";
 
@@ -62,7 +63,10 @@ export async function GET(request: Request) {
           },
           feeSchedules: {
             where: { status: "published", effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }] },
-            include: { rules: { include: { tiers: { orderBy: { minimumOrderValue: "asc" } } } } },
+            include: {
+              rules: { include: { tiers: { orderBy: { minimumOrderValue: "asc" } } } },
+              promotions: { orderBy: [{ startsOn: "desc" }, { createdAt: "desc" }] },
+            },
             orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
             take: 1,
           },
@@ -107,6 +111,13 @@ export async function GET(request: Request) {
     const account = client?.accounts[0];
     const legalDocument = broker.legalDocuments[0] ?? null;
     const feeSchedule = broker.feeSchedules[0] ?? null;
+    const commissionPromotion = selectCommissionPromotion(feeSchedule?.promotions ?? [], new Date(), client);
+    const promotionEndsOn = commissionPromotion && client && commissionPromotion.eligibility === "new_clients" && commissionPromotion.newClientWindowDays
+      ? new Date(Math.min(
+        commissionPromotion.endsOn.getTime(),
+        (client.approvedAt ?? client.createdAt).getTime() + commissionPromotion.newClientWindowDays * 86_400_000 - 1,
+      )).toISOString().slice(0, 10)
+      : commissionPromotion?.endsOn.toISOString().slice(0, 10) ?? null;
     const acceptedCurrentTerms = !legalDocument || Boolean(client?.consents.some((consent) =>
       consent.consentType === "brokerage_terms"
       && consent.legalDocumentId === legalDocument.id
@@ -231,7 +242,20 @@ export async function GET(request: Request) {
           version: feeSchedule?.version ?? "broker-settings",
           regulatoryVersion: regulatoryFeeSchedule.version,
           effectiveFrom: (feeSchedule?.effectiveFrom ?? regulatoryFeeSchedule.effectiveFrom).toISOString().slice(0, 10),
-          rules: composeFeeRules(feeSchedule?.rules ?? [], regulatoryFeeSchedule.rules, broker.settings),
+          rules: composeFeeRules(feeSchedule?.rules ?? [], regulatoryFeeSchedule.rules, broker.settings).map((rule) => commissionPromotion ? {
+            ...rule,
+            brokeragePct: 0,
+            minimumFee: 0,
+            maximumFee: 0,
+            tiers: rule.tiers.map((tier) => ({ ...tier, brokeragePct: 0 })),
+          } : rule),
+          commissionPromotion: commissionPromotion ? {
+            id: commissionPromotion.id,
+            name: commissionPromotion.name,
+            eligibility: commissionPromotion.eligibility,
+            startsOn: commissionPromotion.startsOn.toISOString().slice(0, 10),
+            endsOn: promotionEndsOn!,
+          } : null,
         } : null,
       },
       profile: client ? {

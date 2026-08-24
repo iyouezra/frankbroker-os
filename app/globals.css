@@ -277,6 +277,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .feature-list span.off { color: var(--fx-text-3); }
 .feature-list span.off i { background: var(--fx-line); }
 .settings-note { padding: 12px 19px; border-top: 1px solid var(--soft-line); color: var(--fx-text-3); font-size: 11.5px; }
+.commission-promotion { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.commission-promotion > div:first-child { max-width: 650px; }
+.commission-promotion p { margin: 4px 0 0; line-height: 1.5; }
+.commission-promotion .brokerage-version-fields { width: 100%; padding: 4px 0 6px; }
 .perm-yes { color: var(--green); font-weight: 800; }
 .perm-no { color: var(--fx-text-3); }
 

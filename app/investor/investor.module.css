@@ -842,6 +842,12 @@
 .languageOptions .languageActive { background: var(--investor-teal-800); color: white; }
 .languageRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; padding: 13px 15px; border: 1px solid var(--investor-ink-200); border-radius: 15px; background: white; }
 .languageRowLabel { color: var(--investor-ink-900); font-size: 12px; font-weight: 700; }
+.promotionBanner { display: flex; align-items: flex-start; gap: 10px; margin: 10px 14px 0; padding: 12px 13px; border: 1px solid #a8ded2; border-radius: 14px; background: linear-gradient(135deg,#e9faf4,#f5fffb); color: var(--investor-teal-800); box-shadow: 0 5px 16px rgba(8,98,91,.08); }
+.promotionBanner > span { width: 28px; height: 28px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #c8f1e2; color: #087654; }
+.promotionBanner > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.promotionBanner b { font-size: 12px; }
+.promotionBanner small { color: var(--investor-ink-700); font-size: 11px; line-height: 1.4; }
+.promotionBanner em { color: var(--investor-ink-500); font-size: 9.5px; font-style: normal; line-height: 1.4; }
 
 /* --- Ethiopic (Ge'ez) typography ----------------------------------------- */
 /* Amharic needs a font that covers Fidel and a little more vertical room than

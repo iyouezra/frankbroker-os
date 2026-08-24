@@ -24,12 +24,13 @@ const REJECTED = new Set(["rejected", "validation_failed", "cancelled", "expired
 type Tone = "good" | "warning" | "serious";
 
 export type RiskBand = { key: string; label: string; count: number; cash: number; tone: Tone };
-export type TrendPoint = { date: string; label: string; volume: number; revenue: number; orders: number };
+export type TrendPoint = { date: string; label: string; volume: number; revenue: number; marketCharges: number; orders: number };
 
 export type BrokerAnalytics = {
   period: Period;
   volume: number;
   revenue: number;
+  marketCharges: number;
   ordersFilled: number;
   ordersTotal: number;
   ordersRejected: number;
@@ -55,6 +56,16 @@ export type BrokerAnalytics = {
 };
 
 const sum = <T,>(rows: T[], pick: (row: T) => number) => rows.reduce((total, row) => total + pick(row), 0);
+const brokerageEarned = (order: DemoOrder) => order.executedBrokerage
+  ?? (order.trades?.length
+    ? sum(order.trades, (trade) => trade.feeBreakdown?.brokerage ?? trade.fees)
+    : order.estimatedFeeBreakdown?.brokerage ?? order.estimatedFees);
+const marketChargesCollected = (order: DemoOrder) => order.executedMarketCharges
+  ?? (order.executedFeeBreakdown
+    ? order.executedFeeBreakdown.regulator + order.executedFeeBreakdown.exchange + order.executedFeeBreakdown.csd
+    : order.trades?.length
+      ? sum(order.trades, (trade) => (trade.feeBreakdown?.regulator ?? 0) + (trade.feeBreakdown?.exchange ?? 0) + (trade.feeBreakdown?.csd ?? 0))
+      : (order.estimatedFeeBreakdown?.regulator ?? 0) + (order.estimatedFeeBreakdown?.exchange ?? 0) + (order.estimatedFeeBreakdown?.csd ?? 0));
 
 // Deterministic [0,1) noise so the demonstration trend is organic yet stable across renders.
 function noise(seed: number) {
@@ -64,10 +75,11 @@ function noise(seed: number) {
 
 // Trailing `days` trading days (weekends skipped) ending on the business date.
 // The final day is anchored to the live order book; earlier days vary around it.
-function buildTrend(days: number, bookVolume: number, bookRevenue: number, bookOrders: number, asOf: Date): TrendPoint[] {
+function buildTrend(days: number, bookVolume: number, bookRevenue: number, bookMarketCharges: number, bookOrders: number, asOf: Date): TrendPoint[] {
   const points: TrendPoint[] = [];
   const baseVolume = bookVolume > 0 ? bookVolume : 4_000_000;
   const rate = bookVolume > 0 ? bookRevenue / bookVolume : 0.005;
+  const marketChargeRate = bookVolume > 0 ? bookMarketCharges / bookVolume : 0;
   const cursor = addisDateOnly(asOf);
   let collected = 0;
   while (collected < days) {
@@ -78,12 +90,14 @@ function buildTrend(days: number, bookVolume: number, bookRevenue: number, bookO
       const swing = 0.55 + noise(seed) * 0.9; // 0.55×–1.45× the book
       const volume = isToday ? bookVolume : Math.round(baseVolume * swing);
       const revenue = isToday ? bookRevenue : Math.round(volume * rate * (0.85 + noise(seed + 7) * 0.3));
+      const marketCharges = isToday ? bookMarketCharges : Math.round(volume * marketChargeRate * (0.9 + noise(seed + 8) * 0.2));
       const orders = isToday ? bookOrders : Math.max(1, Math.round((bookOrders || 6) * swing));
       points.push({
         date: cursor.toISOString().slice(0, 10),
         label: cursor.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
         volume,
         revenue,
+        marketCharges,
         orders,
       });
       collected += 1;
@@ -111,11 +125,13 @@ export function computeBrokerAnalytics(orders: DemoOrder[], clients: BrokerClien
   const executed = orders.filter((order) => EXECUTED.has(order.status));
 
   const bookVolume = sum(executed, (order) => order.estimatedGross);
-  const bookRevenue = sum(executed, (order) => order.estimatedFees);
-  const trend = buildTrend(days, bookVolume, bookRevenue, executed.length, asOf);
+  const bookRevenue = sum(executed, brokerageEarned);
+  const bookMarketCharges = sum(executed, marketChargesCollected);
+  const trend = buildTrend(days, bookVolume, bookRevenue, bookMarketCharges, executed.length, asOf);
 
   const volume = sum(trend, (point) => point.volume);
   const revenue = sum(trend, (point) => point.revenue);
+  const marketCharges = sum(trend, (point) => point.marketCharges);
   const ordersFilled = sum(trend, (point) => point.orders);
   const ordersRejected = orders.filter((order) => REJECTED.has(order.status)).length;
   const ordersTotal = ordersFilled + ordersRejected;
@@ -136,7 +152,7 @@ export function computeBrokerAnalytics(orders: DemoOrder[], clients: BrokerClien
   const clientTotals = new Map<string, { name: string; commission: number }>();
   for (const order of executed) {
     const entry = clientTotals.get(order.clientCode) ?? { name: order.client, commission: 0 };
-    entry.commission += order.estimatedFees;
+    entry.commission += brokerageEarned(order);
     clientTotals.set(order.clientCode, entry);
   }
   const topClients = [...clientTotals.entries()]
@@ -169,6 +185,7 @@ export function computeBrokerAnalytics(orders: DemoOrder[], clients: BrokerClien
     period,
     volume,
     revenue,
+    marketCharges,
     ordersFilled,
     ordersTotal,
     ordersRejected,

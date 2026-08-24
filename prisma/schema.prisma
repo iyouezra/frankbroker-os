@@ -790,10 +790,26 @@ model FeeSchedule {
   updatedAt     DateTime  @updatedAt @map("updated_at")
   broker        Broker    @relation(fields: [brokerId], references: [id], onDelete: Cascade)
   rules         FeeRule[]
+  promotions    CommissionPromotion[]
 
   @@unique([brokerId, version])
   @@index([brokerId, status, effectiveFrom])
   @@map("fee_schedules")
+}
+
+model CommissionPromotion {
+  id                  String      @id
+  feeScheduleId       String      @map("fee_schedule_id")
+  name                String
+  eligibility         String      @default("all_clients")
+  startsOn            DateTime    @map("starts_on") @db.Date
+  endsOn              DateTime    @map("ends_on") @db.Date
+  newClientWindowDays Int?        @map("new_client_window_days")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  schedule            FeeSchedule @relation(fields: [feeScheduleId], references: [id], onDelete: Cascade)
+
+  @@index([feeScheduleId, startsOn, endsOn])
+  @@map("commission_promotions")
 }
 
 model FeeRule {

@@ -2,7 +2,8 @@ import { Prisma } from "../app/generated/prisma/client";
 import { lockPool, lockPosition, persistBeneficialAllocation, persistPoolOnlyMutation } from "./client-money-service";
 import { brokerFeesSwept, clientMoneyFunded, feeRemitted, LEDGER_ROLES, unidentifiedReceiptAllocated, unidentifiedReceiptRecorded } from "./gl/journal-rules";
 import { postJournalEntry } from "./gl/posting-service";
-import { money } from "./money";
+import { buildProtectedClientMoneyCoverage, buildTrialBalance } from "./gl/ledger-reporting";
+import { D, money, type DecimalValue } from "./money";
 import { creditVerifiedDeposit } from "./oms/ledger-service";
 import { lockAccount, persistCashMutation } from "./oms/persistence";
 import { prisma } from "./prisma";
@@ -51,16 +52,44 @@ export async function allocateUnidentifiedClientReceipt(input: { brokerId: strin
   }, transactionOptions);
 }
 
-export async function sweepCollectedClientCharges(input: { brokerId: string; actorId: string; approverId: string; sweepId: string; pooledBankAccountId: string; amount: string | number; valueDate: Date }) {
-  const amount = money(input.amount);
-  if (amount.lte(0)) throw new Response("Sweep amount must be positive.", { status: 400 });
+export function chargeSweepLimit(input: { protectedSurplus: DecimalValue; collectedCharges: DecimalValue; previousSweeps: DecimalValue; poolBookBalance: DecimalValue; poolStatementBalance: DecimalValue }) {
+  const unsweptCharges = money(D(input.collectedCharges).minus(input.previousSweeps));
+  return money(Prisma.Decimal.max(0, Prisma.Decimal.min(
+    D(input.protectedSurplus), unsweptCharges, D(input.poolBookBalance), D(input.poolStatementBalance),
+  )));
+}
+
+export async function sweepCollectedClientCharges(input: { brokerId: string; actorId: string; approverId: string; sweepId: string; pooledBankAccountId: string; valueDate: Date }) {
   return prisma.$transaction(async (tx) => {
     await assertIndependentApproval(tx, input.brokerId, input.actorId, input.approverId);
     await lockPool(tx, input.pooledBankAccountId);
     const pool = await tx.pooledBankAccount.findFirstOrThrow({ where: { id: input.pooledBankAccountId, brokerId: input.brokerId } });
+    if (!pool.lastReconciledAt) throw new Response("Reconcile the client bank account before withdrawing collected charges.", { status: 409 });
+    const [trialBalance, collected, swept] = await Promise.all([
+      buildTrialBalance(tx, input.brokerId),
+      tx.journalLine.aggregate({
+        where: { brokerId: input.brokerId, side: "credit", entry: { sourceType: "trade_capture", status: "posted" }, ledgerAccount: { role: { in: [LEDGER_ROLES.brokerageIncome, LEDGER_ROLES.ecmaLevyPayable, LEDGER_ROLES.esxFeePayable, LEDGER_ROLES.csdFeePayable] } } },
+        _sum: { amount: true },
+      }),
+      tx.journalLine.aggregate({
+        where: { brokerId: input.brokerId, side: "debit", entry: { sourceType: "fee_sweep", status: "posted" }, ledgerAccount: { role: LEDGER_ROLES.brokerOperatingBank } },
+        _sum: { amount: true },
+      }),
+    ]);
+    const coverage = buildProtectedClientMoneyCoverage(trialBalance);
+    if (!coverage.adequate) throw new Response("Collected charges cannot be swept while protected client money has a shortfall.", { status: 409 });
+    const amount = chargeSweepLimit({
+      protectedSurplus: coverage.surplus,
+      collectedCharges: collected._sum.amount ?? 0,
+      previousSweeps: swept._sum.amount ?? 0,
+      poolBookBalance: pool.bookBalance,
+      poolStatementBalance: pool.statementBalance,
+    });
+    if (amount.lte(0)) throw new Response("There is no reconciled, unswept charge balance available to withdraw.", { status: 409 });
     await persistPoolOnlyMutation(tx, { pool, entryType: "collected_charges_sweep", bookImpact: amount.negated(), statementImpact: amount.negated(), actorId: input.actorId, notes: `Collected charges sweep ${input.sweepId}` });
-    return postJournalEntry(tx, { brokerId: input.brokerId, actorId: input.actorId, approverId: input.approverId,
+    const journal = await postJournalEntry(tx, { brokerId: input.brokerId, actorId: input.actorId, approverId: input.approverId,
       draft: brokerFeesSwept({ sweepId: input.sweepId, pooledBankAccountId: pool.id, amount, valueDate: input.valueDate }) });
+    return { ...journal, amount: amount.toFixed(2), protectedSurplusBeforeSweep: money(coverage.surplus).toFixed(2) };
   }, transactionOptions);
 }
 

@@ -52,6 +52,8 @@ export const am: Dictionary = {
   "notifications.title": "ማሳወቂያዎች",
   "notifications.markAllRead": "ሁሉንም እንደተነበበ ምልክት ያድርጉ",
   "notifications.empty": "አሁን አዲስ ነገር የለም።",
+  "promotion.active": "እስከ {date} ድረስ ለሚያስገቡት ትዕዛዝ የደላላ ኮሚሽን አይከፍሉም።",
+  "promotion.marketFees": "የECMA፣ ESX እና CSD ክፍያዎች አሁንም ይከፈላሉ።",
 
   "toast.subtitle": "የጋራ የሥራ ሂደት ተዘምኗል።",
 

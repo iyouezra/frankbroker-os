@@ -53,6 +53,8 @@ export const om: Dictionary = {
   "notifications.title": "Beeksisawwan",
   "notifications.markAllRead": "Hunda akka dubbifametti mallattoo godhaa",
   "notifications.empty": "Amma wanti haaraan hin jiru.",
+  "promotion.active": "Ajajoota hanga {date}tti galchitaniif komishiniin daldalaa irraa haqameera.",
+  "promotion.marketFees": "Kaffaltiin ECMA, ESX fi CSD amma illee ni jira.",
 
   "toast.subtitle": "Adeemsi hojii waliinii haaromfameera.",
 

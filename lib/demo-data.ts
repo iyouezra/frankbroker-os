@@ -27,7 +27,7 @@ export type DemoOrder = {
     exchange: number;
     csd: number;
     total: number;
-    policy?: { brokerageScheduleVersion?: string; regulatoryScheduleVersion?: string };
+    policy?: { brokerageScheduleVersion?: string; regulatoryScheduleVersion?: string; commissionPromotion?: { id?: string; name?: string; eligibility?: string; startsOn?: string; endsOn?: string; newClientWindowDays?: number | null } | null };
   } | null;
   estimatedNet: number;
   status: OrderStatus;
@@ -57,6 +57,9 @@ export type DemoOrder = {
   averageFillPrice?: number | null;
   executedGross?: number;
   executedFees?: number;
+  executedBrokerage?: number;
+  executedMarketCharges?: number;
+  executedFeeBreakdown?: { brokerage: number; regulator: number; exchange: number; csd: number; total: number };
   executedNet?: number;
   blockedCash?: number;
   blockedQuantity?: number;

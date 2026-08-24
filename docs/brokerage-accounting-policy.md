@@ -18,7 +18,10 @@ The initial supported policy choices are intentionally narrow:
 - Protected client-money resources comprise confirmed designated-bank cash;
   gateway and CSD receivables appear only in wider settlement coverage.
 - Collected brokerage and market charges are swept only after they cease to be
-  client entitlements and before remittance from the operating account.
+  client entitlements and before remittance from the operating account. The
+  sweep amount is system-derived from the lower of reconciled protected-money
+  surplus, unswept collected charges, and confirmed pooled-account balances;
+  operators cannot key an override amount and any shortfall blocks the sweep.
 - Withdrawals reduce the client liability at bank-payment finality.
 
 Each broker must approve its policy with an effective date and rationale after

@@ -43,6 +43,7 @@ export function PerformancePage({ orders, clients, period, setPeriod, onOpen }: 
     <section className="metric-grid perf-kpis">
       <Metric label="Volume facilitated" value={compactEtb(a.volume)} note={`${a.ordersFilled} filled orders`} tone="brand" />
       <Metric label="Commissions earned" value={compactEtb(a.revenue)} note={`${a.effectiveRate.toFixed(2)}% effective rate`} tone="success" />
+      <Metric label="Market charges collected" value={compactEtb(a.marketCharges)} note="ECMA, ESX & CSD payables" tone="brand" />
       <Metric label="Fill rate" value={`${Math.round(a.fillRate * 100)}%`} note={`${a.ordersRejected} rejected or cancelled`} tone="purple" />
       <Metric label="Active clients" value={`${a.activeClients}`} note={`${a.newClients} new this period`} tone="warning" />
       <Metric label="Avg order size" value={compactEtb(a.avgOrderSize)} note="per filled order" tone="brand" />

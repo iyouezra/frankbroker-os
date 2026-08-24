@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { normalizeOrderType, parseDateOnly, parseOrderSide, parsePositiveFiniteNumber } from "../lib/order-input.ts";
 import { computeCumulativeFillAmounts, D, toNum } from "../lib/money.ts";
-import { computeConfiguredAmounts, computeCumulativeConfiguredFill, resolveFeePolicy, serializeFeeBreakdown } from "../lib/oms/fee-service.ts";
+import { applySubmittedBrokeragePolicy, computeConfiguredAmounts, computeCumulativeConfiguredFill, resolveFeePolicy, serializeFeeBreakdown } from "../lib/oms/fee-service.ts";
 import { composeFeeRules } from "../lib/fee-schedule-view.ts";
 import { orderPayloadHash } from "../lib/verification-service.ts";
 
@@ -99,6 +99,54 @@ test("selects a tenant commission tier from total order value and keeps it acros
   const first = computeCumulativeConfiguredFill("buy", 60, 1_000, 0, empty, policy);
   const second = computeCumulativeConfiguredFill("buy", 60, 1_000, first.gross, first.breakdown, policy);
   assert.deepEqual([toNum(first.breakdown.brokerage), toNum(second.breakdown.brokerage)], [150, 150]);
+});
+
+test("waives only brokerage commission for an eligible commission-free promotion", async () => {
+  const promotion = { id: "promo-1", name: "First 30 days free", eligibility: "new_clients", startsOn: new Date("2026-08-01"), endsOn: new Date("2026-08-31"), newClientWindowDays: 30 };
+  const policy = await resolveFeePolicy({
+    feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "3.1", promotions: [promotion], rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), minimumFee: D(25), maximumFee: null, tiers: [] }] }) },
+    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(.1), exchangePct: D(.2), csdPct: D(.05) }] }) },
+  }, "brk_1", { assetClass: "equity", marketSegment: "main" }, { brokerageFeePct: D(.5), minimumFee: D(25) }, new Date("2026-08-21"), D(100_000), { createdAt: new Date("2026-08-10") });
+  const result = computeConfiguredAmounts("buy", 100, 1_000, policy);
+  assert.deepEqual({ brokerage: toNum(result.breakdown.brokerage), regulator: toNum(result.breakdown.regulator), exchange: toNum(result.breakdown.exchange), csd: toNum(result.breakdown.csd) }, { brokerage: 0, regulator: 100, exchange: 200, csd: 50 });
+  assert.equal(policy.commissionPromotion?.name, "First 30 days free");
+  assert.equal(serializeFeeBreakdown(result.breakdown, policy).policy.commissionPromotion.id, "promo-1");
+});
+
+test("does not waive commission when a client is outside the new-client window", async () => {
+  const policy = await resolveFeePolicy({
+    feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "3.1", promotions: [{ id: "promo-1", name: "First 30 days free", eligibility: "new_clients", startsOn: new Date("2026-08-01"), endsOn: new Date("2026-08-31"), newClientWindowDays: 30 }], rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), minimumFee: D(25), maximumFee: null, tiers: [] }] }) },
+    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(0), exchangePct: D(0), csdPct: D(0) }] }) },
+  }, "brk_1", { assetClass: "equity", marketSegment: "main" }, { brokerageFeePct: D(.5), minimumFee: D(25) }, new Date("2026-08-21"), D(100_000), { createdAt: new Date("2026-06-01") });
+  assert.equal(toNum(policy.brokeragePct), .5);
+  assert.equal(policy.commissionPromotion, null);
+});
+
+test("waives brokerage for every client during an all-client promotional period", async () => {
+  const policy = await resolveFeePolicy({
+    feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "3.2", promotions: [{ id: "promo-2", name: "Trading week", eligibility: "all_clients", startsOn: new Date("2026-08-17"), endsOn: new Date("2026-08-21"), newClientWindowDays: null }], rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), minimumFee: D(25), maximumFee: null, tiers: [] }] }) },
+    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(0), exchangePct: D(0), csdPct: D(0) }] }) },
+  }, "brk_1", { assetClass: "equity", marketSegment: "main" }, { brokerageFeePct: D(.5), minimumFee: D(25) }, new Date("2026-08-21T18:00:00Z"), D(100_000), { createdAt: new Date("2020-01-01") });
+  assert.equal(toNum(policy.brokeragePct), 0);
+  assert.equal(policy.commissionPromotion?.name, "Trading week");
+});
+
+test("execution keeps the brokerage promotion accepted on the order submission date", () => {
+  const executionDatePolicy = {
+    scheduleId: "fees-new", scheduleVersion: "4.0", regulatoryScheduleId: "platform", regulatoryScheduleVersion: "5.0",
+    assetClass: "equity", marketSegment: "main", brokeragePct: D(.75), regulatorPct: D(.1), exchangePct: D(.2), csdPct: D(.05), minimumFee: D(50), maximumFee: null,
+  };
+  const submitted = applySubmittedBrokeragePolicy(executionDatePolicy, {
+    policy: {
+      brokerageScheduleId: "fees-promo", brokerageScheduleVersion: "3.2", ratesPct: { brokerage: "0" }, minimumBrokerage: "0", maximumBrokerage: "0",
+      commissionPromotion: { id: "promo-2", name: "Trading week", eligibility: "all_clients", startsOn: "2026-08-17", endsOn: "2026-08-21", newClientWindowDays: null },
+    },
+  });
+  const result = computeConfiguredAmounts("buy", 100, 1_000, submitted);
+  assert.equal(toNum(result.breakdown.brokerage), 0);
+  assert.deepEqual([toNum(result.breakdown.regulator), toNum(result.breakdown.exchange), toNum(result.breakdown.csd)], [100, 200, 50]);
+  assert.equal(submitted.scheduleVersion, "3.2");
+  assert.equal(submitted.regulatoryScheduleVersion, "5.0");
 });
 
 test("rejects order pricing when Platform Admin has not published a market schedule", async () => {

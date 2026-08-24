@@ -4,7 +4,7 @@ import { prisma } from "./prisma";
 import { clientIdentityReference } from "./client-identity";
 import { taxIdentityReference } from "./monitoring";
 import type { Actor } from "./server-auth";
-import { writeNotification, COMPLIANCE } from "./oms/notification-service";
+import { writeNotification, writeNotificationOnce, COMPLIANCE } from "./oms/notification-service";
 import {
   expectedDocumentTypes,
   saveOnboardingEvidence,
@@ -337,6 +337,26 @@ export async function approveClient(actor: Actor, clientId: string) {
       entityType: "client",
       entityId: client.id,
     });
+    const activeSchedule = await tx.feeSchedule.findFirst({
+      where: { brokerId: actor.brokerId, status: "published", effectiveFrom: { lte: approvedAt }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: approvedAt } }] },
+      include: { promotions: true },
+      orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+    });
+    for (const promotion of activeSchedule?.promotions ?? []) {
+      const promotionEnd = new Date(promotion.endsOn.getTime() + 86_399_999);
+      const clientEnd = promotion.eligibility === "new_clients" && promotion.newClientWindowDays
+        ? new Date(approvedAt.getTime() + promotion.newClientWindowDays * 86_400_000 - 1)
+        : promotionEnd;
+      const eligibilityStart = new Date(Math.max(approvedAt.getTime(), promotion.startsOn.getTime()));
+      const eligibilityEnd = new Date(Math.min(clientEnd.getTime(), promotionEnd.getTime()));
+      if (eligibilityStart > eligibilityEnd) continue;
+      await writeNotificationOnce(tx, {
+        scope: "investor", brokerId: actor.brokerId, clientId: client.id, category: "account", severity: "success",
+        title: promotion.name,
+        body: `You qualify for commission-free trading on orders submitted through ${eligibilityEnd.toISOString().slice(0, 10)}. ECMA, ESX, and CSD charges still apply.`,
+        entityType: "commission_promotion", entityId: promotion.id, dedupeKey: `commission-promotion:${promotion.id}:${client.id}`,
+      });
+    }
     return { status: "active", kycStatus: "approved", accountId, accountNumber };
   }, transactionOptions);
 }

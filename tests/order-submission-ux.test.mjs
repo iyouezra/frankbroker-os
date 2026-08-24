@@ -72,6 +72,24 @@ test("investor order flow uses an in-app OTP dialog and explicit outcome screens
   assert.match(copy, /"outcome\.viewOrders": "View orders"/);
 });
 
+test("eligible investors see a commission-free notice and receive a durable notification", async () => {
+  const [app, investorRoute, tenantRoute, clientService, copy] = await Promise.all([
+    readFile(new URL("../app/investor/investor-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/investor/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/tenant/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/client-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/i18n/en.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /promotionBanner/);
+  assert.match(app, /commissionPromotion\.name/);
+  assert.match(copy, /brokerage commission is waived for orders submitted/);
+  assert.match(copy, /ECMA, ESX, and CSD charges still apply/);
+  assert.match(investorRoute, /selectCommissionPromotion/);
+  assert.match(investorRoute, /brokeragePct: 0/);
+  assert.match(tenantRoute, /commission-promotion:/);
+  assert.match(clientService, /writeNotificationOnce/);
+});
+
 test("investor buy orders cannot exceed available buying power", async () => {
   const [orderService, orderSheet, securityDetails] = await Promise.all([
     readFile(new URL("../lib/oms/order-service.ts", import.meta.url), "utf8"),

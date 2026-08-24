@@ -754,6 +754,10 @@ export default function InvestorApp() {
           <div><b>{t("restricted.title")}</b><small>{restrictionReason} {restrictedScope}</small></div>
           <button onClick={() => { setTab("profile"); setStock(null); setBond(null); }}>{restrictionCanSelfResolve ? t("restricted.resolve") : t("restricted.view")}</button>
         </div>}
+        {phase === "app" && bootstrap?.tenant.feeSchedule?.commissionPromotion && <div className={styles.promotionBanner} role="status">
+          <span><Icon name="check" size={18} /></span>
+          <div><b>{bootstrap.tenant.feeSchedule.commissionPromotion.name}</b><small>{t("promotion.active", { date: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${bootstrap.tenant.feeSchedule.commissionPromotion.endsOn}T12:00:00Z`)) })}</small><em>{t("promotion.marketFees")}</em></div>
+        </div>}
         {phase === "select" ? <div className={styles.demoSelector}>
           <div className={styles.demoSelectorBrand}><AppLogo /><span>{t("entry.brand")}</span></div>
           <div className={styles.demoSelectorIntro}>

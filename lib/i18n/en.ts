@@ -57,6 +57,8 @@ export const en = {
   "notifications.title": "Notifications",
   "notifications.markAllRead": "Mark all read",
   "notifications.empty": "Nothing new right now.",
+  "promotion.active": "Your brokerage commission is waived for orders submitted through {date}.",
+  "promotion.marketFees": "ECMA, ESX, and CSD charges still apply.",
 
   // Toast
   "toast.subtitle": "Shared tenant workflow updated.",

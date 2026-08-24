@@ -132,7 +132,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
   const triggerPrice = input.triggerPrice === undefined || input.triggerPrice === null ? null : D(input.triggerPrice);
   const orderType = normalizeOrderType(input.orderType ?? "limit");
   const validityInstruction = parseOrderValidity({ validity: input.validity, goodTillDate: input.goodTillDate, orderType });
-  const feePolicy = await resolveFeePolicy(prisma, actor.brokerId, instrument, settings, new Date(), quantity.times(price));
+  const feePolicy = await resolveFeePolicy(prisma, actor.brokerId, instrument, settings, new Date(), quantity.times(price), account.client);
   const amounts = computeConfiguredAmounts(input.side, quantity, price, feePolicy);
   const allowedOrderTypes = Array.isArray(settings?.allowedOrderTypes)
     ? settings.allowedOrderTypes.filter((item): item is string => typeof item === "string")
@@ -433,6 +433,7 @@ export async function createSubmittedOrder(actor: SubmissionActor, input: Create
         price: toNum(price),
         estimatedNet: toNum(amounts.net),
         feeScheduleVersion: feePolicy.scheduleVersion,
+        commissionPromotion: feePolicy.commissionPromotion ? { id: feePolicy.commissionPromotion.id, name: feePolicy.commissionPromotion.name } : null,
         regulatoryFeeScheduleVersion: feePolicy.regulatoryScheduleVersion,
         disclosureVersion: input.disclosureVersion ?? null,
       },

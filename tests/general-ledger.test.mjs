@@ -24,6 +24,7 @@ import {
   unidentifiedReceiptRecorded,
   withdrawalPaid,
 } from "../lib/gl/journal-rules.ts";
+import { chargeSweepLimit } from "../lib/client-money-operations-service.ts";
 
 const VALUE_DATE = new Date("2026-08-16T00:00:00.000Z");
 const ALL_ROLES = new Set(LEDGER_ROLE_TEMPLATE.map((item) => item.role));
@@ -347,6 +348,12 @@ test("fees left sitting in segregated money show up as a surplus until they are 
   const held = at(LEDGER_ROLES.clientMoneyPooledBank);
   const owed = money(at(LEDGER_ROLES.clientMoneyPayableSettled).plus(at(LEDGER_ROLES.settlementPayable))).negated();
   assert.equal(money(held.minus(owed)).toFixed(2), "560.00");
+});
+
+test("a charge sweep is derived from the smallest reconciled and earned balance", () => {
+  assert.equal(chargeSweepLimit({ protectedSurplus: 560, collectedCharges: 840, previousSweeps: 300, poolBookBalance: 1_000, poolStatementBalance: 900 }).toFixed(2), "540.00");
+  assert.equal(chargeSweepLimit({ protectedSurplus: -1, collectedCharges: 840, previousSweeps: 0, poolBookBalance: 1_000, poolStatementBalance: 1_000 }).toFixed(2), "0.00");
+  assert.equal(chargeSweepLimit({ protectedSurplus: 560, collectedCharges: 840, previousSweeps: 840, poolBookBalance: 1_000, poolStatementBalance: 1_000 }).toFixed(2), "0.00");
 });
 
 test("a broker funding a shortfall moves its own cash into segregated money", () => {
