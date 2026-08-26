@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   try {
     await requirePlatformAdmin(request);
     const start = addisDayStart();
-    const [brokers, instruments, auditRows, platformFeeSchedule, checklistTemplates] = await Promise.all([
+    const [brokers, instruments, auditRows, platformFeeSchedule, platformTaxSchedule, checklistTemplates] = await Promise.all([
       prisma.broker.findMany({
         include: {
           settings: true,
@@ -70,6 +70,11 @@ export async function GET(request: Request) {
       prisma.platformFeeSchedule.findFirst({
         where: { status: "published" },
         include: { rules: true },
+        orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+      }),
+      prisma.platformTaxSchedule.findFirst({
+        where: { status: "published" },
+        include: { rules: { orderBy: [{ appliesTo: "asc" }, { assetClass: "asc" }] } },
         orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
       }),
       prisma.checklistTemplate.findMany({ where: { status: "published" }, orderBy: [{ transactionType: "asc" }, { marketSegment: "asc" }] }),
@@ -199,6 +204,23 @@ export async function GET(request: Request) {
           regulatorPct: toNum(rule.regulatorPct),
           exchangePct: toNum(rule.exchangePct),
           csdPct: toNum(rule.csdPct),
+        })),
+      } : null,
+      platformTaxSchedule: platformTaxSchedule ? {
+        id: platformTaxSchedule.id,
+        name: platformTaxSchedule.name,
+        version: platformTaxSchedule.version,
+        status: platformTaxSchedule.status,
+        effectiveFrom: platformTaxSchedule.effectiveFrom.toISOString().slice(0, 10),
+        legalReference: platformTaxSchedule.legalReference,
+        evidenceReference: (platformTaxSchedule.sourceEvidence as { evidenceReference?: string } | null)?.evidenceReference ?? "",
+        rules: platformTaxSchedule.rules.map((rule) => ({
+          appliesTo: rule.appliesTo,
+          assetClass: rule.assetClass,
+          ratePct: toNum(rule.ratePct),
+          calculationBasis: rule.calculationBasis,
+          collectionMethod: rule.collectionMethod,
+          inflationAdjustmentPct: toNum(rule.inflationAdjustmentPct),
         })),
       } : null,
       instruments: instruments.map((item) => ({
@@ -540,6 +562,41 @@ export async function POST(request: Request) {
         } });
       });
       return Response.json({ feeSchedule: { id } }, { status: 201 });
+    }
+    if (payload.entity === "platform_tax_schedule") {
+      const version = String(data.version ?? "").trim();
+      const effectiveFrom = String(data.effectiveFrom ?? "");
+      const legalReference = String(data.legalReference ?? "").trim();
+      const evidenceReference = String(data.evidenceReference ?? "").trim();
+      const rules = Array.isArray(data.rules) ? data.rules as Array<Record<string, unknown>> : [];
+      if (!version || !validDateOnly(effectiveFrom) || legalReference.length < 10 || evidenceReference.length < 5) return Response.json({ error: "Version, effective date, legal reference, and source evidence are required." }, { status: 400 });
+      const normalized = rules.map((rule) => ({
+        appliesTo: String(rule.appliesTo ?? ""),
+        assetClass: String(rule.assetClass ?? ""),
+        ratePct: Number(rule.ratePct),
+        calculationBasis: String(rule.calculationBasis ?? ""),
+        collectionMethod: String(rule.collectionMethod ?? ""),
+        inflationAdjustmentPct: Number(rule.inflationAdjustmentPct ?? 0),
+      }));
+      const expected = new Set(["dividend:equity", "interest:bond", "capital_gain:equity", "capital_gain:bond"]);
+      const supplied = new Set(normalized.map((rule) => `${rule.appliesTo}:${rule.assetClass}`));
+      const invalid = normalized.some((rule) => !Number.isFinite(rule.ratePct) || rule.ratePct < 0 || rule.ratePct > 100 || !Number.isFinite(rule.inflationAdjustmentPct) || rule.inflationAdjustmentPct < 0 || rule.inflationAdjustmentPct > 100
+        || (rule.appliesTo === "capital_gain" ? rule.calculationBasis !== "adjusted_gain" || rule.collectionMethod !== "investor_payable" : rule.calculationBasis !== "gross" || rule.collectionMethod !== "issuer_withheld"));
+      if (normalized.length !== expected.size || invalid || [...expected].some((key) => !supplied.has(key))) return Response.json({ error: "Provide equity dividend, bond interest, and equity and bond capital-gain rules with the prescribed collection responsibilities." }, { status: 400 });
+      const existing = await prisma.platformTaxSchedule.findUnique({ where: { version } });
+      if (existing?.status === "published") return Response.json({ error: "Published tax schedules are immutable. Use a new version for any change." }, { status: 409 });
+      if (existing && existing.effectiveFrom.toISOString().slice(0, 10) !== effectiveFrom) return Response.json({ error: "Use a new tax version when changing the effective date." }, { status: 409 });
+      const id = existing?.id ?? `platform_tax_${version.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+      const effectiveDate = dateOnly(effectiveFrom);
+      await prisma.$transaction(async (tx) => {
+        await tx.platformTaxSchedule.updateMany({ where: { status: "published", id: { not: id }, effectiveFrom: { lt: effectiveDate } }, data: { effectiveTo: dayBefore(effectiveDate) } });
+        await tx.platformTaxSchedule.updateMany({ where: { status: "published", id: { not: id }, effectiveFrom: { gte: effectiveDate } }, data: { status: "archived" } });
+        await tx.platformTaxSchedule.upsert({ where: { id }, update: { name: String(data.name ?? "Ethiopian investment tax schedule"), version, status: "published", effectiveFrom: effectiveDate, effectiveTo: null, legalReference, sourceEvidence: { evidenceReference } }, create: { id, name: String(data.name ?? "Ethiopian investment tax schedule"), version, status: "published", effectiveFrom: effectiveDate, legalReference, sourceEvidence: { evidenceReference } } });
+        await tx.platformTaxRule.deleteMany({ where: { platformTaxScheduleId: id } });
+        await tx.platformTaxRule.createMany({ data: normalized.map((rule) => ({ id: crypto.randomUUID(), platformTaxScheduleId: id, ...rule })) });
+        await tx.auditLog.create({ data: { id: crypto.randomUUID(), brokerId: null, actorId: null, action: "PLATFORM_TAX_SCHEDULE_PUBLISHED", entityType: "platform_tax_schedule", entityId: id, summary: `Platform tax schedule ${version} published for every brokerage`, newValue: JSON.stringify({ version, effectiveFrom, legalReference, evidenceReference, rules: normalized }) } });
+      });
+      return Response.json({ platformTaxSchedule: { id, version, effectiveFrom } }, { status: 201 });
     }
     if (payload.entity === "platform_fee_schedule") {
       const version = String(data.version ?? "").trim();

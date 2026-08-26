@@ -895,6 +895,43 @@ model PlatformFeeRule {
   @@map("platform_fee_rules")
 }
 
+/// One authoritative, effective-dated tax schedule shared by every brokerage.
+/// A new version supersedes an old version; historical calculations retain the
+/// exact rule that produced them.
+model PlatformTaxSchedule {
+  id              String            @id
+  name            String
+  version         String            @unique
+  status          String            @default("draft")
+  effectiveFrom   DateTime          @map("effective_from") @db.Date
+  effectiveTo     DateTime?         @map("effective_to") @db.Date
+  legalReference  String            @map("legal_reference")
+  sourceEvidence  Json?             @map("source_evidence")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  rules           PlatformTaxRule[]
+
+  @@index([status, effectiveFrom])
+  @@map("platform_tax_schedules")
+}
+
+model PlatformTaxRule {
+  id                     String              @id
+  platformTaxScheduleId  String              @map("platform_tax_schedule_id")
+  appliesTo              String              @map("applies_to")
+  assetClass             String              @map("asset_class")
+  ratePct                Decimal             @map("rate_pct") @db.Decimal(8, 4)
+  calculationBasis       String              @map("calculation_basis")
+  collectionMethod       String              @map("collection_method")
+  inflationAdjustmentPct Decimal             @default(0) @map("inflation_adjustment_pct") @db.Decimal(8, 4)
+  schedule               PlatformTaxSchedule @relation(fields: [platformTaxScheduleId], references: [id], onDelete: Cascade)
+  calculations           TaxCalculation[]
+
+  @@unique([platformTaxScheduleId, appliesTo, assetClass])
+  @@index([appliesTo, assetClass])
+  @@map("platform_tax_rules")
+}
+
 model BrokerInstrument {
   id           String     @id
   brokerId     String     @map("broker_id")
@@ -1209,6 +1246,9 @@ model CorporateActionEntitlement {
   withholdingAmount     Decimal?        @map("withholding_amount") @db.Decimal(20, 4)
   netCash               Decimal?        @map("net_cash") @db.Decimal(20, 4)
   withholdingStatus     String          @default("unconfigured") @map("withholding_status")
+  withholdingAgent      String?         @map("withholding_agent")
+  taxLiabilityParty     String?         @map("tax_liability_party")
+  withholdingEvidence   String?         @map("withholding_evidence")
   securityQuantity      Decimal?        @map("security_quantity") @db.Decimal(24, 8)
   election              String          @default("cash")
   electionRecordedAt    DateTime?       @map("election_recorded_at")
@@ -1328,7 +1368,8 @@ model TaxCalculation {
   id                         String                      @id
   realizedGainAllocationId   String?                     @map("realized_gain_allocation_id")
   corporateActionEntitlementId String?                   @map("corporate_action_entitlement_id")
-  taxPolicyVersionId         String                      @map("tax_policy_version_id")
+  taxPolicyVersionId         String?                     @map("tax_policy_version_id")
+  platformTaxRuleId          String?                     @map("platform_tax_rule_id")
   revision                   Int                         @default(1)
   taxableAmount              Decimal                     @map("taxable_amount") @db.Decimal(20, 4)
   ratePct                    Decimal                     @map("rate_pct") @db.Decimal(8, 4)
@@ -1339,11 +1380,15 @@ model TaxCalculation {
   calculatedAt               DateTime                    @default(now()) @map("calculated_at")
   realizedGainAllocation     RealizedGainAllocation?     @relation(fields: [realizedGainAllocationId], references: [id], onDelete: Restrict)
   corporateActionEntitlement CorporateActionEntitlement? @relation(fields: [corporateActionEntitlementId], references: [id], onDelete: Restrict)
-  policy                     TaxPolicyVersion            @relation(fields: [taxPolicyVersionId], references: [id], onDelete: Restrict)
+  policy                     TaxPolicyVersion?           @relation(fields: [taxPolicyVersionId], references: [id], onDelete: Restrict)
+  platformRule               PlatformTaxRule?            @relation(fields: [platformTaxRuleId], references: [id], onDelete: Restrict)
 
   @@unique([realizedGainAllocationId, taxPolicyVersionId, revision])
   @@unique([corporateActionEntitlementId, taxPolicyVersionId, revision])
+  @@unique([realizedGainAllocationId, platformTaxRuleId, revision])
+  @@unique([corporateActionEntitlementId, platformTaxRuleId, revision])
   @@index([taxPolicyVersionId, calculatedAt])
+  @@index([platformTaxRuleId, calculatedAt])
   @@map("tax_calculations")
 }
 

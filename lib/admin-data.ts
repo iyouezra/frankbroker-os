@@ -26,6 +26,25 @@ export type PlatformFeeSchedule = {
   rules: PlatformFeeRule[];
 };
 
+export type PlatformTaxRule = {
+  appliesTo: "dividend" | "interest" | "capital_gain";
+  assetClass: "equity" | "bond";
+  ratePct: number;
+  calculationBasis: "gross" | "adjusted_gain";
+  collectionMethod: "issuer_withheld" | "investor_payable";
+  inflationAdjustmentPct: number;
+};
+export type PlatformTaxSchedule = {
+  id?: string;
+  name: string;
+  version: string;
+  status: "draft" | "published";
+  effectiveFrom: string;
+  legalReference: string;
+  evidenceReference: string;
+  rules: PlatformTaxRule[];
+};
+
 export type TenantConfig = {
   id: string;
   name: string;
@@ -120,6 +139,21 @@ export const initialPlatformFeeSchedule: PlatformFeeSchedule = {
   rules: [
     { assetClass: "equity", marketSegment: "main", regulatorPct: 0, exchangePct: 0, csdPct: 0 },
     { assetClass: "bond", marketSegment: "main", regulatorPct: 0, exchangePct: 0, csdPct: 0 },
+  ],
+};
+
+export const initialPlatformTaxSchedule: PlatformTaxSchedule = {
+  name: "Ethiopian investment income and taxable-asset gains",
+  version: "ET-2025.1",
+  status: "draft",
+  effectiveFrom: "2025-07-08",
+  legalReference: "Federal Income Tax Proclamation No. 979/2016 as amended by Proclamation No. 1395/2025, Articles 57, 58 and 61",
+  evidenceReference: "Federal Negarit Gazette No. 64, 1 September 2025",
+  rules: [
+    { appliesTo: "dividend", assetClass: "equity", ratePct: 15, calculationBasis: "gross", collectionMethod: "issuer_withheld", inflationAdjustmentPct: 0 },
+    { appliesTo: "interest", assetClass: "bond", ratePct: 10, calculationBasis: "gross", collectionMethod: "issuer_withheld", inflationAdjustmentPct: 0 },
+    { appliesTo: "capital_gain", assetClass: "equity", ratePct: 15, calculationBasis: "adjusted_gain", collectionMethod: "investor_payable", inflationAdjustmentPct: 30 },
+    { appliesTo: "capital_gain", assetClass: "bond", ratePct: 15, calculationBasis: "adjusted_gain", collectionMethod: "investor_payable", inflationAdjustmentPct: 30 },
   ],
 };
 

@@ -111,11 +111,17 @@ function clientStatementWorkbook(snapshot: Extract<ComplianceSnapshot, { kind: "
     const r = index + 2;
     trades.push(text(`A${r}`, item.tradeId), text(`B${r}`, item.orderId), text(`C${r}`, item.tradeDate), text(`D${r}`, item.symbol), text(`E${r}`, item.side.toUpperCase()), number(`F${r}`, item.quantity), number(`G${r}`, item.price), number(`H${r}`, item.gross), number(`I${r}`, item.fees), number(`J${r}`, item.net), text(`K${r}`, item.settlementDate));
   });
+  const incomeTax: WorkbookCell[] = ["Payment date", "Symbol", "Income type", "Gross income", "Tax rate %", "Tax withheld by issuer", "Net income", "Issuer evidence"].map((value, index) => header(`${String.fromCharCode(65 + index)}1`, value));
+  snapshot.incomeTax.forEach((item, index) => { const r = index + 2; incomeTax.push(text(`A${r}`, item.paymentDate), text(`B${r}`, item.symbol), text(`C${r}`, item.type.replaceAll("_", " ")), number(`D${r}`, item.grossIncome), item.taxRatePct === null ? text(`E${r}`, "Unconfigured") : number(`E${r}`, item.taxRatePct), number(`F${r}`, item.taxWithheldByIssuer), number(`G${r}`, item.netIncome), text(`H${r}`, item.evidenceReference ?? "Pending issuer evidence")); });
+  const capitalGains: WorkbookCell[] = ["Disposal date", "Symbol", "Reference", "Net proceeds", "Cost basis", "Economic gain", "Inflation adjustment", "Taxable gain", "Tax rate %", "Estimated tax payable by investor"].map((value, index) => header(`${String.fromCharCode(65 + index)}1`, value));
+  snapshot.capitalGains.forEach((item, index) => { const r = index + 2; capitalGains.push(text(`A${r}`, item.disposalDate), text(`B${r}`, item.symbol), text(`C${r}`, item.reference), number(`D${r}`, item.netProceeds), item.costBasis === null ? text(`E${r}`, "Basis required") : number(`E${r}`, item.costBasis), item.economicGain === null ? text(`F${r}`, "Basis required") : number(`F${r}`, item.economicGain), item.inflationAdjustment === null ? text(`G${r}`, "Unconfigured") : number(`G${r}`, item.inflationAdjustment), item.taxableGain === null ? text(`H${r}`, "Unconfigured") : number(`H${r}`, item.taxableGain), item.taxRatePct === null ? text(`I${r}`, "Unconfigured") : number(`I${r}`, item.taxRatePct), item.estimatedTaxPayableByInvestor === null ? text(`J${r}`, "Unconfigured") : number(`J${r}`, item.estimatedTaxPayableByInvestor)); });
   return createXlsx([
     { name: "Statement", cells: summary, merges: ["A1:D1"], widths: [22, 34, 18, 18] },
     { name: "Transactions", cells: transactions, widths: [14, 20, 22, 16, 16, 18, 48] },
     { name: "Trades", cells: trades, widths: [18, 18, 14, 12, 10, 14, 14, 16, 14, 16, 16] },
     { name: "Holdings", cells: holdings, widths: [14, 36, 18] },
+    { name: "Income Tax", cells: incomeTax, widths: [15, 12, 18, 17, 14, 23, 17, 30] },
+    { name: "Capital Gains", cells: capitalGains, widths: [15, 12, 20, 17, 17, 17, 20, 17, 14, 29] },
   ]);
 }
 

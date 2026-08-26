@@ -8,7 +8,8 @@ import { writeNotification } from "./oms/notification-service";
 import { lockAccount, lockHolding, persistCashMutation, persistSecuritiesMutation } from "./oms/persistence";
 import { prisma } from "./prisma";
 import type { Actor } from "./server-auth";
-import { recordCorporateActionRealization, resolveActiveTaxPolicy } from "./tax-lot-service";
+import { recordCorporateActionRealization } from "./tax-lot-service";
+import { platformTaxSnapshot, resolveActivePlatformTaxRule, taxAmount } from "./platform-tax-service";
 import { corporateActionCashReceived } from "./gl/journal-rules";
 import { postJournalEntry } from "./gl/posting-service";
 
@@ -50,19 +51,22 @@ async function calculatedValues(tx: Prisma.TransactionClient, action: { brokerId
   const securities = action.securityRatioNumerator && action.securityRatioDenominator
     ? quantity.times(action.securityRatioNumerator).div(action.securityRatioDenominator).floor()
     : null;
-  if (gross === null) return { gross, withholding: null, net: null, withholdingStatus: "not_applicable", securities, policy: null };
-  if (action.taxTreatment === "no_withholding_confirmed") return { gross, withholding: ZERO, net: gross, withholdingStatus: "confirmed_zero", securities, policy: null };
-  const policy = await resolveActiveTaxPolicy(tx, action.brokerId, incomeType(action.actionType), action.instrument.assetClass, action.paymentDate);
-  if (!policy) return { gross, withholding: null, net: null, withholdingStatus: "unconfigured", securities, policy: null };
-  const taxable = policy.calculationBasis === "gross" ? gross : gross;
-  const tax = money(taxable.times(policy.ratePct).div(100));
-  return { gross, withholding: policy.withholdingRequired ? tax : ZERO, net: money(gross.minus(policy.withholdingRequired ? tax : ZERO)), withholdingStatus: policy.withholdingRequired ? "calculated" : "report_only", securities, policy: { ...policy, tax } };
+  if (gross === null) return { gross, withholding: null, net: null, withholdingStatus: "not_applicable", withholdingAgent: null, taxLiabilityParty: null, securities, policy: null };
+  // Maturity and redemption cash is principal. Any taxable gain is calculated
+  // separately from tax lots; it is never treated as gross interest income.
+  if (["maturity", "redemption"].includes(action.actionType)) return { gross, withholding: ZERO, net: gross, withholdingStatus: "principal_not_withheld", withholdingAgent: null, taxLiabilityParty: "investor", securities, policy: null };
+  if (action.taxTreatment === "no_withholding_confirmed") return { gross, withholding: ZERO, net: gross, withholdingStatus: "issuer_confirmed_zero", withholdingAgent: "issuer", taxLiabilityParty: "investor", securities, policy: null };
+  const policy = await resolveActivePlatformTaxRule(tx, incomeType(action.actionType), action.instrument.assetClass, action.paymentDate);
+  if (!policy) return { gross, withholding: null, net: null, withholdingStatus: "unconfigured", withholdingAgent: null, taxLiabilityParty: "investor", securities, policy: null };
+  if (policy.collectionMethod !== "issuer_withheld") throw new Response("The active platform income-tax rule must identify the issuer as withholding agent.", { status: 409 });
+  const tax = taxAmount(gross, policy.ratePct);
+  return { gross, withholding: tax, net: money(gross.minus(tax)), withholdingStatus: "issuer_withheld_expected", withholdingAgent: "issuer", taxLiabilityParty: "investor", securities, policy: { ...policy, tax } };
 }
 
 async function appendEntitlementTax(tx: Prisma.TransactionClient, entitlementId: string, values: Awaited<ReturnType<typeof calculatedValues>>) {
   if (!values.policy || values.gross === null) return;
-  const latest = await tx.taxCalculation.findFirst({ where: { corporateActionEntitlementId: entitlementId, taxPolicyVersionId: values.policy.id }, orderBy: { revision: "desc" } });
-  await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), corporateActionEntitlementId: entitlementId, taxPolicyVersionId: values.policy.id, revision: (latest?.revision ?? 0) + 1, taxableAmount: values.gross, ratePct: values.policy.ratePct, taxAmount: values.policy.tax, status: "estimate", supersedesId: latest?.id ?? null, calculationSnapshot: { policyVersion: values.policy.version, legalReference: values.policy.legalReference, withholdingRequired: values.policy.withholdingRequired } } });
+  const latest = await tx.taxCalculation.findFirst({ where: { corporateActionEntitlementId: entitlementId, platformTaxRuleId: values.policy.id }, orderBy: { revision: "desc" } });
+  await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), corporateActionEntitlementId: entitlementId, platformTaxRuleId: values.policy.id, revision: (latest?.revision ?? 0) + 1, taxableAmount: values.gross, ratePct: values.policy.ratePct, taxAmount: values.policy.tax, status: "expected_issuer_withholding", supersedesId: latest?.id ?? null, calculationSnapshot: platformTaxSnapshot(values.policy, { withholdingAgent: "issuer", grossIncome: values.gross.toString() }) } });
 }
 
 export async function createCorporateAction(actor: Actor, payload: Record<string, unknown>) {
@@ -183,7 +187,7 @@ export async function calculateEntitlements(actor: Actor, actionId: string) {
       if (quantity.lte(0)) continue;
       const values = await calculatedValues(tx, action, quantity);
       const id = crypto.randomUUID();
-      await tx.corporateActionEntitlement.create({ data: { id, corporateActionId: action.id, accountId, ledgerQuantity: quantity, eligibleQuantity: quantity, positionSource: hasLedger ? "internal_ledger_as_of_record_date" : "current_holding_fallback", reconciliationStatus: "unverified", grossCash: values.gross, withholdingAmount: values.withholding, netCash: values.net, withholdingStatus: values.withholdingStatus, securityQuantity: values.securities, election: action.defaultElection, status: action.recordDate.getTime() > addisDateOnly().getTime() ? "projected" : "calculated", calculationSnapshot: { recordDate: action.recordDate.toISOString().slice(0, 10), quantitySource: hasLedger ? "ledger" : "fallback", policyId: values.policy?.id ?? null, currentHoldingPresent: currentByAccount.has(accountId) } } });
+      await tx.corporateActionEntitlement.create({ data: { id, corporateActionId: action.id, accountId, ledgerQuantity: quantity, eligibleQuantity: quantity, positionSource: hasLedger ? "internal_ledger_as_of_record_date" : "current_holding_fallback", reconciliationStatus: "unverified", grossCash: values.gross, withholdingAmount: values.withholding, netCash: values.net, withholdingStatus: values.withholdingStatus, withholdingAgent: values.withholdingAgent, taxLiabilityParty: values.taxLiabilityParty, securityQuantity: values.securities, election: action.defaultElection, status: action.recordDate.getTime() > addisDateOnly().getTime() ? "projected" : "calculated", calculationSnapshot: { recordDate: action.recordDate.toISOString().slice(0, 10), quantitySource: hasLedger ? "ledger" : "fallback", platformTaxRuleId: values.policy?.id ?? null, currentHoldingPresent: currentByAccount.has(accountId) } } });
       await appendEntitlementTax(tx, id, values);
       calculated += 1;
     }
@@ -211,7 +215,7 @@ export async function reconcileEntitlements(actor: Actor, actionId: string, posi
       const matched = external.eq(entitlement.ledgerQuantity);
       if (!matched) breaks += 1;
       const values = await calculatedValues(tx, action, external);
-      await tx.corporateActionEntitlement.update({ where: { id: entitlement.id }, data: { externalQuantity: external, eligibleQuantity: external, reconciliationStatus: matched ? "matched" : "break", grossCash: values.gross, withholdingAmount: values.withholding, netCash: values.net, withholdingStatus: values.withholdingStatus, securityQuantity: values.securities, status: matched ? "reconciled" : "exception", exceptionReason: matched ? null : `Internal ${entitlement.ledgerQuantity.toString()} vs external ${external.toString()}`, calculationSnapshot: { evidenceReference, ledgerQuantity: entitlement.ledgerQuantity.toString(), externalQuantity: external.toString(), policyId: values.policy?.id ?? null } } });
+      await tx.corporateActionEntitlement.update({ where: { id: entitlement.id }, data: { externalQuantity: external, eligibleQuantity: external, reconciliationStatus: matched ? "matched" : "break", grossCash: values.gross, withholdingAmount: values.withholding, netCash: values.net, withholdingStatus: values.withholdingStatus, withholdingAgent: values.withholdingAgent, taxLiabilityParty: values.taxLiabilityParty, securityQuantity: values.securities, status: matched ? "reconciled" : "exception", exceptionReason: matched ? null : `Internal ${entitlement.ledgerQuantity.toString()} vs external ${external.toString()}`, calculationSnapshot: { evidenceReference, ledgerQuantity: entitlement.ledgerQuantity.toString(), externalQuantity: external.toString(), platformTaxRuleId: values.policy?.id ?? null } } });
       await appendEntitlementTax(tx, entitlement.id, values);
     }
     await tx.corporateAction.update({ where: { id: action.id }, data: { status: breaks ? "entitlements_calculated" : "reconciled", sourceEvidence: { ...(action.sourceEvidence as Record<string, unknown> ?? {}), positionEvidence: evidenceReference }, version: { increment: 1 } } });
@@ -299,7 +303,7 @@ export async function payCorporateAction(actor: Actor, actionId: string, input: 
         const holding = await tx.holding.findUniqueOrThrow({ where: { accountId_instrumentId: { accountId: account.id, instrumentId: action.instrumentId } } });
         await persistSecuritiesMutation(tx, { holdingId: holding.id, accountId: account.id, instrumentId: action.instrumentId, actorId: actor.id, valueDate: action.paymentDate, reason: `${action.actionType} ${action.id}`, mutation: debitRedeemedSecurities(securitySnapshot(holding), entitlement.eligibleQuantity, `${action.actionType} principal redeemed`) });
       }
-      await tx.corporateActionEntitlement.update({ where: { id: entitlement.id }, data: { status: "paid", paidAt: new Date(), paymentReference: input.paymentReference } });
+      await tx.corporateActionEntitlement.update({ where: { id: entitlement.id }, data: { status: "paid", paidAt: new Date(), paymentReference: input.paymentReference, withholdingEvidence: entitlement.withholdingAmount?.gt(0) ? input.paymentReference : null, withholdingStatus: entitlement.withholdingAmount?.gt(0) ? "issuer_withheld_confirmed" : entitlement.withholdingStatus } });
       await writeNotification(tx, { scope: "investor", brokerId: actor.brokerId, clientId: account.clientId, category: "account", severity: "success", title: `${action.instrument.symbol} ${action.actionType.replaceAll("_", " ")}`, body: entitlement.netCash ? `${toNum(entitlement.netCash)} ${action.currency} was credited to your account.` : "Your securities entitlement was credited.", entityType: "corporate_action", entityId: action.id, dedupeKey: `corporate-action:${entitlement.id}:paid` });
       paid += 1;
     }

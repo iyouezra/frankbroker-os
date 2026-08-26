@@ -4,6 +4,7 @@ import { prisma } from "./prisma";
 import type { Actor } from "./server-auth";
 import { writeAudit } from "./oms/audit-service";
 import { resolveActiveTaxPolicy } from "./tax-lot-service";
+import { capitalGainTaxBase, platformTaxSnapshot, resolveActivePlatformTaxRule, taxAmount } from "./platform-tax-service";
 
 const txOptions = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 const POLICY_TYPES = new Set(["capital_gain", "dividend", "interest", "redemption"]);
@@ -32,6 +33,22 @@ async function appendRealizedTax(tx: Prisma.TransactionClient, allocation: Reali
   const latest = await tx.taxCalculation.findFirst({ where: { realizedGainAllocationId: allocation.id, taxPolicyVersionId: policy.id }, orderBy: { revision: "desc" } });
   const taxable = money(Prisma.Decimal.max(ZERO, allocation.realizedGain));
   await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), realizedGainAllocationId: allocation.id, taxPolicyVersionId: policy.id, revision: (latest?.revision ?? 0) + 1, taxableAmount: taxable, ratePct: policy.ratePct, taxAmount: money(taxable.times(policy.ratePct).div(100)), status: "estimate", supersedesId: latest?.id ?? null, calculationSnapshot: { policyVersion: policy.version, legalReference: policy.legalReference, method: "fifo", negativeGainFlooredForEstimate: true } } });
+  return true;
+}
+
+async function appendPlatformRealizedTax(tx: Prisma.TransactionClient, allocation: RealizationSource & { grossProceeds: Prisma.Decimal; allocatedFees: Prisma.Decimal; costBasis: Prisma.Decimal | null }) {
+  if (allocation.realizedGain === null || allocation.costBasis === null) return false;
+  const source = allocation.saleTrade
+    ? { assetClass: allocation.saleTrade.order.instrument.assetClass, date: allocation.saleTrade.tradeDate }
+    : allocation.corporateActionEntitlement
+      ? { assetClass: allocation.corporateActionEntitlement.corporateAction.instrument.assetClass, date: allocation.corporateActionEntitlement.corporateAction.paymentDate }
+      : null;
+  if (!source) throw new Error("Realized allocation has no disposition source.");
+  const rule = await resolveActivePlatformTaxRule(tx, "capital_gain", source.assetClass, source.date);
+  if (!rule) return false;
+  const latest = await tx.taxCalculation.findFirst({ where: { realizedGainAllocationId: allocation.id, platformTaxRuleId: rule.id }, orderBy: { revision: "desc" } });
+  const basis = capitalGainTaxBase({ grossProceeds: allocation.grossProceeds, allocatedFees: allocation.allocatedFees, costBasis: allocation.costBasis, inflationAdjustmentPct: rule.inflationAdjustmentPct });
+  await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), realizedGainAllocationId: allocation.id, platformTaxRuleId: rule.id, revision: (latest?.revision ?? 0) + 1, taxableAmount: basis.taxableGain, ratePct: rule.ratePct, taxAmount: taxAmount(basis.taxableGain, rule.ratePct), status: "estimate_payable_by_investor", supersedesId: latest?.id ?? null, calculationSnapshot: platformTaxSnapshot(rule, { method: "fifo", inflationAdjustmentPct: rule.inflationAdjustmentPct.toString(), inflationAdjustment: basis.inflationAdjustment.toString(), netConsideration: basis.netConsideration.toString(), saleProceedsUnaffected: true }) } });
   return true;
 }
 
@@ -112,7 +129,7 @@ export async function documentTaxLotBasis(actor: Actor, lotId: string, payload: 
       const costBasis = money(unitCost.times(allocation.quantity));
       const realizedGain = money(allocation.netProceeds.minus(costBasis));
       await tx.realizedGainAllocation.update({ where: { id: allocation.id }, data: { costBasis, realizedGain, basisStatus: "known", status: "provisional", calculationSnapshot: { method: "fifo", basisEvidence: evidenceReference, lotVersion: lot.version + 1 } } });
-      if (await appendRealizedTax(tx, { ...allocation, realizedGain })) recalculated += 1;
+      if (await appendPlatformRealizedTax(tx, { ...allocation, costBasis, realizedGain })) recalculated += 1;
     }
     await writeAudit(tx, { brokerId: actor.brokerId, actorId: actor.id, action: "TAX_LOT_BASIS_DOCUMENTED", entityType: "tax_lot", entityId: lot.id, summary: `Cost basis evidence recorded; ${recalculated} tax estimate(s) revised`, previousValue: { costBasis: lot.costBasis, basisStatus: lot.basisStatus, evidenceReference: lot.evidenceReference }, newValue: { costBasis: totalBasis, evidenceReference, acquisitionDate, recalculated } });
     return { lotId, recalculated };
@@ -120,8 +137,8 @@ export async function documentTaxLotBasis(actor: Actor, lotId: string, payload: 
 }
 
 export async function getTaxReporting(actor: Actor) {
-  const [policies, lots, allocations, income] = await Promise.all([
-    prisma.taxPolicyVersion.findMany({ where: { brokerId: actor.brokerId }, orderBy: [{ appliesTo: "asc" }, { effectiveFrom: "desc" }] }),
+  const [taxSchedule, lots, allocations, income] = await Promise.all([
+    prisma.platformTaxSchedule.findFirst({ where: { status: "published" }, include: { rules: { orderBy: [{ appliesTo: "asc" }, { assetClass: "asc" }] } }, orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }] }),
     prisma.taxLot.findMany({ where: { account: { client: { brokerId: actor.brokerId } } }, include: { account: { include: { client: true } }, instrument: true }, orderBy: [{ basisStatus: "desc" }, { createdAt: "desc" }], take: 500 }),
     prisma.realizedGainAllocation.findMany({ where: { OR: [{ saleTrade: { order: { account: { client: { brokerId: actor.brokerId } } } } }, { corporateActionEntitlement: { corporateAction: { brokerId: actor.brokerId } } }] }, include: { taxLot: true, saleTrade: { include: { order: { include: { account: { include: { client: true } }, instrument: true } } } }, corporateActionEntitlement: { include: { account: { include: { client: true } }, corporateAction: { include: { instrument: true } } } }, taxCalculations: { orderBy: [{ calculatedAt: "desc" }, { revision: "desc" }] } }, orderBy: { createdAt: "desc" }, take: 500 }),
     prisma.corporateActionEntitlement.findMany({ where: { corporateAction: { brokerId: actor.brokerId } }, include: { corporateAction: { include: { instrument: true } }, account: { include: { client: true } }, taxCalculations: { orderBy: [{ calculatedAt: "desc" }, { revision: "desc" }] } }, orderBy: { createdAt: "desc" }, take: 500 }),
@@ -129,8 +146,8 @@ export async function getTaxReporting(actor: Actor) {
   const known = allocations.filter((item) => item.realizedGain !== null);
   const latestTax = [...allocations.flatMap((item) => item.taxCalculations.slice(0, 1)), ...income.flatMap((item) => item.taxCalculations.slice(0, 1))];
   return {
-    summary: { openLots: lots.filter((item) => item.remainingQuantity.gt(0)).length, unknownBasisLots: lots.filter((item) => item.basisStatus === "unknown").length, realizedGain: toNum(known.reduce((sum, item) => sum.plus(item.realizedGain!), ZERO)), dispositionsNeedingBasis: allocations.filter((item) => item.realizedGain === null).length, estimatedTax: toNum(latestTax.reduce((sum, item) => sum.plus(item.taxAmount), ZERO)), policyCoverage: { capitalGain: policies.some((item) => item.appliesTo === "capital_gain" && item.status === "published"), dividend: policies.some((item) => item.appliesTo === "dividend" && item.status === "published"), interest: policies.some((item) => item.appliesTo === "interest" && item.status === "published"), redemption: policies.some((item) => item.appliesTo === "redemption" && item.status === "published") } },
-    policies: policies.map((item) => ({ ...item, ratePct: toNum(item.ratePct), effectiveFrom: item.effectiveFrom.toISOString().slice(0, 10), effectiveTo: item.effectiveTo?.toISOString().slice(0, 10) ?? null, retrospectiveFrom: item.retrospectiveFrom?.toISOString().slice(0, 10) ?? null })),
+    summary: { openLots: lots.filter((item) => item.remainingQuantity.gt(0)).length, unknownBasisLots: lots.filter((item) => item.basisStatus === "unknown").length, realizedGain: toNum(known.reduce((sum, item) => sum.plus(item.realizedGain!), ZERO)), dispositionsNeedingBasis: allocations.filter((item) => item.realizedGain === null).length, estimatedTax: toNum(latestTax.reduce((sum, item) => sum.plus(item.taxAmount), ZERO)), policyCoverage: { equityCapitalGain: taxSchedule?.rules.some((item) => item.appliesTo === "capital_gain" && item.assetClass === "equity") ?? false, bondCapitalGain: taxSchedule?.rules.some((item) => item.appliesTo === "capital_gain" && item.assetClass === "bond") ?? false, dividend: taxSchedule?.rules.some((item) => item.appliesTo === "dividend" && item.assetClass === "equity") ?? false, interest: taxSchedule?.rules.some((item) => item.appliesTo === "interest" && item.assetClass === "bond") ?? false } },
+    policies: (taxSchedule?.rules ?? []).map((item) => ({ id: item.id, name: taxSchedule!.name, version: taxSchedule!.version, appliesTo: item.appliesTo, assetClass: item.assetClass, ratePct: toNum(item.ratePct), calculationBasis: item.calculationBasis, collectionMethod: item.collectionMethod, inflationAdjustmentPct: toNum(item.inflationAdjustmentPct), status: taxSchedule!.status, effectiveFrom: taxSchedule!.effectiveFrom.toISOString().slice(0, 10), effectiveTo: taxSchedule!.effectiveTo?.toISOString().slice(0, 10) ?? null, legalReference: taxSchedule!.legalReference })),
     lots: lots.map((item) => ({ id: item.id, accountId: item.accountId, clientCode: item.account.client.clientCode, clientName: item.account.client.fullName, instrument: item.instrument.symbol, acquisitionDate: item.acquisitionDate?.toISOString().slice(0, 10) ?? null, originalQuantity: toNum(item.originalQuantity), remainingQuantity: toNum(item.remainingQuantity), costBasis: item.costBasis === null ? null : toNum(item.costBasis), unitCost: item.unitCost === null ? null : toNum(item.unitCost), basisStatus: item.basisStatus, basisSource: item.basisSource, evidenceReference: item.evidenceReference, version: item.version })),
     realizations: allocations.map((item) => { const source = item.saleTrade ? { reference: item.saleTradeId!, date: item.saleTrade.tradeDate, accountId: item.saleTrade.order.accountId, client: item.saleTrade.order.account.client, instrument: item.saleTrade.order.instrument, dispositionType: "sale" } : { reference: item.corporateActionEntitlement!.corporateActionId, date: item.corporateActionEntitlement!.corporateAction.paymentDate, accountId: item.corporateActionEntitlement!.accountId, client: item.corporateActionEntitlement!.account.client, instrument: item.corporateActionEntitlement!.corporateAction.instrument, dispositionType: "redemption" }; return { id: item.id, tradeId: source.reference, tradeDate: source.date.toISOString().slice(0, 10), accountId: source.accountId, clientCode: source.client.clientCode, clientName: source.client.fullName, instrument: source.instrument.symbol, dispositionType: source.dispositionType, quantity: toNum(item.quantity), netProceeds: toNum(item.netProceeds), costBasis: item.costBasis === null ? null : toNum(item.costBasis), realizedGain: item.realizedGain === null ? null : toNum(item.realizedGain), basisStatus: item.basisStatus, status: item.status, latestTax: item.taxCalculations[0] ? { amount: toNum(item.taxCalculations[0].taxAmount), ratePct: toNum(item.taxCalculations[0].ratePct), status: item.taxCalculations[0].status, revision: item.taxCalculations[0].revision } : null }; }),
     income: income.map((item) => ({ id: item.id, actionId: item.corporateActionId, paymentDate: item.corporateAction.paymentDate.toISOString().slice(0, 10), clientCode: item.account.client.clientCode, clientName: item.account.client.fullName, instrument: item.corporateAction.instrument.symbol, type: item.corporateAction.actionType, grossCash: item.grossCash === null ? null : toNum(item.grossCash), withholdingAmount: item.withholdingAmount === null ? null : toNum(item.withholdingAmount), netCash: item.netCash === null ? null : toNum(item.netCash), withholdingStatus: item.withholdingStatus, latestTax: item.taxCalculations[0] ? { amount: toNum(item.taxCalculations[0].taxAmount), ratePct: toNum(item.taxCalculations[0].ratePct), status: item.taxCalculations[0].status, revision: item.taxCalculations[0].revision } : null })),

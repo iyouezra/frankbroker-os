@@ -200,6 +200,7 @@
 
 .legalText { min-height: 210px !important; resize: vertical; line-height: 1.55; }
 .feeScheduleCard { grid-column: span 1; }
+.taxScheduleCard { grid-column: 1 / -1; }
 .controlNote { margin: 12px 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .feeRuleTable { margin: 15px 0; overflow-x: auto; border: 1px solid var(--admin-ink-100); border-radius: 12px; }
 .feeRuleTable > div { min-width: 680px; display: grid; grid-template-columns: 1.25fr repeat(5, 1fr); align-items: center; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--admin-ink-100); }
@@ -207,6 +208,13 @@
 .feeRuleTable > div:first-child { background: var(--admin-ink-50); color: var(--admin-ink-400); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
 .feeRuleTable strong { font-size: 11px; }
 .feeRuleTable input { width: 100%; min-height: 36px; padding: 0 8px; border: 1px solid var(--admin-ink-200); border-radius: 8px; background: var(--fx-card); color: inherit; font-family: var(--font-mono); font-size: 10.5px; }
+.taxRuleTable { margin: 15px 0; overflow-x: auto; border: 1px solid var(--admin-ink-100); border-radius: 12px; }
+.taxRuleTable > div { min-width: 760px; display: grid; grid-template-columns: 1.3fr .8fr .75fr 1.2fr 1fr; align-items: center; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--admin-ink-100); }
+.taxRuleTable > div:last-child { border-bottom: 0; }
+.taxRuleTable > div:first-child { background: var(--admin-ink-50); color: var(--admin-ink-400); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.taxRuleTable strong { font-size: 11px; text-transform: capitalize; }
+.taxRuleTable span { font-size: 10.5px; text-transform: capitalize; }
+.taxRuleTable input { width: 100%; min-height: 36px; padding: 0 8px; border: 1px solid var(--admin-ink-200); border-radius: 8px; background: var(--fx-card); color: inherit; font-family: var(--font-mono); font-size: 10.5px; }
 
 .overviewGrid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 16px; }
 .tenantHealth, .recentActivity, .dataCard, .auditList { overflow: hidden; }

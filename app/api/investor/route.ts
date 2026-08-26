@@ -323,8 +323,11 @@ export async function GET(request: Request) {
           netCash: item.netCash === null ? null : toNum(item.netCash),
           securityQuantity: item.securityQuantity === null ? null : toNum(item.securityQuantity),
           withholdingStatus: item.withholdingStatus,
+          withholdingAgent: item.withholdingAgent,
+          withholdingEvidence: item.withholdingEvidence,
+          taxLiabilityParty: item.taxLiabilityParty,
           status: item.status,
-          latestTaxEstimate: item.taxCalculations[0] ? { amount: toNum(item.taxCalculations[0].taxAmount), ratePct: toNum(item.taxCalculations[0].ratePct), revision: item.taxCalculations[0].revision } : null,
+          latestTaxEstimate: item.taxCalculations[0] ? { amount: toNum(item.taxCalculations[0].taxAmount), ratePct: toNum(item.taxCalculations[0].ratePct), revision: item.taxCalculations[0].revision, status: item.taxCalculations[0].status } : null,
         })),
         realizations: account.taxLots.flatMap((lot) => lot.dispositions.map((item) => ({
           id: item.id,
@@ -336,7 +339,7 @@ export async function GET(request: Request) {
           costBasis: item.costBasis === null ? null : toNum(item.costBasis),
           realizedGain: item.realizedGain === null ? null : toNum(item.realizedGain),
           basisStatus: item.basisStatus,
-          latestTaxEstimate: item.taxCalculations[0] ? { amount: toNum(item.taxCalculations[0].taxAmount), ratePct: toNum(item.taxCalculations[0].ratePct), revision: item.taxCalculations[0].revision } : null,
+          latestTaxEstimate: item.taxCalculations[0] ? { amount: toNum(item.taxCalculations[0].taxAmount), ratePct: toNum(item.taxCalculations[0].ratePct), revision: item.taxCalculations[0].revision, status: item.taxCalculations[0].status } : null,
         }))),
       } : null,
       // Customer-facing view of who looks after this account: name and role only.

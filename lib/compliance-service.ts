@@ -79,6 +79,8 @@ export type ClientStatementSnapshot = {
   transactions: Array<{ date: string; type: string; reference: string; debit: number; credit: number; runningBalance: number; description: string }>;
   trades: Array<{ tradeId: string; orderId: string; tradeDate: string; symbol: string; side: string; quantity: number; price: number; gross: number; fees: number; net: number; settlementDate: string }>;
   holdings: Array<{ symbol: string; name: string; quantity: number }>;
+  incomeTax: Array<{ paymentDate: string; symbol: string; type: string; grossIncome: number; taxRatePct: number | null; taxWithheldByIssuer: number; netIncome: number; evidenceReference: string | null }>;
+  capitalGains: Array<{ disposalDate: string; symbol: string; reference: string; netProceeds: number; costBasis: number | null; economicGain: number | null; inflationAdjustment: number | null; taxableGain: number | null; taxRatePct: number | null; estimatedTaxPayableByInvestor: number | null }>;
 };
 export type ComplianceSnapshot = MonthlyTransactionSnapshot | ComplaintsSnapshot | ClientStatementSnapshot;
 
@@ -496,6 +498,21 @@ export async function buildClientStatementSnapshot(actor: Pick<Actor, "brokerId"
   const closingCash = within.at(-1)?.runningBalance ?? openingCash;
   const latestHolding = new Map<string, (typeof account.securitiesLedgerEntries)[number]>();
   account.securitiesLedgerEntries.forEach((entry) => latestHolding.set(entry.instrumentId, entry));
+  const [incomeTax, capitalGains] = await Promise.all([
+    prisma.corporateActionEntitlement.findMany({
+      where: { accountId: account.id, corporateAction: { paymentDate: { gte: periodStart, lte: periodEnd }, actionType: { in: ["cash_dividend", "coupon"] } } },
+      include: { corporateAction: { include: { instrument: true } }, taxCalculations: { orderBy: [{ calculatedAt: "desc" }, { revision: "desc" }], take: 1 } },
+      orderBy: { corporateAction: { paymentDate: "asc" } },
+    }),
+    prisma.realizedGainAllocation.findMany({
+      where: { OR: [
+        { saleTrade: { tradeDate: { gte: periodStart, lte: periodEnd }, order: { accountId: account.id } } },
+        { corporateActionEntitlement: { accountId: account.id, corporateAction: { paymentDate: { gte: periodStart, lte: periodEnd } } } },
+      ] },
+      include: { taxLot: { include: { instrument: true } }, saleTrade: true, corporateActionEntitlement: { include: { corporateAction: true } }, taxCalculations: { orderBy: [{ calculatedAt: "desc" }, { revision: "desc" }], take: 1 } },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
   const snapshot: ClientStatementSnapshot = {
     kind: "client_statement",
     ...profile,
@@ -527,6 +544,13 @@ export async function buildClientStatementSnapshot(actor: Pick<Actor, "brokerId"
       settlementDate: trade.settlementDate.toISOString().slice(0, 10),
     }))),
     holdings: [...latestHolding.values()].filter((entry) => entry.runningQuantity.gt(0)).map((entry) => ({ symbol: entry.instrument.symbol, name: entry.instrument.name, quantity: toNum(entry.runningQuantity) })),
+    incomeTax: incomeTax.map((item) => ({ paymentDate: item.corporateAction.paymentDate.toISOString().slice(0, 10), symbol: item.corporateAction.instrument.symbol, type: item.corporateAction.actionType, grossIncome: toNum(item.grossCash), taxRatePct: item.taxCalculations[0] ? toNum(item.taxCalculations[0].ratePct) : null, taxWithheldByIssuer: toNum(item.withholdingAmount), netIncome: toNum(item.netCash), evidenceReference: item.withholdingEvidence })),
+    capitalGains: capitalGains.map((item) => {
+      const tax = item.taxCalculations[0];
+      const calculation = tax?.calculationSnapshot && typeof tax.calculationSnapshot === "object" && !Array.isArray(tax.calculationSnapshot) ? tax.calculationSnapshot as Record<string, unknown> : {};
+      const inflation = calculation.inflationAdjustment === undefined ? null : Number(calculation.inflationAdjustment);
+      return { disposalDate: (item.saleTrade?.tradeDate ?? item.corporateActionEntitlement!.corporateAction.paymentDate).toISOString().slice(0, 10), symbol: item.taxLot.instrument.symbol, reference: item.saleTradeId ?? item.corporateActionEntitlementId!, netProceeds: toNum(item.netProceeds), costBasis: item.costBasis === null ? null : toNum(item.costBasis), economicGain: item.realizedGain === null ? null : toNum(item.realizedGain), inflationAdjustment: Number.isFinite(inflation) ? inflation : null, taxableGain: tax ? toNum(tax.taxableAmount) : null, taxRatePct: tax ? toNum(tax.ratePct) : null, estimatedTaxPayableByInvestor: tax ? toNum(tax.taxAmount) : null };
+    }),
   };
   const validation: ReportValidation = { blocking: [], notices: [] };
   return { snapshot, validation, periodStart, periodEnd, clientName: client.fullName };

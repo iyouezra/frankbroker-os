@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Prisma } from "../app/generated/prisma/client.ts";
+import { capitalGainTaxBase, taxAmount } from "../lib/platform-tax-service.ts";
 import { allocateTaxLots } from "../lib/tax-lot-service.ts";
 
 const D = (value) => new Prisma.Decimal(value);
@@ -23,6 +24,30 @@ test("unknown basis stays unknown and never becomes zero", () => {
   assert.equal(row.costBasis, null);
   assert.equal(row.realizedGain, null);
   assert.equal(row.basisStatus, "unknown");
+});
+
+test("capital-gain tax uses net consideration and the configured inflation adjustment", () => {
+  const base = capitalGainTaxBase({
+    grossProceeds: D(200),
+    allocatedFees: D(2),
+    costBasis: D(100),
+    inflationAdjustmentPct: D(30),
+  });
+  assert.equal(base.netConsideration.toString(), "198");
+  assert.equal(base.inflationAdjustment.toString(), "30");
+  assert.equal(base.taxableGain.toString(), "68");
+  assert.equal(taxAmount(base.taxableGain, D(15)).toString(), "10.2");
+});
+
+test("capital-gain tax does not turn a loss into a tax charge", () => {
+  const base = capitalGainTaxBase({
+    grossProceeds: D(80),
+    allocatedFees: D(2),
+    costBasis: D(100),
+    inflationAdjustmentPct: D(30),
+  });
+  assert.equal(base.taxableGain.toString(), "0");
+  assert.equal(taxAmount(base.taxableGain, D(15)).toString(), "0");
 });
 
 test("servicing implementation preserves evidence, independent approval, and retrospective revisions", async () => {
@@ -49,4 +74,33 @@ test("servicing implementation preserves evidence, independent approval, and ret
   assert.match(settlement, /recordSettledSaleRealizations/);
   assert.match(investor, /dispositionsNeedingBasis/);
   assert.match(brokerUi, /Tax figures shown here|tax remains an estimate/i);
+});
+
+test("platform tax schedule keeps issuer withholding separate from investor capital-gain liability", async () => {
+  const root = new URL("../", import.meta.url);
+  const [schema, migration, corporate, adminApi, adminUi, statement, investorUi] = await Promise.all([
+    readFile(new URL("prisma/schema.prisma", root), "utf8"),
+    readFile(new URL("prisma/migrations/20260826120000_platform_tax_schedule/migration.sql", root), "utf8"),
+    readFile(new URL("lib/corporate-action-service.ts", root), "utf8"),
+    readFile(new URL("app/api/admin/configuration/route.ts", root), "utf8"),
+    readFile(new URL("app/admin/admin-console.tsx", root), "utf8"),
+    readFile(new URL("lib/compliance-workbooks.ts", root), "utf8"),
+    readFile(new URL("features/investor/portfolio/portfolio-screen.tsx", root), "utf8"),
+  ]);
+
+  for (const model of ["PlatformTaxSchedule", "PlatformTaxRule"]) assert.match(schema, new RegExp(`model ${model}`));
+  assert.match(migration, /'dividend', 'equity', 15,/);
+  assert.match(migration, /'interest', 'bond', 10,/);
+  assert.match(migration, /'capital_gain', 'equity', 15,/);
+  assert.match(migration, /'capital_gain', 'bond', 15,/);
+  assert.match(migration, /issuer_withheld/);
+  assert.match(migration, /investor_payable/);
+  assert.match(corporate, /principal_not_withheld/);
+  assert.match(corporate, /expected_issuer_withholding/);
+  assert.match(adminApi, /platform_tax_schedule/);
+  assert.match(adminUi, /Investment tax rules/);
+  assert.match(statement, /Income Tax/);
+  assert.match(statement, /Capital Gains/);
+  assert.match(investorUi, /payable by (?:the )?investor/i);
+  assert.match(investorUi, /withheld by issuer/i);
 });

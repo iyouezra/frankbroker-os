@@ -97,8 +97,8 @@ export type InvestorBootstrap = {
   };
   servicing: {
     basisSummary: { totalLots: number; unknownBasisLots: number; dispositionsNeedingBasis: number };
-    income: Array<{ id: string; actionId: string; instrument: string; type: string; recordDate: string; paymentDate: string; grossCash: number | null; withholdingAmount: number | null; netCash: number | null; securityQuantity: number | null; withholdingStatus: string; status: string; latestTaxEstimate: { amount: number; ratePct: number; revision: number } | null }>;
-    realizations: Array<{ id: string; tradeId: string; tradeDate: string; instrument: string; quantity: number; netProceeds: number; costBasis: number | null; realizedGain: number | null; basisStatus: string; latestTaxEstimate: { amount: number; ratePct: number; revision: number } | null }>;
+    income: Array<{ id: string; actionId: string; instrument: string; type: string; recordDate: string; paymentDate: string; grossCash: number | null; withholdingAmount: number | null; netCash: number | null; securityQuantity: number | null; withholdingStatus: string; withholdingAgent: string | null; withholdingEvidence: string | null; taxLiabilityParty: string | null; status: string; latestTaxEstimate: { amount: number; ratePct: number; revision: number; status: string } | null }>;
+    realizations: Array<{ id: string; tradeId: string; tradeDate: string; instrument: string; quantity: number; netProceeds: number; costBasis: number | null; realizedGain: number | null; basisStatus: string; latestTaxEstimate: { amount: number; ratePct: number; revision: number; status: string } | null }>;
   } | null;
   instruments: InvestorInstrument[];
   serviceRequests: Array<{ id: string; requestType: string; status: string; subject: string; description: string; orderId?: string | null; submittedAt: string; resolutionNotes?: string | null; threadId?: string | null }>;

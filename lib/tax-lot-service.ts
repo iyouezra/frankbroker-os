@@ -1,5 +1,6 @@
 import { Prisma } from "../app/generated/prisma/client";
 import { D, money, ZERO, type DecimalValue } from "./money";
+import { capitalGainTaxBase, platformTaxSnapshot, resolveActivePlatformTaxRule, taxAmount } from "./platform-tax-service";
 
 export type LotForAllocation = { id: string; remainingQuantity: Prisma.Decimal; unitCost: Prisma.Decimal | null; basisStatus: string };
 
@@ -73,14 +74,14 @@ export async function recordSettledSaleRealizations(tx: Prisma.TransactionClient
     lots = [...lots, unknown];
   }
   const allocations = allocateTaxLots(lots, input.quantity, input.gross, input.fees);
-  const policy = await resolveActiveTaxPolicy(tx, input.brokerId, "capital_gain", input.assetClass, input.tradeDate);
+  const policy = await resolveActivePlatformTaxRule(tx, "capital_gain", input.assetClass, input.tradeDate);
   for (const allocation of allocations) {
     await tx.taxLot.update({ where: { id: allocation.lotId }, data: { remainingQuantity: { decrement: allocation.quantity }, version: { increment: 1 } } });
     const id = crypto.randomUUID();
     await tx.realizedGainAllocation.create({ data: { id, saleTradeId: input.tradeId, taxLotId: allocation.lotId, quantity: allocation.quantity, grossProceeds: allocation.grossProceeds, allocatedFees: allocation.allocatedFees, netProceeds: allocation.netProceeds, costBasis: allocation.costBasis, realizedGain: allocation.realizedGain, basisStatus: allocation.basisStatus, status: allocation.realizedGain === null ? "needs_basis" : "provisional", calculationSnapshot: { method: "fifo", tradeId: input.tradeId, basisSource: allocation.basisStatus } } });
     if (policy && allocation.realizedGain !== null) {
-      const taxable = money(Prisma.Decimal.max(ZERO, allocation.realizedGain));
-      await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), realizedGainAllocationId: id, taxPolicyVersionId: policy.id, taxableAmount: taxable, ratePct: policy.ratePct, taxAmount: money(taxable.times(policy.ratePct).div(100)), status: "estimate", calculationSnapshot: { policyVersion: policy.version, legalReference: policy.legalReference, method: "fifo", negativeGainFlooredForEstimate: true } } });
+      const basis = capitalGainTaxBase({ grossProceeds: allocation.grossProceeds, allocatedFees: allocation.allocatedFees, costBasis: allocation.costBasis!, inflationAdjustmentPct: policy.inflationAdjustmentPct });
+      await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), realizedGainAllocationId: id, platformTaxRuleId: policy.id, taxableAmount: basis.taxableGain, ratePct: policy.ratePct, taxAmount: taxAmount(basis.taxableGain, policy.ratePct), status: "estimate_payable_by_investor", calculationSnapshot: platformTaxSnapshot(policy, { method: "fifo", inflationAdjustmentPct: policy.inflationAdjustmentPct.toString(), inflationAdjustment: basis.inflationAdjustment.toString(), netConsideration: basis.netConsideration.toString(), saleProceedsUnaffected: true }) } });
     }
   }
 }
@@ -98,14 +99,14 @@ export async function recordCorporateActionRealization(tx: Prisma.TransactionCli
     lots = [...lots, unknown];
   }
   const allocations = allocateTaxLots(lots, input.quantity, input.gross, ZERO);
-  const policy = await resolveActiveTaxPolicy(tx, input.brokerId, "capital_gain", input.assetClass, input.paymentDate);
+  const policy = await resolveActivePlatformTaxRule(tx, "capital_gain", input.assetClass, input.paymentDate);
   for (const allocation of allocations) {
     await tx.taxLot.update({ where: { id: allocation.lotId }, data: { remainingQuantity: { decrement: allocation.quantity }, version: { increment: 1 } } });
     const id = crypto.randomUUID();
     await tx.realizedGainAllocation.create({ data: { id, corporateActionEntitlementId: input.entitlementId, taxLotId: allocation.lotId, quantity: allocation.quantity, grossProceeds: allocation.grossProceeds, allocatedFees: ZERO, netProceeds: allocation.netProceeds, costBasis: allocation.costBasis, realizedGain: allocation.realizedGain, basisStatus: allocation.basisStatus, status: allocation.realizedGain === null ? "needs_basis" : "provisional", calculationSnapshot: { method: "fifo", dispositionType: "redemption", entitlementId: input.entitlementId, basisSource: allocation.basisStatus } } });
     if (policy && allocation.realizedGain !== null) {
-      const taxable = money(Prisma.Decimal.max(ZERO, allocation.realizedGain));
-      await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), realizedGainAllocationId: id, taxPolicyVersionId: policy.id, taxableAmount: taxable, ratePct: policy.ratePct, taxAmount: money(taxable.times(policy.ratePct).div(100)), status: "estimate", calculationSnapshot: { policyVersion: policy.version, legalReference: policy.legalReference, method: "fifo", dispositionType: "redemption", negativeGainFlooredForEstimate: true } } });
+      const basis = capitalGainTaxBase({ grossProceeds: allocation.grossProceeds, allocatedFees: ZERO, costBasis: allocation.costBasis!, inflationAdjustmentPct: policy.inflationAdjustmentPct });
+      await tx.taxCalculation.create({ data: { id: crypto.randomUUID(), realizedGainAllocationId: id, platformTaxRuleId: policy.id, taxableAmount: basis.taxableGain, ratePct: policy.ratePct, taxAmount: taxAmount(basis.taxableGain, policy.ratePct), status: "estimate_payable_by_investor", calculationSnapshot: platformTaxSnapshot(policy, { method: "fifo", dispositionType: "redemption", inflationAdjustmentPct: policy.inflationAdjustmentPct.toString(), inflationAdjustment: basis.inflationAdjustment.toString(), netConsideration: basis.netConsideration.toString(), saleProceedsUnaffected: true }) } });
     }
   }
 }
