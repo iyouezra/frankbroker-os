@@ -27,6 +27,10 @@ const lessons = [
       ["learn.orders.market", "learn.orders.marketText"],
       ["learn.orders.limit", "learn.orders.limitText"],
       ["learn.orders.stopLimit", "learn.orders.stopLimitText"],
+      ["learn.orders.howLong", "learn.orders.howLongText"],
+      ["learn.orders.day", "learn.orders.dayText"],
+      ["learn.orders.gtc", "learn.orders.gtcText"],
+      ["learn.orders.gtd", "learn.orders.gtdText"],
     ],
   },
   {
