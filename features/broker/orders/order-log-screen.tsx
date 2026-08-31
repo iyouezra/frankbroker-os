@@ -18,7 +18,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
   const [validityFilter, setValidityFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState<"all" | "today" | "7d" | "30d">("all");
-  const [sort, setSort] = useState<"newest" | "oldest" | "value" | "updated">("newest");
+  const [sort, setSort] = useState<"newest" | "oldest" | "value" | "updated" | "validity">("newest");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState(orders.slice(0, 25));
   const [loading, setLoading] = useState(false);
@@ -68,7 +68,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
         && (!focus?.instrumentId || order.instrumentId === focus.instrumentId)
         && (periodFilter === "all" || (periodFilter === "today" ? order.createdAt.slice(0, 10) === today : new Date(order.createdAt).getTime() >= cutoff))
         && (!needle || [order.id, order.client, order.clientCode, order.accountNumber, order.symbol, order.status, order.submissionReference, ...(order.trades?.map((trade) => trade.captureReference) ?? [])].some((value) => String(value ?? "").toLowerCase().includes(needle))))
-      .sort((left, right) => sort === "value" ? right.estimatedNet - left.estimatedNet : sort === "oldest" ? left.createdAt.localeCompare(right.createdAt) : sort === "updated" ? (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt) : right.createdAt.localeCompare(left.createdAt));
+      .sort((left, right) => sort === "validity" ? ((normalizeOrderValidity(left.validity) ?? "day").localeCompare(normalizeOrderValidity(right.validity) ?? "day") || right.createdAt.localeCompare(left.createdAt)) : sort === "value" ? right.estimatedNet - left.estimatedNet : sort === "oldest" ? left.createdAt.localeCompare(right.createdAt) : sort === "updated" ? (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt) : right.createdAt.localeCompare(left.createdAt));
   };
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
       <label>Source<BrandSelect className="bselect-inline" value={sourceFilter} onChange={(next) => { setSourceFilter(next); setPage(1); }} ariaLabel="Filter by source" options={[{ value: "all", label: "All sources" }, ...facets.sources.map((source) => ({ value: source, label: displayLabel(source) }))]} /></label>
       <label>Period<BrandSelect className="bselect-inline" value={periodFilter} onChange={(next) => { setPeriodFilter(next as typeof periodFilter); setPage(1); }} ariaLabel="Filter by period" options={[{ value: "all", label: "All dates" }, { value: "today", label: "Today" }, { value: "7d", label: "Last 7 days" }, { value: "30d", label: "Last 30 days" }]} /></label>
       <label>Risk<BrandSelect className="bselect-inline" value={riskFilter} onChange={(next) => { setRiskFilter(next as typeof riskFilter); setPage(1); }} ariaLabel="Filter by risk" options={[{ value: "all", label: "All risk levels" }, { value: "flagged", label: "Flagged only" }]} /></label>
-      <label>Sort<BrandSelect className="bselect-inline" value={sort} onChange={(next) => { setSort(next as typeof sort); setPage(1); }} ariaLabel="Sort" options={[{ value: "newest", label: "Newest first" }, { value: "updated", label: "Recently updated" }, { value: "oldest", label: "Oldest first" }, { value: "value", label: "Highest value" }]} /></label>
+      <label>Sort<BrandSelect className="bselect-inline" value={sort} onChange={(next) => { setSort(next as typeof sort); setPage(1); }} ariaLabel="Sort" options={[{ value: "newest", label: "Newest first" }, { value: "updated", label: "Recently updated" }, { value: "oldest", label: "Oldest first" }, { value: "value", label: "Highest value" }, { value: "validity", label: "Validity (Day, GTC, GTD)" }]} /></label>
       <span>{loading ? "Updating…" : `${pagination.total} matching orders`}</span>
     </div>
     <section className={`panel table-panel order-log-table${loading ? " loading" : ""}`}><OrderTable orders={rows} onOpen={onOpen} /></section>
@@ -143,13 +143,14 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
 
 function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void }) {
   if (!orders.length) return <EmptyState title="No orders found" copy="Try another client, symbol, order ID, reference, or filter." />;
-  return <div className="table-scroll"><table><thead><tr><th>Order / update</th><th>Client / account</th><th>Instrument / instruction</th><th>Side</th><th>Source</th><th className="num">Execution progress</th><th className="num">Value</th><th>Status / age</th><th>Owner / next action</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => {
+  return <div className="table-scroll"><table><thead><tr><th>Order / update</th><th>Client / account</th><th>Instrument / instruction</th><th>Validity</th><th>Side</th><th>Source</th><th className="num">Execution progress</th><th className="num">Value</th><th>Status / age</th><th>Owner / next action</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => {
     const active = ACTIVE_ORDER_STATUSES.has(order.status);
     const value = (order.filledQuantity ?? 0) > 0 ? order.executedNet ?? 0 : order.estimatedNet;
     return <tr key={order.id} onClick={() => onOpen(order)}>
       <td><b>{order.id}</b><small>Submitted {new Date(order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small><small>Updated {new Date(order.updatedAt ?? order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small></td>
       <td><b>{order.client}</b><small>{order.clientCode} · {order.accountNumber ?? order.accountId.replace("acc_", "TRD-").toUpperCase()}</small></td>
-      <td><b>{order.symbol} · {order.orderType}</b><small>{orderValidityLabel(order.validity, order.goodTillDate)} · {fmt.format(order.price)} ETB{order.triggerPrice ? ` · Trigger ${fmt.format(order.triggerPrice)}` : ""}</small>{order.instructionExpired && <small className="risk-note">Expired instruction</small>}</td>
+      <td><b>{order.symbol} · {order.orderType}</b><small>{fmt.format(order.price)} ETB{order.triggerPrice ? ` · Trigger ${fmt.format(order.triggerPrice)}` : ""}</small></td>
+      <td><b>{orderValidityLabel(order.validity)}</b>{order.goodTillDate && <small>Good till {order.goodTillDate}</small>}{order.instructionExpired && <small className="risk-note">Expired instruction</small>}</td>
       <td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td>
       <td><b>{displayLabel(order.source)}</b><small>Instruction source</small></td>
       <td className="num"><b>{fmt.format(order.filledQuantity ?? 0)} / {fmt.format(order.quantity)}</b><small>{fmt.format(order.remainingQuantity ?? order.quantity)} remaining</small></td>

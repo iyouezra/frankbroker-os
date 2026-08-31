@@ -59,13 +59,18 @@ export async function GET(request: Request) {
         ],
       } : {}),
     };
+    // "validity" sorts on the stored day/gtc/gtd values, which happen to be
+    // alphabetical in the order brokers read them: Day, then GTC, then GTD.
+    // GTD orders are grouped together rather than ordered by their expiry date.
     const orderBy: Prisma.OrderOrderByWithRelationInput[] = sort === "oldest"
       ? [{ submittedAt: "asc" }, { createdAt: "asc" }]
       : sort === "value"
         ? [{ estimatedNet: "desc" }, { submittedAt: "desc" }]
         : sort === "updated"
           ? [{ updatedAt: "desc" }]
-          : [{ submittedAt: "desc" }, { createdAt: "desc" }];
+          : sort === "validity"
+            ? [{ validity: "asc" }, { submittedAt: "desc" }]
+            : [{ submittedAt: "desc" }, { createdAt: "desc" }];
     const select = {
       id: true,
       submissionReference: true,
