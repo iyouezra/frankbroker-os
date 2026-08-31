@@ -311,11 +311,26 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
   const missingDocuments = expectedDocuments.filter((type) => !model.documents.kyc.some((document) => document.type === type));
   const documentsAwaitingApproval = model.documents.kyc.filter((document) => Boolean(document.type && expectedDocuments.includes(document.type)) && document.status !== "approved");
   const banksAwaitingApproval = (model.linkedBanks ?? []).filter((bank) => bank.status !== "approved");
+  // These mirror the server-side gates in approveClient (lib/client-service.ts).
+  // Any gate missing here lets the Approve button enable and the API then reject
+  // with a 409, which is how the screening gate used to be missed.
+  const latestScreening = model.screenings[0] ?? null;
+  const institutionalClient = model.client.type === "institution" || model.client.type === "corporate";
   const approvalBlockers = [
+    ...(!model.client.identityMasked ? ["Fayda FAN has not been recorded"] : []),
+    ...(!model.client.taxIdMasked ? ["TIN has not been recorded"] : []),
+    ...(institutionalClient && !model.client.businessRegistrationNumber ? ["Business registration number has not been recorded"] : []),
+    ...(institutionalClient && !model.client.authorizedRepresentativeName ? ["Authorized representative has not been recorded"] : []),
+    ...(institutionalClient && !model.client.signatoryAuthorityConfirmed ? ["Signatory authority has not been confirmed"] : []),
     ...missingDocuments.map((type) => `${displayLabel(type)} has not been received`),
     ...documentsAwaitingApproval.map((document) => `${displayLabel(document.type ?? document.name)} is ${displayLabel(document.status).toLowerCase()}`),
     ...(model.linkedBanks?.length ? banksAwaitingApproval.map((bank) => `${bank.bankName} account is ${displayLabel(bank.status).toLowerCase()}`) : ["No linked bank account has been submitted"]),
     ...(!model.legal.accepted ? ["Brokerage terms have not been accepted"] : []),
+    ...(latestScreening?.result !== "clear"
+      ? [latestScreening
+        ? `Sanctions and PEP screening result is ${displayLabel(latestScreening.result).toLowerCase()}, so the client cannot be activated`
+        : "Sanctions and PEP screening evidence has not been recorded"]
+      : []),
   ];
   const applicationReadyForApproval = approvalBlockers.length === 0;
   const restorationCategory = inferRestrictionCategory(model.restrictions.reason);
@@ -551,11 +566,11 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
           <button className="application-review-close" aria-label="Close application review" disabled={Boolean(busy)} onClick={() => setApplicationReviewOpen(false)}>×</button>
         </header>
         <ol className="application-review-steps" aria-label="Application review progress">
-          {["Applicant", "Documents", "Bank accounts", "Decision"].map((label, index) => <li key={label} className={index === applicationReviewStep ? "active" : index < applicationReviewStep ? "complete" : ""}><button onClick={() => setApplicationReviewStep(index)}><i>{index < applicationReviewStep ? "✓" : index + 1}</i><span>{label}</span></button></li>)}
+          {["Applicant", "Documents", "Bank accounts", "Screening", "Decision"].map((label, index) => <li key={label} className={index === applicationReviewStep ? "active" : index < applicationReviewStep ? "complete" : ""}><button onClick={() => setApplicationReviewStep(index)}><i>{index < applicationReviewStep ? "✓" : index + 1}</i><span>{label}</span></button></li>)}
         </ol>
         <div className="application-review-body">
           {applicationReviewStep === 0 && <div className="application-review-section">
-            <div className="application-review-section-head"><span><small>STEP 1 OF 4</small><h3>Applicant details</h3><p>Compare these details with the submitted identity and authority evidence.</p></span><strong data-state={model.client.identityMasked ? "ready" : "attention"}>{model.client.identityMasked ? "Details supplied" : "Needs attention"}</strong></div>
+            <div className="application-review-section-head"><span><small>STEP 1 OF 5</small><h3>Applicant details</h3><p>Compare these details with the submitted identity and authority evidence.</p></span><strong data-state={model.client.identityMasked ? "ready" : "attention"}>{model.client.identityMasked ? "Details supplied" : "Needs attention"}</strong></div>
             <dl className="application-review-details">
               <div><dt>Client type</dt><dd>{displayLabel(model.client.type)}</dd></div>
               <div><dt>Full legal name</dt><dd>{model.client.name}</dd></div>
@@ -568,7 +583,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
             <div className="application-review-note"><i>i</i><span><b>Review responsibility</b><small>Confirm that the applicant details match the evidence before continuing. All final decisions are recorded in the audit trail.</small></span></div>
           </div>}
           {applicationReviewStep === 1 && <div className="application-review-section">
-            <div className="application-review-section-head"><span><small>STEP 2 OF 4</small><h3>Documents and agreements</h3><p>Open each received file, compare it with the application, then record your review.</p></span><strong data-state={missingDocuments.length || documentsAwaitingApproval.length || !model.legal.accepted ? "attention" : "ready"}>{expectedDocuments.length - missingDocuments.length}/{expectedDocuments.length} received</strong></div>
+            <div className="application-review-section-head"><span><small>STEP 2 OF 5</small><h3>Documents and agreements</h3><p>Open each received file, compare it with the application, then record your review.</p></span><strong data-state={missingDocuments.length || documentsAwaitingApproval.length || !model.legal.accepted ? "attention" : "ready"}>{expectedDocuments.length - missingDocuments.length}/{expectedDocuments.length} received</strong></div>
             <div className="application-review-list">
               {expectedDocuments.map((type) => {
                 const document = model.documents.kyc.find((item) => item.type === type);
@@ -583,7 +598,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
             </div>
           </div>}
           {applicationReviewStep === 2 && <div className="application-review-section">
-            <div className="application-review-section-head"><span><small>STEP 3 OF 4</small><h3>Linked bank accounts</h3><p>Confirm ownership before enabling a destination for deposits or withdrawals.</p></span><strong data-state={model.linkedBanks?.length && !banksAwaitingApproval.length ? "ready" : "attention"}>{model.linkedBanks?.length ?? 0} submitted</strong></div>
+            <div className="application-review-section-head"><span><small>STEP 3 OF 5</small><h3>Linked bank accounts</h3><p>Confirm ownership before enabling a destination for deposits or withdrawals.</p></span><strong data-state={model.linkedBanks?.length && !banksAwaitingApproval.length ? "ready" : "attention"}>{model.linkedBanks?.length ?? 0} submitted</strong></div>
             <div className="application-review-list">
               {model.linkedBanks?.length ? model.linkedBanks.map((bank) => <article className="application-review-item" key={bank.id}>
                 <span className="application-review-item-icon">BANK</span><span><b>{bank.bankName}</b><small>{bank.accountNumberMasked} · {bank.accountHolderName}</small>{bank.rejectionReason && <em>{bank.rejectionReason}</em>}</span><strong data-status={bank.status}>{displayLabel(bank.status)}</strong>
@@ -592,7 +607,17 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
             </div>
           </div>}
           {applicationReviewStep === 3 && <div className="application-review-section">
-            <div className="application-review-section-head"><span><small>STEP 4 OF 4</small><h3>Final decision</h3><p>Review the control summary and record your decision.</p></span><strong data-state={applicationReadyForApproval ? "ready" : "attention"}>{applicationReadyForApproval ? "Ready to approve" : `${approvalBlockers.length} outstanding`}</strong></div>
+            <div className="application-review-section-head"><span><small>STEP 4 OF 5</small><h3>Sanctions and PEP screening</h3><p>Record the result produced by your screening provider or documented manual process. A clear result is required before activation.</p></span><strong data-state={latestScreening?.result === "clear" ? "ready" : "attention"}>{latestScreening ? displayLabel(latestScreening.result) : "Not recorded"}</strong></div>
+            {latestScreening
+              ? <div className="screening-latest"><span><small>LATEST CHECK</small><b>{latestScreening.provider}</b><em>{new Date(latestScreening.screenedAt).toLocaleString("en-GB")} · {latestScreening.recordedBy}</em></span><span><small>REFERENCE</small><b>{latestScreening.reference ?? "Not supplied"}</b><em>{latestScreening.notes ?? "No additional note"}</em></span></div>
+              : <EmptyState title="No screening evidence" copy="Record the sanctions and PEP result before making the four-eyes decision." />}
+            {hasPermission(role, COMPLIANCE_PERMISSIONS.screeningRecord)
+              ? <div className="screening-form"><label>Result<BrandSelect value={screeningResult} onChange={setScreeningResult} ariaLabel="Onboarding screening result" options={[{ value: "clear", label: "Clear" }, { value: "potential_match", label: "Potential match" }, { value: "confirmed_match", label: "Confirmed match" }]} /></label><label>Provider or process<input value={screeningProvider} onChange={(event) => setScreeningProvider(event.target.value)} maxLength={120} placeholder="Provider or manual screening process" /></label><label>Reference<input value={screeningReference} onChange={(event) => setScreeningReference(event.target.value)} maxLength={160} placeholder="Case or search reference" /></label><label>Note<input value={screeningNotes} onChange={(event) => setScreeningNotes(event.target.value)} maxLength={1000} placeholder="Optional match rationale" /></label><button className="btn primary small" disabled={busy === "screening" || screeningProvider.trim().length < 2} onClick={() => void recordScreening()}>{busy === "screening" ? "Recording…" : "Record screening"}</button></div>
+              : <div className="application-review-note"><i>i</i><span><b>Screening is recorded by compliance</b><small>Your role cannot record screening evidence. Ask a compliance officer or broker administrator to complete this step.</small></span></div>}
+            <div className="application-review-note"><i>i</i><span><b>Screening responsibility</b><small>Recording a result attests that the check was actually performed. The entry is written to the client audit trail under your name.</small></span></div>
+          </div>}
+          {applicationReviewStep === 4 && <div className="application-review-section">
+            <div className="application-review-section-head"><span><small>STEP 5 OF 5</small><h3>Final decision</h3><p>Review the control summary and record your decision.</p></span><strong data-state={applicationReadyForApproval ? "ready" : "attention"}>{applicationReadyForApproval ? "Ready to approve" : `${approvalBlockers.length} outstanding`}</strong></div>
             <div className={`application-decision-summary ${applicationReadyForApproval ? "ready" : "attention"}`}>
               <i>{applicationReadyForApproval ? "✓" : "!"}</i><span><b>{applicationReadyForApproval ? "All approval checks are complete" : "Approval is not available yet"}</b><p>{applicationReadyForApproval ? "Approving will activate the client and create their trading account number." : "Complete or resolve the items below before approving this application."}</p></span>
             </div>
@@ -604,7 +629,7 @@ export function ClientsPage({ clients, selectedId, onSelect, orders, instruments
             </div>
           </div>}
         </div>
-        <footer className="application-review-footer"><button className="btn secondary" disabled={applicationReviewStep === 0 || Boolean(busy)} onClick={() => setApplicationReviewStep((step) => Math.max(0, step - 1))}>Back</button><span>Step {applicationReviewStep + 1} of 4</span>{applicationReviewStep < 3 ? <button className="btn primary" disabled={Boolean(busy)} onClick={() => setApplicationReviewStep((step) => Math.min(3, step + 1))}>Continue</button> : <button className="btn secondary" disabled={Boolean(busy)} onClick={() => setApplicationReviewOpen(false)}>Close review</button>}</footer>
+        <footer className="application-review-footer"><button className="btn secondary" disabled={applicationReviewStep === 0 || Boolean(busy)} onClick={() => setApplicationReviewStep((step) => Math.max(0, step - 1))}>Back</button><span>Step {applicationReviewStep + 1} of 5</span>{applicationReviewStep < 4 ? <button className="btn primary" disabled={Boolean(busy)} onClick={() => setApplicationReviewStep((step) => Math.min(4, step + 1))}>Continue</button> : <button className="btn secondary" disabled={Boolean(busy)} onClick={() => setApplicationReviewOpen(false)}>Close review</button>}</footer>
       </section>
     </div>}
     {restorationOpen && <div className="application-review-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setRestorationOpen(false); }}>
