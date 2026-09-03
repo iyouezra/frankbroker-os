@@ -284,40 +284,40 @@ model LinkedBankAccount {
 }
 
 model Account {
-  id                       String                   @id
-  clientId                 String                   @map("client_id")
-  accountNumber            String                   @unique @map("account_number")
-  accountType              String                   @default("cash") @map("account_type")
-  csdReference             String?                  @map("csd_reference")
-  currency                 String                   @default("ETB")
-  totalCash                Decimal                  @default(0) @map("total_cash") @db.Decimal(20, 4)
-  availableCash            Decimal                  @default(0) @map("available_cash") @db.Decimal(20, 4)
-  blockedCash              Decimal                  @default(0) @map("blocked_cash") @db.Decimal(20, 4)
-  unsettledCash            Decimal                  @default(0) @map("unsettled_cash") @db.Decimal(20, 4)
-  version                  Int                      @default(0)
-  status                   String                   @default("active")
-  restrictionReason        String?                  @map("restriction_reason")
-  restrictedAt             DateTime?                @map("restricted_at")
-  closureRequestedAt       DateTime?                @map("closure_requested_at")
-  closedAt                 DateTime?                @map("closed_at")
-  createdAt                DateTime                 @default(now()) @map("created_at")
-  updatedAt                DateTime                 @updatedAt @map("updated_at")
-  client                   Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  holdings                 Holding[]
-  orders                   Order[]
-  cashLedgerEntries        CashLedgerEntry[]
-  securitiesLedgerEntries  SecuritiesLedgerEntry[]
-  serviceRequests          ClientServiceRequest[]
-  clientMoneyPositions     ClientMoneyPosition[]
-  clientMoneyLedgerEntries ClientMoneyLedgerEntry[]
-  cashMovements            CashMovement[]
-  verificationChallenges   VerificationChallenge[]
-  communicationThreads     CommunicationThread[]
-  employeeConductProfiles  EmployeeConductProfile[]
-  journalEntries           JournalEntry[]
-  journalLines             JournalLine[]
+  id                          String                       @id
+  clientId                    String                       @map("client_id")
+  accountNumber               String                       @unique @map("account_number")
+  accountType                 String                       @default("cash") @map("account_type")
+  csdReference                String?                      @map("csd_reference")
+  currency                    String                       @default("ETB")
+  totalCash                   Decimal                      @default(0) @map("total_cash") @db.Decimal(20, 4)
+  availableCash               Decimal                      @default(0) @map("available_cash") @db.Decimal(20, 4)
+  blockedCash                 Decimal                      @default(0) @map("blocked_cash") @db.Decimal(20, 4)
+  unsettledCash               Decimal                      @default(0) @map("unsettled_cash") @db.Decimal(20, 4)
+  version                     Int                          @default(0)
+  status                      String                       @default("active")
+  restrictionReason           String?                      @map("restriction_reason")
+  restrictedAt                DateTime?                    @map("restricted_at")
+  closureRequestedAt          DateTime?                    @map("closure_requested_at")
+  closedAt                    DateTime?                    @map("closed_at")
+  createdAt                   DateTime                     @default(now()) @map("created_at")
+  updatedAt                   DateTime                     @updatedAt @map("updated_at")
+  client                      Client                       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  holdings                    Holding[]
+  orders                      Order[]
+  cashLedgerEntries           CashLedgerEntry[]
+  securitiesLedgerEntries     SecuritiesLedgerEntry[]
+  serviceRequests             ClientServiceRequest[]
+  clientMoneyPositions        ClientMoneyPosition[]
+  clientMoneyLedgerEntries    ClientMoneyLedgerEntry[]
+  cashMovements               CashMovement[]
+  verificationChallenges      VerificationChallenge[]
+  communicationThreads        CommunicationThread[]
+  employeeConductProfiles     EmployeeConductProfile[]
+  journalEntries              JournalEntry[]
+  journalLines                JournalLine[]
   corporateActionEntitlements CorporateActionEntitlement[]
-  taxLots                  TaxLot[]
+  taxLots                     TaxLot[]
 
   @@index([clientId])
   @@map("accounts")
@@ -779,16 +779,16 @@ model ClientConsent {
 }
 
 model FeeSchedule {
-  id            String    @id
-  brokerId      String    @map("broker_id")
+  id            String                @id
+  brokerId      String                @map("broker_id")
   name          String
   version       String
-  status        String    @default("draft")
-  effectiveFrom DateTime  @map("effective_from") @db.Date
-  effectiveTo   DateTime? @map("effective_to") @db.Date
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  broker        Broker    @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  status        String                @default("draft")
+  effectiveFrom DateTime              @map("effective_from") @db.Date
+  effectiveTo   DateTime?             @map("effective_to") @db.Date
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  broker        Broker                @relation(fields: [brokerId], references: [id], onDelete: Cascade)
   rules         FeeRule[]
   promotions    CommissionPromotion[]
 
@@ -844,23 +844,28 @@ model FeeTier {
 }
 
 model ClientTradingMandate {
-  id                    String   @id
-  brokerId              String   @map("broker_id")
-  clientId              String   @unique @map("client_id")
-  status                String   @default("active")
-  buyEnabled            Boolean  @default(true) @map("buy_enabled")
-  sellEnabled           Boolean  @default(true) @map("sell_enabled")
-  maxOrderValue         Decimal? @map("max_order_value") @db.Decimal(20, 4)
-  dailyGrossLimit       Decimal? @map("daily_gross_limit") @db.Decimal(20, 4)
-  allowedAssetClasses   Json?    @map("allowed_asset_classes")
-  allowedMarketSegments Json?    @map("allowed_market_segments")
-  allowedOrderTypes     Json?    @map("allowed_order_types")
-  commissionSource      String   @default("tenant_default") @map("commission_source")
-  version               Int      @default(1)
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  broker                Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
-  client                Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id                      String    @id
+  brokerId                String    @map("broker_id")
+  clientId                String    @unique @map("client_id")
+  status                  String    @default("active")
+  buyEnabled              Boolean   @default(true) @map("buy_enabled")
+  sellEnabled             Boolean   @default(true) @map("sell_enabled")
+  maxOrderValue           Decimal?  @map("max_order_value") @db.Decimal(20, 4)
+  dailyGrossLimit         Decimal?  @map("daily_gross_limit") @db.Decimal(20, 4)
+  allowedAssetClasses     Json?     @map("allowed_asset_classes")
+  allowedMarketSegments   Json?     @map("allowed_market_segments")
+  allowedOrderTypes       Json?     @map("allowed_order_types")
+  commissionSource        String    @default("tenant_default") @map("commission_source")
+  commissionRatePct       Decimal?  @map("commission_rate_pct") @db.Decimal(8, 4)
+  commissionMinimumFee    Decimal?  @map("commission_minimum_fee") @db.Decimal(20, 4)
+  commissionMaximumFee    Decimal?  @map("commission_maximum_fee") @db.Decimal(20, 4)
+  commissionEffectiveFrom DateTime? @map("commission_effective_from") @db.Date
+  commissionReason        String?   @map("commission_reason")
+  version                 Int       @default(1)
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  broker                  Broker    @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  client                  Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([brokerId, status])
   @@map("client_trading_mandates")
@@ -899,17 +904,17 @@ model PlatformFeeRule {
 /// A new version supersedes an old version; historical calculations retain the
 /// exact rule that produced them.
 model PlatformTaxSchedule {
-  id              String            @id
-  name            String
-  version         String            @unique
-  status          String            @default("draft")
-  effectiveFrom   DateTime          @map("effective_from") @db.Date
-  effectiveTo     DateTime?         @map("effective_to") @db.Date
-  legalReference  String            @map("legal_reference")
-  sourceEvidence  Json?             @map("source_evidence")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
-  rules           PlatformTaxRule[]
+  id             String            @id
+  name           String
+  version        String            @unique
+  status         String            @default("draft")
+  effectiveFrom  DateTime          @map("effective_from") @db.Date
+  effectiveTo    DateTime?         @map("effective_to") @db.Date
+  legalReference String            @map("legal_reference")
+  sourceEvidence Json?             @map("source_evidence")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  rules          PlatformTaxRule[]
 
   @@index([status, effectiveFrom])
   @@map("platform_tax_schedules")
@@ -1195,35 +1200,35 @@ model ClientNote {
 /// Issuer or fixed-income event. Dates and terms are preserved exactly as
 /// announced; entitlement snapshots never infer an ex-date or record date.
 model CorporateAction {
-  id                    String                       @id
-  brokerId              String                       @map("broker_id")
-  instrumentId          String                       @map("instrument_id")
-  actionType             String                       @map("action_type")
-  status                 String                       @default("draft")
-  announcementDate       DateTime?                    @map("announcement_date") @db.Date
-  exDate                 DateTime?                    @map("ex_date") @db.Date
-  recordDate             DateTime                     @map("record_date") @db.Date
-  electionDeadline       DateTime?                    @map("election_deadline") @db.Date
-  paymentDate            DateTime                     @map("payment_date") @db.Date
-  currency               String                       @default("ETB")
-  cashRatePerUnit        Decimal?                     @map("cash_rate_per_unit") @db.Decimal(20, 8)
-  securityRatioNumerator Decimal?                     @map("security_ratio_numerator") @db.Decimal(24, 8)
-  securityRatioDenominator Decimal?                   @map("security_ratio_denominator") @db.Decimal(24, 8)
-  defaultElection        String                       @default("cash") @map("default_election")
-  supportsReinvestment   Boolean                      @default(false) @map("supports_reinvestment")
-  taxTreatment           String                       @default("policy") @map("tax_treatment")
-  sourceReference        String                       @map("source_reference")
-  sourceEvidence         Json?                        @map("source_evidence")
-  termsSnapshot          Json?                        @map("terms_snapshot")
-  createdBy              String                       @map("created_by")
-  approvedBy             String?                      @map("approved_by")
-  approvedAt             DateTime?                    @map("approved_at")
-  version                Int                          @default(1)
-  createdAt              DateTime                     @default(now()) @map("created_at")
-  updatedAt              DateTime                     @updatedAt @map("updated_at")
-  broker                 Broker                       @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  instrument             Instrument                   @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
-  entitlements           CorporateActionEntitlement[]
+  id                       String                       @id
+  brokerId                 String                       @map("broker_id")
+  instrumentId             String                       @map("instrument_id")
+  actionType               String                       @map("action_type")
+  status                   String                       @default("draft")
+  announcementDate         DateTime?                    @map("announcement_date") @db.Date
+  exDate                   DateTime?                    @map("ex_date") @db.Date
+  recordDate               DateTime                     @map("record_date") @db.Date
+  electionDeadline         DateTime?                    @map("election_deadline") @db.Date
+  paymentDate              DateTime                     @map("payment_date") @db.Date
+  currency                 String                       @default("ETB")
+  cashRatePerUnit          Decimal?                     @map("cash_rate_per_unit") @db.Decimal(20, 8)
+  securityRatioNumerator   Decimal?                     @map("security_ratio_numerator") @db.Decimal(24, 8)
+  securityRatioDenominator Decimal?                     @map("security_ratio_denominator") @db.Decimal(24, 8)
+  defaultElection          String                       @default("cash") @map("default_election")
+  supportsReinvestment     Boolean                      @default(false) @map("supports_reinvestment")
+  taxTreatment             String                       @default("policy") @map("tax_treatment")
+  sourceReference          String                       @map("source_reference")
+  sourceEvidence           Json?                        @map("source_evidence")
+  termsSnapshot            Json?                        @map("terms_snapshot")
+  createdBy                String                       @map("created_by")
+  approvedBy               String?                      @map("approved_by")
+  approvedAt               DateTime?                    @map("approved_at")
+  version                  Int                          @default(1)
+  createdAt                DateTime                     @default(now()) @map("created_at")
+  updatedAt                DateTime                     @updatedAt @map("updated_at")
+  broker                   Broker                       @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  instrument               Instrument                   @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  entitlements             CorporateActionEntitlement[]
 
   @@unique([brokerId, sourceReference])
   @@index([brokerId, status, paymentDate])
@@ -1234,35 +1239,35 @@ model CorporateAction {
 /// One immutable record-date position per client account. Internal ledger and
 /// external CSD quantities are kept separately so a break cannot be hidden.
 model CorporateActionEntitlement {
-  id                    String          @id
-  corporateActionId     String          @map("corporate_action_id")
-  accountId             String          @map("account_id")
-  ledgerQuantity        Decimal         @map("ledger_quantity") @db.Decimal(24, 8)
-  externalQuantity      Decimal?        @map("external_quantity") @db.Decimal(24, 8)
-  eligibleQuantity      Decimal         @map("eligible_quantity") @db.Decimal(24, 8)
-  positionSource        String          @map("position_source")
-  reconciliationStatus  String          @default("unverified") @map("reconciliation_status")
-  grossCash             Decimal?        @map("gross_cash") @db.Decimal(20, 4)
-  withholdingAmount     Decimal?        @map("withholding_amount") @db.Decimal(20, 4)
-  netCash               Decimal?        @map("net_cash") @db.Decimal(20, 4)
-  withholdingStatus     String          @default("unconfigured") @map("withholding_status")
-  withholdingAgent      String?         @map("withholding_agent")
-  taxLiabilityParty     String?         @map("tax_liability_party")
-  withholdingEvidence   String?         @map("withholding_evidence")
-  securityQuantity      Decimal?        @map("security_quantity") @db.Decimal(24, 8)
-  election              String          @default("cash")
-  electionRecordedAt    DateTime?       @map("election_recorded_at")
-  electionEvidence      String?         @map("election_evidence")
-  status                String          @default("calculated")
-  paymentReference      String?         @map("payment_reference")
-  paidAt                DateTime?       @map("paid_at")
-  exceptionReason       String?         @map("exception_reason")
-  calculationSnapshot   Json?           @map("calculation_snapshot")
-  createdAt             DateTime        @default(now()) @map("created_at")
-  updatedAt             DateTime        @updatedAt @map("updated_at")
-  corporateAction       CorporateAction @relation(fields: [corporateActionId], references: [id], onDelete: Cascade)
-  account               Account         @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  taxCalculations       TaxCalculation[]
+  id                      String                   @id
+  corporateActionId       String                   @map("corporate_action_id")
+  accountId               String                   @map("account_id")
+  ledgerQuantity          Decimal                  @map("ledger_quantity") @db.Decimal(24, 8)
+  externalQuantity        Decimal?                 @map("external_quantity") @db.Decimal(24, 8)
+  eligibleQuantity        Decimal                  @map("eligible_quantity") @db.Decimal(24, 8)
+  positionSource          String                   @map("position_source")
+  reconciliationStatus    String                   @default("unverified") @map("reconciliation_status")
+  grossCash               Decimal?                 @map("gross_cash") @db.Decimal(20, 4)
+  withholdingAmount       Decimal?                 @map("withholding_amount") @db.Decimal(20, 4)
+  netCash                 Decimal?                 @map("net_cash") @db.Decimal(20, 4)
+  withholdingStatus       String                   @default("unconfigured") @map("withholding_status")
+  withholdingAgent        String?                  @map("withholding_agent")
+  taxLiabilityParty       String?                  @map("tax_liability_party")
+  withholdingEvidence     String?                  @map("withholding_evidence")
+  securityQuantity        Decimal?                 @map("security_quantity") @db.Decimal(24, 8)
+  election                String                   @default("cash")
+  electionRecordedAt      DateTime?                @map("election_recorded_at")
+  electionEvidence        String?                  @map("election_evidence")
+  status                  String                   @default("calculated")
+  paymentReference        String?                  @map("payment_reference")
+  paidAt                  DateTime?                @map("paid_at")
+  exceptionReason         String?                  @map("exception_reason")
+  calculationSnapshot     Json?                    @map("calculation_snapshot")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
+  corporateAction         CorporateAction          @relation(fields: [corporateActionId], references: [id], onDelete: Cascade)
+  account                 Account                  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  taxCalculations         TaxCalculation[]
   realizedGainAllocations RealizedGainAllocation[]
 
   @@unique([corporateActionId, accountId])
@@ -1304,31 +1309,31 @@ model TaxPolicyVersion {
 /// Acquisition layer. Imported/dematerialized positions may intentionally have
 /// null cost until documentary evidence is supplied and reviewed.
 model TaxLot {
-  id                  String                   @id
-  accountId           String                   @map("account_id")
-  instrumentId        String                   @map("instrument_id")
-  acquisitionTradeId  String?                  @unique @map("acquisition_trade_id")
-  acquisitionDate     DateTime?                @map("acquisition_date") @db.Date
-  originalQuantity    Decimal                  @map("original_quantity") @db.Decimal(24, 8)
-  remainingQuantity   Decimal                  @map("remaining_quantity") @db.Decimal(24, 8)
-  acquisitionGross    Decimal?                 @map("acquisition_gross") @db.Decimal(20, 4)
-  acquisitionFees     Decimal?                 @map("acquisition_fees") @db.Decimal(20, 4)
-  costBasis           Decimal?                 @map("cost_basis") @db.Decimal(20, 4)
-  unitCost            Decimal?                 @map("unit_cost") @db.Decimal(20, 8)
-  basisStatus         String                   @default("unknown") @map("basis_status")
-  basisSource         String                   @map("basis_source")
-  sourceReference     String?                  @map("source_reference")
-  evidenceReference   String?                  @map("evidence_reference")
-  verifiedBy          String?                  @map("verified_by")
-  verifiedAt          DateTime?                @map("verified_at")
-  notes               String?
-  version             Int                      @default(1)
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
-  account             Account                  @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  instrument          Instrument               @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
-  acquisitionTrade    Trade?                   @relation(fields: [acquisitionTradeId], references: [id], onDelete: Restrict)
-  dispositions        RealizedGainAllocation[]
+  id                 String                   @id
+  accountId          String                   @map("account_id")
+  instrumentId       String                   @map("instrument_id")
+  acquisitionTradeId String?                  @unique @map("acquisition_trade_id")
+  acquisitionDate    DateTime?                @map("acquisition_date") @db.Date
+  originalQuantity   Decimal                  @map("original_quantity") @db.Decimal(24, 8)
+  remainingQuantity  Decimal                  @map("remaining_quantity") @db.Decimal(24, 8)
+  acquisitionGross   Decimal?                 @map("acquisition_gross") @db.Decimal(20, 4)
+  acquisitionFees    Decimal?                 @map("acquisition_fees") @db.Decimal(20, 4)
+  costBasis          Decimal?                 @map("cost_basis") @db.Decimal(20, 4)
+  unitCost           Decimal?                 @map("unit_cost") @db.Decimal(20, 8)
+  basisStatus        String                   @default("unknown") @map("basis_status")
+  basisSource        String                   @map("basis_source")
+  sourceReference    String?                  @map("source_reference")
+  evidenceReference  String?                  @map("evidence_reference")
+  verifiedBy         String?                  @map("verified_by")
+  verifiedAt         DateTime?                @map("verified_at")
+  notes              String?
+  version            Int                      @default(1)
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  account            Account                  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  instrument         Instrument               @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  acquisitionTrade   Trade?                   @relation(fields: [acquisitionTradeId], references: [id], onDelete: Restrict)
+  dispositions       RealizedGainAllocation[]
 
   @@index([accountId, instrumentId, acquisitionDate])
   @@index([basisStatus, remainingQuantity])
@@ -1338,24 +1343,24 @@ model TaxLot {
 /// Economic disposal allocation. Tax calculations are append-only revisions,
 /// allowing future or retrospective guidance without changing the trade facts.
 model RealizedGainAllocation {
-  id                  String           @id
-  saleTradeId         String?          @map("sale_trade_id")
-  corporateActionEntitlementId String? @map("corporate_action_entitlement_id")
-  taxLotId            String           @map("tax_lot_id")
-  quantity            Decimal          @db.Decimal(24, 8)
-  grossProceeds       Decimal          @map("gross_proceeds") @db.Decimal(20, 4)
-  allocatedFees       Decimal          @map("allocated_fees") @db.Decimal(20, 4)
-  netProceeds         Decimal          @map("net_proceeds") @db.Decimal(20, 4)
-  costBasis           Decimal?         @map("cost_basis") @db.Decimal(20, 4)
-  realizedGain        Decimal?         @map("realized_gain") @db.Decimal(20, 4)
-  basisStatus         String           @map("basis_status")
-  status              String           @default("provisional")
-  calculationSnapshot Json?            @map("calculation_snapshot")
-  createdAt           DateTime         @default(now()) @map("created_at")
-  saleTrade           Trade?           @relation(fields: [saleTradeId], references: [id], onDelete: Restrict)
-  corporateActionEntitlement CorporateActionEntitlement? @relation(fields: [corporateActionEntitlementId], references: [id], onDelete: Restrict)
-  taxLot              TaxLot           @relation(fields: [taxLotId], references: [id], onDelete: Restrict)
-  taxCalculations     TaxCalculation[]
+  id                           String                      @id
+  saleTradeId                  String?                     @map("sale_trade_id")
+  corporateActionEntitlementId String?                     @map("corporate_action_entitlement_id")
+  taxLotId                     String                      @map("tax_lot_id")
+  quantity                     Decimal                     @db.Decimal(24, 8)
+  grossProceeds                Decimal                     @map("gross_proceeds") @db.Decimal(20, 4)
+  allocatedFees                Decimal                     @map("allocated_fees") @db.Decimal(20, 4)
+  netProceeds                  Decimal                     @map("net_proceeds") @db.Decimal(20, 4)
+  costBasis                    Decimal?                    @map("cost_basis") @db.Decimal(20, 4)
+  realizedGain                 Decimal?                    @map("realized_gain") @db.Decimal(20, 4)
+  basisStatus                  String                      @map("basis_status")
+  status                       String                      @default("provisional")
+  calculationSnapshot          Json?                       @map("calculation_snapshot")
+  createdAt                    DateTime                    @default(now()) @map("created_at")
+  saleTrade                    Trade?                      @relation(fields: [saleTradeId], references: [id], onDelete: Restrict)
+  corporateActionEntitlement   CorporateActionEntitlement? @relation(fields: [corporateActionEntitlementId], references: [id], onDelete: Restrict)
+  taxLot                       TaxLot                      @relation(fields: [taxLotId], references: [id], onDelete: Restrict)
+  taxCalculations              TaxCalculation[]
 
   @@unique([saleTradeId, taxLotId])
   @@unique([corporateActionEntitlementId, taxLotId])
@@ -1365,23 +1370,23 @@ model RealizedGainAllocation {
 }
 
 model TaxCalculation {
-  id                         String                      @id
-  realizedGainAllocationId   String?                     @map("realized_gain_allocation_id")
-  corporateActionEntitlementId String?                   @map("corporate_action_entitlement_id")
-  taxPolicyVersionId         String?                     @map("tax_policy_version_id")
-  platformTaxRuleId          String?                     @map("platform_tax_rule_id")
-  revision                   Int                         @default(1)
-  taxableAmount              Decimal                     @map("taxable_amount") @db.Decimal(20, 4)
-  ratePct                    Decimal                     @map("rate_pct") @db.Decimal(8, 4)
-  taxAmount                  Decimal                     @map("tax_amount") @db.Decimal(20, 4)
-  status                     String                      @default("estimate")
-  supersedesId               String?                     @map("supersedes_id")
-  calculationSnapshot        Json?                       @map("calculation_snapshot")
-  calculatedAt               DateTime                    @default(now()) @map("calculated_at")
-  realizedGainAllocation     RealizedGainAllocation?     @relation(fields: [realizedGainAllocationId], references: [id], onDelete: Restrict)
-  corporateActionEntitlement CorporateActionEntitlement? @relation(fields: [corporateActionEntitlementId], references: [id], onDelete: Restrict)
-  policy                     TaxPolicyVersion?           @relation(fields: [taxPolicyVersionId], references: [id], onDelete: Restrict)
-  platformRule               PlatformTaxRule?            @relation(fields: [platformTaxRuleId], references: [id], onDelete: Restrict)
+  id                           String                      @id
+  realizedGainAllocationId     String?                     @map("realized_gain_allocation_id")
+  corporateActionEntitlementId String?                     @map("corporate_action_entitlement_id")
+  taxPolicyVersionId           String?                     @map("tax_policy_version_id")
+  platformTaxRuleId            String?                     @map("platform_tax_rule_id")
+  revision                     Int                         @default(1)
+  taxableAmount                Decimal                     @map("taxable_amount") @db.Decimal(20, 4)
+  ratePct                      Decimal                     @map("rate_pct") @db.Decimal(8, 4)
+  taxAmount                    Decimal                     @map("tax_amount") @db.Decimal(20, 4)
+  status                       String                      @default("estimate")
+  supersedesId                 String?                     @map("supersedes_id")
+  calculationSnapshot          Json?                       @map("calculation_snapshot")
+  calculatedAt                 DateTime                    @default(now()) @map("calculated_at")
+  realizedGainAllocation       RealizedGainAllocation?     @relation(fields: [realizedGainAllocationId], references: [id], onDelete: Restrict)
+  corporateActionEntitlement   CorporateActionEntitlement? @relation(fields: [corporateActionEntitlementId], references: [id], onDelete: Restrict)
+  policy                       TaxPolicyVersion?           @relation(fields: [taxPolicyVersionId], references: [id], onDelete: Restrict)
+  platformRule                 PlatformTaxRule?            @relation(fields: [platformTaxRuleId], references: [id], onDelete: Restrict)
 
   @@unique([realizedGainAllocationId, taxPolicyVersionId, revision])
   @@unique([corporateActionEntitlementId, taxPolicyVersionId, revision])

@@ -94,6 +94,7 @@ export async function GET(request: Request) {
           cashMovements: { include: { pooledBankAccount: true, proof: { select: { originalName: true, mimeType: true, sizeBytes: true, uploadedAt: true } } }, orderBy: { submittedAt: "desc" }, take: 25 },
           documents: { include: { content: { select: { documentId: true } } }, orderBy: { uploadedAt: "desc" } },
           linkedBankAccounts: { orderBy: { createdAt: "asc" } },
+          tradingMandate: true,
         },
       }),
       prisma.platformFeeSchedule.findFirst({
@@ -112,6 +113,12 @@ export async function GET(request: Request) {
     const legalDocument = broker.legalDocuments[0] ?? null;
     const feeSchedule = broker.feeSchedules[0] ?? null;
     const commissionPromotion = selectCommissionPromotion(feeSchedule?.promotions ?? [], new Date(), client);
+    const clientCommission = !commissionPromotion && client?.tradingMandate?.commissionSource === "client_override"
+      && client.tradingMandate.commissionRatePct !== null
+      && client.tradingMandate.commissionEffectiveFrom !== null
+      && client.tradingMandate.commissionEffectiveFrom <= new Date()
+      ? client.tradingMandate
+      : null;
     const promotionEndsOn = commissionPromotion && client && commissionPromotion.eligibility === "new_clients" && commissionPromotion.newClientWindowDays
       ? new Date(Math.min(
         commissionPromotion.endsOn.getTime(),
@@ -243,12 +250,17 @@ export async function GET(request: Request) {
           regulatoryVersion: regulatoryFeeSchedule.version,
           effectiveFrom: (feeSchedule?.effectiveFrom ?? regulatoryFeeSchedule.effectiveFrom).toISOString().slice(0, 10),
           rules: composeFeeRules(feeSchedule?.rules ?? [], regulatoryFeeSchedule.rules, broker.settings).map((rule) => commissionPromotion ? {
+            ...rule, brokeragePct: 0, minimumFee: 0, maximumFee: 0, tiers: [], commissionSource: "promotion" as const,
+          } : clientCommission ? {
             ...rule,
-            brokeragePct: 0,
-            minimumFee: 0,
-            maximumFee: 0,
-            tiers: rule.tiers.map((tier) => ({ ...tier, brokeragePct: 0 })),
-          } : rule),
+            brokeragePct: toNum(clientCommission.commissionRatePct),
+            minimumFee: clientCommission.commissionMinimumFee === null ? rule.minimumFee : toNum(clientCommission.commissionMinimumFee),
+            maximumFee: clientCommission.commissionMaximumFee === null ? rule.maximumFee : toNum(clientCommission.commissionMaximumFee),
+            tiers: [],
+            commissionSource: "client_override" as const,
+            commissionMandateVersion: clientCommission.version,
+            commissionEffectiveFrom: clientCommission.commissionEffectiveFrom!.toISOString().slice(0, 10),
+          } : { ...rule, commissionSource: feeSchedule ? "tenant_schedule" as const : "broker_settings" as const }),
           commissionPromotion: commissionPromotion ? {
             id: commissionPromotion.id,
             name: commissionPromotion.name,

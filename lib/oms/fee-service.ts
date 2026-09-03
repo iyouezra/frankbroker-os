@@ -16,6 +16,9 @@ export type FeePolicy = {
   maximumFee: Prisma.Decimal | null;
   brokerageTiers?: Array<{ minimumOrderValue: Prisma.Decimal; maximumOrderValue: Prisma.Decimal | null; brokeragePct: Prisma.Decimal }>;
   commissionPromotion?: { id: string; name: string; eligibility: string; startsOn: Date; endsOn: Date; newClientWindowDays: number | null } | null;
+  commissionSource: "promotion" | "client_override" | "tenant_schedule" | "broker_settings";
+  clientCommissionMandateVersion: number | null;
+  clientCommissionEffectiveFrom: Date | null;
 };
 
 export type FeeBreakdown = {
@@ -33,11 +36,12 @@ type SettingsLike = {
 } | null;
 type InstrumentLike = { assetClass: string; marketSegment: string };
 type CommissionPromotionLike = { id: string; name: string; eligibility: string; startsOn: Date; endsOn: Date; newClientWindowDays: number | null };
+type FeeClientLike = { createdAt: Date; approvedAt?: Date | null; tradingMandate?: { commissionSource: string; commissionRatePct: Prisma.Decimal | null; commissionMinimumFee: Prisma.Decimal | null; commissionMaximumFee: Prisma.Decimal | null; commissionEffectiveFrom: Date | null; version: number } | null };
 
 export function selectCommissionPromotion(
   promotions: CommissionPromotionLike[],
   valueDate: Date,
-  client?: { createdAt: Date; approvedAt?: Date | null } | null,
+  client?: FeeClientLike | null,
 ) {
   return promotions.find((item) => {
     const withinPromotion = valueDate >= item.startsOn && valueDate <= new Date(item.endsOn.getTime() + 86_399_999);
@@ -57,7 +61,7 @@ export async function resolveFeePolicy(
   settings: SettingsLike,
   valueDate = new Date(),
   orderValue?: DecimalValue,
-  client?: { createdAt: Date; approvedAt?: Date | null } | null,
+  client?: FeeClientLike | null,
 ): Promise<FeePolicy> {
   const [schedule, regulatorySchedule] = await Promise.all([
     db.feeSchedule.findFirst({
@@ -96,6 +100,8 @@ export async function resolveFeePolicy(
   }
   const selectedTier = orderValue === undefined ? null : rule?.tiers?.find((tier) => D(orderValue).gte(tier.minimumOrderValue) && (!tier.maximumOrderValue || D(orderValue).lt(tier.maximumOrderValue)));
   const promotion = selectCommissionPromotion(schedule?.promotions ?? [], valueDate, client);
+  const mandate = client?.tradingMandate;
+  const clientOverride = !promotion && mandate?.commissionSource === "client_override" && mandate.commissionRatePct !== null && mandate.commissionEffectiveFrom !== null && mandate.commissionEffectiveFrom <= valueDate ? mandate : null;
   return {
     scheduleId: schedule?.id ?? null,
     scheduleVersion: schedule?.version ?? "legacy",
@@ -103,14 +109,17 @@ export async function resolveFeePolicy(
     regulatoryScheduleVersion: regulatorySchedule.version,
     assetClass: instrument.assetClass,
     marketSegment: instrument.marketSegment,
-    brokeragePct: promotion ? ZERO : selectedTier?.brokeragePct ?? rule?.brokeragePct ?? settings?.brokerageFeePct ?? D(0.5),
+    brokeragePct: promotion ? ZERO : clientOverride?.commissionRatePct ?? selectedTier?.brokeragePct ?? rule?.brokeragePct ?? settings?.brokerageFeePct ?? D(0.5),
     regulatorPct: regulatoryRule.regulatorPct,
     exchangePct: regulatoryRule.exchangePct,
     csdPct: regulatoryRule.csdPct,
-    minimumFee: promotion ? ZERO : rule?.minimumFee ?? settings?.minimumFee ?? ZERO,
-    maximumFee: promotion ? ZERO : rule?.maximumFee ?? null,
-    brokerageTiers: rule?.tiers ?? [],
+    minimumFee: promotion ? ZERO : clientOverride?.commissionMinimumFee ?? rule?.minimumFee ?? settings?.minimumFee ?? ZERO,
+    maximumFee: promotion ? ZERO : clientOverride?.commissionMaximumFee ?? rule?.maximumFee ?? null,
+    brokerageTiers: clientOverride ? [] : rule?.tiers ?? [],
     commissionPromotion: promotion,
+    commissionSource: promotion ? "promotion" : clientOverride ? "client_override" : rule ? "tenant_schedule" : "broker_settings",
+    clientCommissionMandateVersion: clientOverride?.version ?? null,
+    clientCommissionEffectiveFrom: clientOverride?.commissionEffectiveFrom ?? null,
   };
 }
 
@@ -207,6 +216,9 @@ export function applySubmittedBrokeragePolicy(policy: FeePolicy, snapshot: unkno
     minimumFee,
     maximumFee,
     commissionPromotion,
+    commissionSource: ["promotion", "client_override", "tenant_schedule", "broker_settings"].includes(String(saved.commissionSource)) ? saved.commissionSource as FeePolicy["commissionSource"] : policy.commissionSource,
+    clientCommissionMandateVersion: saved.clientCommissionMandateVersion === null || saved.clientCommissionMandateVersion === undefined ? null : Number(saved.clientCommissionMandateVersion),
+    clientCommissionEffectiveFrom: saved.clientCommissionEffectiveFrom ? new Date(`${String(saved.clientCommissionEffectiveFrom)}T00:00:00.000Z`) : null,
   };
 }
 
@@ -243,6 +255,9 @@ export function serializeFeeBreakdown(breakdown: FeeBreakdown, policy?: FeePolic
         },
         minimumBrokerage: policy.minimumFee.toString(),
         maximumBrokerage: policy.maximumFee?.toString() ?? null,
+        commissionSource: policy.commissionSource,
+        clientCommissionMandateVersion: policy.clientCommissionMandateVersion,
+        clientCommissionEffectiveFrom: policy.clientCommissionEffectiveFrom?.toISOString().slice(0, 10) ?? null,
         brokerageTiers: (policy.brokerageTiers ?? []).map((tier) => ({
           minimumOrderValue: tier.minimumOrderValue.toString(),
           maximumOrderValue: tier.maximumOrderValue?.toString() ?? null,

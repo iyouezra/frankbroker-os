@@ -29,7 +29,7 @@ import {
 } from "../shared/investor-foundation";
 import { useT } from "../../../lib/i18n/context";
 
-export function BondDetail({ bond, account, restricted, onBack, placeOrder, feeRule, allowedOrderTypes }: { bond: InvestorBond; account: InvestorBootstrap["account"]; restricted: boolean; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule | null; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
+export function BondDetail({ bond, account, restricted, onBack, placeOrder, refreshPricing, feeRule, allowedOrderTypes }: { bond: InvestorBond; account: InvestorBootstrap["account"]; restricted: boolean; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; refreshPricing: () => Promise<void>; feeRule: InvestorFeeRule | null; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
   const t = useT();
   const [buying, setBuying] = useState(false);
   const pricePerBond = getBondPricePerUnit(bond);
@@ -78,11 +78,11 @@ export function BondDetail({ bond, account, restricted, onBack, placeOrder, feeR
       <p className={styles.disclaimer}>{t("detail.bondDisclaimer")}</p>
     </div>
     <div className={`${styles.tradeBar} ${styles.bondTradeBar}`}><Button disabled={halted || restricted || !feeRule} onClick={() => setBuying(true)}>{t(restricted ? "detail.approvalRequired" : halted ? "detail.tradingPaused" : "detail.buyBond")}</Button></div>
-    {buying && feeRule && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setBuying(false); return result; }} />}
+    {buying && feeRule && <BondOrderSheet bond={bond} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onRefreshPricing={refreshPricing} onClose={() => setBuying(false)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setBuying(false); return result; }} />}
   </div>;
 }
 
-export function StockDetail({ stock, account, restricted, onBack, placeOrder, feeRule, allowedOrderTypes }: { stock: InvestorStock; account: InvestorBootstrap["account"]; restricted: boolean; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; feeRule: InvestorFeeRule | null; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
+export function StockDetail({ stock, account, restricted, onBack, placeOrder, refreshPricing, feeRule, allowedOrderTypes }: { stock: InvestorStock; account: InvestorBootstrap["account"]; restricted: boolean; onBack: () => void; placeOrder: (order: InvestorOrderInput) => Promise<PlaceResult>; refreshPricing: () => Promise<void>; feeRule: InvestorFeeRule | null; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss"> }) {
   const t = useT();
   const [side, setSide] = useState<"Buy" | "Sell" | null>(null);
   const [range, setRange] = useState<MarketRange>("1M");
@@ -130,6 +130,6 @@ export function StockDetail({ stock, account, restricted, onBack, placeOrder, fe
       <p className={styles.disclaimer}>{t("detail.stockDisclaimer")}</p>
     </div>
     <div className={styles.tradeBar}><Button disabled={restricted || !feeRule} onClick={() => setSide("Buy")}>{t(restricted ? "detail.approvalRequired" : "order.buy")}</Button><Button variant="secondary" disabled={restricted || !holding || !feeRule} onClick={() => setSide("Sell")}>{t("order.sell")}</Button></div>
-    {side && feeRule && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
+    {side && feeRule && <OrderSheet stock={stock} side={side} holdingQuantity={holding?.quantity ?? 0} availableCash={availableCash} feeRule={feeRule} allowedOrderTypes={allowedOrderTypes} onRefreshPricing={refreshPricing} onClose={() => setSide(null)} onPlaced={async (order) => { const result = await placeOrder(order); if (result?.status && !["error", "verification_cancelled"].includes(result.status)) setSide(null); return result; }} />}
   </div>;
 }

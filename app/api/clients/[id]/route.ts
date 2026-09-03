@@ -231,7 +231,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         allowedAssetClasses: Array.isArray(client.tradingMandate?.allowedAssetClasses) ? client.tradingMandate.allowedAssetClasses : [],
         allowedMarketSegments: Array.isArray(client.tradingMandate?.allowedMarketSegments) ? client.tradingMandate.allowedMarketSegments : [],
         allowedOrderTypes: Array.isArray(client.tradingMandate?.allowedOrderTypes) ? client.tradingMandate.allowedOrderTypes : [],
-        commissionSource: "tenant_default",
+        commissionSource: client.tradingMandate?.commissionSource === "client_override" ? "client_override" : "tenant_default",
+        commissionRatePct: client.tradingMandate?.commissionRatePct === null || client.tradingMandate?.commissionRatePct === undefined ? null : toNum(client.tradingMandate.commissionRatePct),
+        commissionMinimumFee: client.tradingMandate?.commissionMinimumFee === null || client.tradingMandate?.commissionMinimumFee === undefined ? null : toNum(client.tradingMandate.commissionMinimumFee),
+        commissionMaximumFee: client.tradingMandate?.commissionMaximumFee === null || client.tradingMandate?.commissionMaximumFee === undefined ? null : toNum(client.tradingMandate.commissionMaximumFee),
+        commissionEffectiveFrom: client.tradingMandate?.commissionEffectiveFrom?.toISOString().slice(0, 10) ?? null,
+        commissionReason: client.tradingMandate?.commissionReason ?? null,
         version: client.tradingMandate?.version ?? 1,
       },
       cash: account ? {

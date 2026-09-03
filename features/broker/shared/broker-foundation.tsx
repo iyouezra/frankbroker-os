@@ -255,7 +255,7 @@ export const fallbackCrmThreads: CrmThreadDetail[] = [
 export type Client360Detail = {
   client: { id: string; code: string; name: string; type: string; phone: string | null; email: string | null; broker: string; branch: string | null; openedAt: string; lastActivityAt: string | null; kycStatus: string; clientStatus: string; accountStatus: string; tradingStatus: string; csdReference: string | null; riskRating: string; createdBy: string | null; submittedAt: string | null; approvedBy: string | null; approvedAt: string | null; rejectionReason: string | null; onboardingChannel?: string; address?: string | null; identityMasked?: string | null; taxIdMasked?: string | null; businessRegistrationNumber?: string | null; authorizedRepresentativeName?: string | null; beneficialOwners?: unknown; signatoryAuthorityConfirmed?: boolean; pepStatus?: string };
   readiness: { canTrade: boolean; blockingReasons: string[]; items: Array<{ key: string; label: string; state: "pass" | "fail" | "warning"; detail: string }> };
-  tradingMandate?: { status: string; buyEnabled: boolean; sellEnabled: boolean; maxOrderValue: number | null; dailyGrossLimit: number | null; effectiveDailyGrossLimit: number; allowedAssetClasses: string[]; allowedMarketSegments: string[]; allowedOrderTypes: string[]; commissionSource: "tenant_default"; version: number };
+  tradingMandate?: { status: string; buyEnabled: boolean; sellEnabled: boolean; maxOrderValue: number | null; dailyGrossLimit: number | null; effectiveDailyGrossLimit: number; allowedAssetClasses: string[]; allowedMarketSegments: string[]; allowedOrderTypes: string[]; commissionSource: "tenant_default" | "client_override"; commissionRatePct: number | null; commissionMinimumFee: number | null; commissionMaximumFee: number | null; commissionEffectiveFrom: string | null; commissionReason: string | null; version: number };
   cash: { total: number; available: number; blocked: number; unsettled: number; pendingDeposits: number; pendingWithdrawals: number; currency: string } | null;
   holdings: Array<{ id: string; instrumentId: string; symbol: string; name: string; assetClass: string; total: number; available: number; blocked: number; unsettled: number; averageCost: number; lastPrice: number; marketValue: number; updatedAt: string }>;
   orders: Array<{ id: string; createdAt: string; instrumentId: string; symbol: string; side: "buy" | "sell"; quantity: number; price: number; filledQuantity: number; remainingQuantity: number; status: OrderStatus; source: string; trader: string; actionRequired: string | null; availableActions: string[] }>;
@@ -345,6 +345,17 @@ export function displayLabel(value: string) {
 
 export function normalizedOrderType(value: string) {
   return value.trim().toLowerCase().replaceAll("_", "-").replaceAll(" ", "-");
+}
+
+export function clientCommissionRule(rule: TenantFeeRule | undefined, client: BrokerClient | undefined, asOf = new Date().toISOString().slice(0, 10)) {
+  if (!rule || client?.commissionSource !== "client_override" || client.commissionRatePct === null || client.commissionRatePct === undefined || !client.commissionEffectiveFrom || client.commissionEffectiveFrom > asOf) return rule;
+  return {
+    ...rule,
+    brokeragePct: client.commissionRatePct,
+    minimumFee: client.commissionMinimumFee ?? rule.minimumFee,
+    maximumFee: client.commissionMaximumFee ?? rule.maximumFee,
+    tiers: [],
+  };
 }
 
 export function calculateConfiguredAmounts(side: "buy" | "sell", quantity: number, price: number, feePct: number, minimumFee = 0, feeRule?: TenantFeeRule) {

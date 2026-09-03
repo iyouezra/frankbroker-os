@@ -796,8 +796,8 @@ export default function InvestorApp() {
             </div>
           </div>
           : phase === "onboarding" ? <Onboarding initialAccountType={onboardingType} onBack={() => setPhase("select")} onVerifyIdentity={verifyOnboardingPhone} onDone={(profile) => void completeOnboarding(profile)} legalDocument={bootstrap?.tenant.legalDocument ?? null} />
-          : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} restricted={tradeRestricted} onBack={() => setStock(null)} placeOrder={placeOrder} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} />
-            : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} restricted={tradeRestricted} onBack={() => setBond(null)} placeOrder={placeOrder} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} />
+          : stock ? <StockDetail key={stock.ticker} stock={stock} account={bootstrap?.account ?? null} restricted={tradeRestricted} onBack={() => setStock(null)} placeOrder={placeOrder} refreshPricing={async () => { await refreshInvestor(); }} feeRule={equityFeeRule} allowedOrderTypes={allowedOrderTypes} />
+            : bond ? <BondDetail key={bond.ticker} bond={bond} account={bootstrap?.account ?? null} restricted={tradeRestricted} onBack={() => setBond(null)} placeOrder={placeOrder} refreshPricing={async () => { await refreshInvestor(); }} feeRule={bondFeeRule} allowedOrderTypes={allowedOrderTypes} />
               : <>
                 <div className={`${styles.scrollArea} ${restrictedAccess ? styles.restrictedScroll : ""}`}>
                   {supportOpen

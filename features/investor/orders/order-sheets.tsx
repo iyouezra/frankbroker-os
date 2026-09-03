@@ -26,7 +26,9 @@ const minimumGtdDate = () => {
   return date.toISOString().slice(0, 10);
 };
 
-export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRule, allowedOrderTypes, onClose, onPlaced }: { stock: InvestorStock; side: "Buy" | "Sell"; holdingQuantity: number; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
+const disclosedBrokerageRate = (gross: number, rule: InvestorFeeRule) => rule.tiers?.find((item) => gross >= item.minimumOrderValue && (item.maximumOrderValue === null || gross < item.maximumOrderValue))?.brokeragePct ?? rule.brokeragePct;
+
+export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRule, allowedOrderTypes, onRefreshPricing, onClose, onPlaced }: { stock: InvestorStock; side: "Buy" | "Sell"; holdingQuantity: number; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onRefreshPricing: () => Promise<void>; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
   const t = useT();
   const [orderType, setOrderType] = useState<"Market" | "Limit" | "Stop-loss">("Market");
   const [quantity, setQuantity] = useState("10");
@@ -38,6 +40,7 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
   const [placing, setPlacing] = useState(false);
   const [disclosureAccepted, setDisclosureAccepted] = useState(false);
   const [heldChecks, setHeldChecks] = useState<OrderCheck[]>([]);
+  const [pricingBusy, setPricingBusy] = useState(false);
   const isSell = side === "Sell";
   const isStopLoss = orderType === "Stop-loss";
   const executionPrice = orderType === "Limit" ? Number(limitPrice) || stock.price : stock.price;
@@ -46,6 +49,8 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
   const shares = Number(quantity) || 0;
   const gross = shares * executionPrice;
   const fees = calculateInvestorFees(gross, feeRule);
+  const brokerageRate = disclosedBrokerageRate(gross, feeRule);
+  const brokerageSource = feeRule.commissionSource === "client_override" ? t("order.clientRate") : feeRule.commissionSource === "promotion" ? t("order.promotionRate") : t("order.standardRate");
   const totalCost = gross + fees.total;
   const hasBuyingPower = isSell || totalCost <= availableCash;
   const candidateOptions: Array<"Market" | "Limit" | "Stop-loss"> = isSell ? ["Market", "Limit", "Stop-loss"] : ["Market", "Limit"];
@@ -60,6 +65,12 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
       if (failed.length) { setHeldChecks(failed); setReviewing(false); }
     }
     finally { setPlacing(false); }
+  };
+  const review = async () => {
+    setPricingBusy(true); setHeldChecks([]);
+    try { await onRefreshPricing(); setDisclosureAccepted(false); setReviewing(true); }
+    catch { setHeldChecks([{ code: "pricing_refresh", passed: false, message: t("order.pricingRefreshFailed") }]); }
+    finally { setPricingBusy(false); }
   };
   return <>
     <div className={styles.sheetBackdrop} onClick={onClose}>
@@ -77,7 +88,7 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
         <dl className={styles.orderTotals}>
           {isStopLoss && <div><dt>{t("order.triggerPrice")}</dt><dd>{formatEtb(triggerValue)}</dd></div>}
           <div><dt>{t("order.grossConsideration")}</dt><dd>{formatEtb(gross)}</dd></div>
-          <div><dt>{t("order.brokerage")}</dt><dd>{formatEtb(fees.brokerage)}</dd></div>
+          <div><dt>{t("order.brokerage")} ({brokerageRate.toFixed(4)}%)</dt><dd>{formatEtb(fees.brokerage)}<small>{brokerageSource}</small></dd></div>
           <div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div>
           <div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div>
           <div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div>
@@ -85,14 +96,14 @@ export function OrderSheet({ stock, side, holdingQuantity, availableCash, feeRul
           <div><dt>{t(isSell ? "order.netProceedsEstimated" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div>
         </dl>
         {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>{heldChecks.length === 1 ? t("order.heldOne") : t("order.heldMany", { count: heldChecks.length })}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
-        <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !hasBuyingPower || !triggerValid || !validityReady} onClick={() => setReviewing(true)}>{t("order.review")}</Button>
+        <Button className={styles.full} variant={isSell ? "danger" : "primary"} disabled={gross <= 0 || options.length === 0 || (isSell && shares > holdingQuantity) || !hasBuyingPower || !triggerValid || !validityReady || pricingBusy} onClick={() => void review()}>{pricingBusy ? t("order.refreshingPrice") : t("order.review")}</Button>
       </section>
     </div>
-    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">{t("order.confirmTitle")}</h2><p>{t(isSell ? "order.confirmPrefixSell" : "order.confirmPrefixBuy")}<b>{t("order.confirmSubject", { count: shares.toFixed(0), ticker: stock.ticker })}</b>{t(isSell ? "order.confirmSuffixSell" : "order.confirmSuffixBuy")}{isStopLoss ? <>{t("order.stopLossPrefix")}<b>{formatEtb(triggerValue)}</b>{t("order.stopLossSuffix")}</> : t("order.executionRisk")}</p><dl className={styles.orderTotals}><div><dt>{t("order.validity")}</dt><dd>{t(`order.validity.${validity}` as TranslationKey)}{validity === "gtd" ? ` · ${goodTillDate}` : ""}</dd></div><div><dt>{t("order.orderValue")}</dt><dd>{formatEtb(gross)}</dd></div><div><dt>{t("order.brokerage")}</dt><dd>{formatEtb(fees.brokerage)}</dd></div><div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>{t("order.totalFees")}</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{t(isSell ? "order.netProceeds" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>{t("order.disclosure")}</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>{t("order.cancel")}</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? t("order.sending") : t(isSell ? "order.sell" : "order.buy")}</Button></div></section></div>}
+    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">{t("order.confirmTitle")}</h2><p>{t(isSell ? "order.confirmPrefixSell" : "order.confirmPrefixBuy")}<b>{t("order.confirmSubject", { count: shares.toFixed(0), ticker: stock.ticker })}</b>{t(isSell ? "order.confirmSuffixSell" : "order.confirmSuffixBuy")}{isStopLoss ? <>{t("order.stopLossPrefix")}<b>{formatEtb(triggerValue)}</b>{t("order.stopLossSuffix")}</> : t("order.executionRisk")}</p><dl className={styles.orderTotals}><div><dt>{t("order.validity")}</dt><dd>{t(`order.validity.${validity}` as TranslationKey)}{validity === "gtd" ? ` · ${goodTillDate}` : ""}</dd></div><div><dt>{t("order.orderValue")}</dt><dd>{formatEtb(gross)}</dd></div><div><dt>{t("order.brokerage")} ({brokerageRate.toFixed(4)}%)</dt><dd>{formatEtb(fees.brokerage)}<small>{brokerageSource}</small></dd></div><div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>{t("order.totalFees")}</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{t(isSell ? "order.netProceeds" : "order.totalCost")}</dt><dd>{formatEtb(isSell ? gross - fees.total : gross + fees.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>{t("order.disclosure")}</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>{t("order.cancel")}</Button><Button variant={isSell ? "danger" : "primary"} disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? t("order.sending") : t(isSell ? "order.sell" : "order.buy")}</Button></div></section></div>}
   </>;
 }
 
-export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes, onClose, onPlaced }: { bond: InvestorBond; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
+export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes, onRefreshPricing, onClose, onPlaced }: { bond: InvestorBond; availableCash: number; feeRule: InvestorFeeRule; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; onRefreshPricing: () => Promise<void>; onClose: () => void; onPlaced: (order: InvestorOrderInput) => Promise<PlaceResult> }) {
   const t = useT();
   const pricePerBond = getBondPricePerUnit(bond);
   const suggestedAmount = Math.ceil((bond.minimumInvestment + pricePerBond + feeRule.minimumFee) / 100) * 100;
@@ -103,9 +114,12 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
   const [validity, setValidity] = useState<"day" | "gtc" | "gtd">("day");
   const [goodTillDate, setGoodTillDate] = useState("");
   const [heldChecks, setHeldChecks] = useState<OrderCheck[]>([]);
+  const [pricingBusy, setPricingBusy] = useState(false);
   const value = Number(amount) || 0;
   const allocation = calculateBondOrder(value, pricePerBond, (gross) => calculateInvestorFees(gross, feeRule).total);
   const fees = calculateInvestorFees(allocation.gross, feeRule);
+  const brokerageRate = disclosedBrokerageRate(allocation.gross, feeRule);
+  const brokerageSource = feeRule.commissionSource === "client_override" ? t("order.clientRate") : feeRule.commissionSource === "promotion" ? t("order.promotionRate") : t("order.standardRate");
   const meetsMinimum = allocation.gross >= bond.minimumInvestment;
   const hasCash = allocation.total <= availableCash;
   const limitAllowed = allowedOrderTypes.includes("Limit");
@@ -123,6 +137,12 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
       }
     } finally { setPlacing(false); }
   };
+  const review = async () => {
+    setPricingBusy(true); setHeldChecks([]);
+    try { await onRefreshPricing(); setDisclosureAccepted(false); setReviewing(true); }
+    catch { setHeldChecks([{ code: "pricing_refresh", passed: false, message: t("order.pricingRefreshFailed") }]); }
+    finally { setPricingBusy(false); }
+  };
   return <>
     <div className={styles.sheetBackdrop} onClick={onClose}>
       <section className={`${styles.orderSheet} ${styles.bondOrderSheet}`} onClick={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="bond-order-title">
@@ -139,7 +159,7 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
           <div><dt>{t("bond.wholeBonds")}</dt><dd>{allocation.units}</dd></div>
           <div><dt>{t("bond.pricePerBond")}</dt><dd>{formatEtb(pricePerBond)}</dd></div>
           <div><dt>{t("bond.bondValue")}</dt><dd>{formatEtb(allocation.gross)}</dd></div>
-          <div><dt>{t("order.brokerage")}</dt><dd>{formatEtb(fees.brokerage)}</dd></div>
+          <div><dt>{t("order.brokerage")} ({brokerageRate.toFixed(4)}%)</dt><dd>{formatEtb(fees.brokerage)}<small>{brokerageSource}</small></dd></div>
           <div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div>
           <div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div>
           <div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div>
@@ -148,9 +168,9 @@ export function BondOrderSheet({ bond, availableCash, feeRule, allowedOrderTypes
           <div><dt>{t("bond.amountLeft")}</dt><dd>{formatEtb(allocation.unused)}</dd></div>
         </dl>
         {heldChecks.length > 0 && <div className={styles.orderAlert} role="alert"><b>{heldChecks.length === 1 ? t("order.heldOne") : t("order.heldMany", { count: heldChecks.length })}</b><ul>{heldChecks.map((check) => <li key={check.code}>{check.message}</li>)}</ul></div>}
-        <Button className={styles.full} disabled={!valid} onClick={() => setReviewing(true)}>{t("order.review")}</Button>
+        <Button className={styles.full} disabled={pricingBusy || !valid} onClick={() => void review()}>{pricingBusy ? t("order.refreshingPrice") : t("order.review")}</Button>
       </section>
     </div>
-    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="bond-confirm-title"><h2 id="bond-confirm-title">{t("bond.confirmTitle")}</h2><p>{t("bond.confirmPrefix")}<b>{t(allocation.units === 1 ? "bond.confirmSubjectOne" : "bond.confirmSubjectMany", { count: allocation.units, ticker: bond.ticker })}</b>{t("bond.confirmSuffix")}</p><dl className={styles.orderTotals}><div><dt>{t("bond.bondValue")}</dt><dd>{formatEtb(allocation.gross)}</dd></div><div><dt>{t("order.brokerage")}</dt><dd>{formatEtb(fees.brokerage)}</dd></div><div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>{t("order.totalFees")}</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{t("order.totalCost")}</dt><dd>{formatEtb(allocation.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>{t("bond.disclosure")}</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>{t("order.cancel")}</Button><Button disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? t("order.sending") : t("bond.buy")}</Button></div></section></div>}
+    {reviewing && <div className={styles.dialogBackdrop}><section className={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-labelledby="bond-confirm-title"><h2 id="bond-confirm-title">{t("bond.confirmTitle")}</h2><p>{t("bond.confirmPrefix")}<b>{t(allocation.units === 1 ? "bond.confirmSubjectOne" : "bond.confirmSubjectMany", { count: allocation.units, ticker: bond.ticker })}</b>{t("bond.confirmSuffix")}</p><dl className={styles.orderTotals}><div><dt>{t("bond.bondValue")}</dt><dd>{formatEtb(allocation.gross)}</dd></div><div><dt>{t("order.brokerage")} ({brokerageRate.toFixed(4)}%)</dt><dd>{formatEtb(fees.brokerage)}<small>{brokerageSource}</small></dd></div><div><dt>{t("order.ecmaFee")}</dt><dd>{formatEtb(fees.regulator)}</dd></div><div><dt>{t("order.esxFee")}</dt><dd>{formatEtb(fees.exchange)}</dd></div><div><dt>{t("order.csdFee")}</dt><dd>{formatEtb(fees.csd)}</dd></div><div><dt>{t("order.totalFees")}</dt><dd>{formatEtb(fees.total)}</dd></div><div><dt>{t("order.totalCost")}</dt><dd>{formatEtb(allocation.total)}</dd></div></dl><label className={styles.consentRow}><input type="checkbox" checked={disclosureAccepted} onChange={(event) => setDisclosureAccepted(event.target.checked)} /><i>{disclosureAccepted && <Icon name="check" size={13} />}</i><span>{t("bond.disclosure")}</span></label><div><Button variant="secondary" onClick={() => setReviewing(false)}>{t("order.cancel")}</Button><Button disabled={placing || !disclosureAccepted} onClick={() => void place()}>{placing ? t("order.sending") : t("bond.buy")}</Button></div></section></div>}
   </>;
 }

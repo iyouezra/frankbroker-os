@@ -104,6 +104,18 @@ test("investor buy orders cannot exceed available buying power", async () => {
   assert.match(securityDetails, /availableCash=\{availableCash\}/);
 });
 
+test("client commission is refreshed and disclosed before investor review and retained in the broker log", async () => {
+  const investorOrders = await readFile(new URL("../features/investor/orders/order-sheets.tsx", import.meta.url), "utf8");
+  const brokerOrders = await readFile(new URL("../features/broker/orders/order-log-screen.tsx", import.meta.url), "utf8");
+  const feeService = await readFile(new URL("../lib/oms/fee-service.ts", import.meta.url), "utf8");
+  assert.match(investorOrders, /await onRefreshPricing\(\);/);
+  assert.match(investorOrders, /commissionSource === "client_override"/);
+  assert.match(brokerOrders, /Client-specific/);
+  assert.match(brokerOrders, /ratesPct\?\.brokerage/);
+  assert.match(feeService, /clientCommissionMandateVersion/);
+  assert.match(feeService, /commissionSource: policy\.commissionSource/);
+});
+
 test("order authorization supports masked SMS and email delivery", async () => {
   const [verification, investorRoute, brokerRoute] = await Promise.all([
     readFile(new URL("../lib/verification-service.ts", import.meta.url), "utf8"),

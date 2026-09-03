@@ -19,6 +19,7 @@ export async function GET(request: Request) {
           consents: { orderBy: { acceptedAt: "desc" } },
           screenings: { orderBy: { screenedAt: "desc" }, take: 1 },
           serviceRequests: { orderBy: { submittedAt: "desc" }, take: 20 },
+          tradingMandate: true,
           accounts: {
             include: {
               holdings: { include: { instrument: true }, orderBy: { instrument: { symbol: "asc" } } },
@@ -81,6 +82,12 @@ export async function GET(request: Request) {
           submittedAt: client.submittedAt?.toISOString() ?? null,
           approvedAt: client.approvedAt?.toISOString() ?? null,
           rejectionReason: client.rejectionReason,
+          commissionSource: client.tradingMandate?.commissionSource ?? "tenant_default",
+          commissionRatePct: client.tradingMandate?.commissionRatePct === null || client.tradingMandate?.commissionRatePct === undefined ? null : toNum(client.tradingMandate.commissionRatePct),
+          commissionMinimumFee: client.tradingMandate?.commissionMinimumFee === null || client.tradingMandate?.commissionMinimumFee === undefined ? null : toNum(client.tradingMandate.commissionMinimumFee),
+          commissionMaximumFee: client.tradingMandate?.commissionMaximumFee === null || client.tradingMandate?.commissionMaximumFee === undefined ? null : toNum(client.tradingMandate.commissionMaximumFee),
+          commissionEffectiveFrom: client.tradingMandate?.commissionEffectiveFrom?.toISOString().slice(0, 10) ?? null,
+          commissionMandateVersion: client.tradingMandate?.version ?? null,
           restrictionReason: account?.restrictionReason ?? null,
           serviceRequests: client.serviceRequests.map((item) => ({
             id: item.id,

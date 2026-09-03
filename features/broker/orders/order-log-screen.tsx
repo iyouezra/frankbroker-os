@@ -104,8 +104,8 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
       ? await response.blob()
       : new Blob([
         [
-          ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Good-till date", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated value", "Executed value", "Status", "Source", "Submission reference", "Assigned trader", "Next action", "Action owner", "Exception reason"],
-          ...fallbackFilteredOrders().map((order) => [order.id, order.createdAt, order.updatedAt ?? order.createdAt, order.client, order.clientCode, order.accountNumber ?? order.accountId, order.symbol, order.side, order.orderType, normalizeOrderValidity(order.validity) ?? "day", order.goodTillDate ?? "", order.price, order.triggerPrice ?? "", order.quantity, order.filledQuantity ?? 0, order.remainingQuantity ?? order.quantity, order.estimatedNet, order.executedNet ?? 0, order.status, order.source, order.submissionReference ?? "", order.trader, order.nextAction ?? "", order.actionOwner ?? "", order.rejectionReason ?? ""]),
+          ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Good-till date", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated value", "Commission", "Commission rate (%)", "Commission source", "Executed value", "Status", "Source", "Submission reference", "Assigned trader", "Next action", "Action owner", "Exception reason"],
+          ...fallbackFilteredOrders().map((order) => [order.id, order.createdAt, order.updatedAt ?? order.createdAt, order.client, order.clientCode, order.accountNumber ?? order.accountId, order.symbol, order.side, order.orderType, normalizeOrderValidity(order.validity) ?? "day", order.goodTillDate ?? "", order.price, order.triggerPrice ?? "", order.quantity, order.filledQuantity ?? 0, order.remainingQuantity ?? order.quantity, order.estimatedNet, order.estimatedFeeBreakdown?.brokerage ?? "", order.estimatedFeeBreakdown?.policy?.ratesPct?.brokerage ?? "", order.estimatedFeeBreakdown?.policy?.commissionSource ?? "", order.executedNet ?? 0, order.status, order.source, order.submissionReference ?? "", order.trader, order.nextAction ?? "", order.actionOwner ?? "", order.rejectionReason ?? ""]),
         ].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n"),
       ], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -143,9 +143,12 @@ export function OrdersPage({ orders, query, role, refreshKey, focus, initialStat
 
 function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: DemoOrder) => void }) {
   if (!orders.length) return <EmptyState title="No orders found" copy="Try another client, symbol, order ID, reference, or filter." />;
-  return <div className="table-scroll"><table><thead><tr><th>Order / update</th><th>Client / account</th><th>Instrument / instruction</th><th>Validity</th><th>Side</th><th>Source</th><th className="num">Execution progress</th><th className="num">Value</th><th>Status / age</th><th>Owner / next action</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => {
+  return <div className="table-scroll"><table><thead><tr><th>Order / update</th><th>Client / account</th><th>Instrument / instruction</th><th>Validity</th><th>Side</th><th>Source</th><th className="num">Commission</th><th className="num">Execution progress</th><th className="num">Value</th><th>Status / age</th><th>Owner / next action</th><th aria-label="Actions" /></tr></thead><tbody>{orders.map((order) => {
     const active = ACTIVE_ORDER_STATUSES.has(order.status);
     const value = (order.filledQuantity ?? 0) > 0 ? order.executedNet ?? 0 : order.estimatedNet;
+    const commissionPolicy = order.estimatedFeeBreakdown?.policy;
+    const commissionRate = commissionPolicy?.ratesPct?.brokerage;
+    const commissionSource = commissionPolicy?.commissionSource === "client_override" ? "Client-specific" : commissionPolicy?.commissionSource === "promotion" ? "Promotion" : "Tenant schedule";
     return <tr key={order.id} onClick={() => onOpen(order)}>
       <td><b>{order.id}</b><small>Submitted {new Date(order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small><small>Updated {new Date(order.updatedAt ?? order.createdAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small></td>
       <td><b>{order.client}</b><small>{order.clientCode} · {order.accountNumber ?? order.accountId.replace("acc_", "TRD-").toUpperCase()}</small></td>
@@ -153,6 +156,7 @@ function OrderTable({ orders, onOpen }: { orders: DemoOrder[]; onOpen: (order: D
       <td><b>{orderValidityLabel(order.validity)}</b>{order.goodTillDate && <small>Good till {order.goodTillDate}</small>}{order.instructionExpired && <small className="risk-note">Expired instruction</small>}</td>
       <td><span className={`side side-${order.side}`}>{order.side.toUpperCase()}</span></td>
       <td><b>{displayLabel(order.source)}</b><small>Instruction source</small></td>
+      <td className="num"><b>{etb(order.estimatedFeeBreakdown?.brokerage ?? 0)}</b><small>{commissionRate !== undefined ? `${Number(commissionRate).toFixed(4)}% · ` : ""}{commissionSource}</small></td>
       <td className="num"><b>{fmt.format(order.filledQuantity ?? 0)} / {fmt.format(order.quantity)}</b><small>{fmt.format(order.remainingQuantity ?? order.quantity)} remaining</small></td>
       <td className="num"><b>{etb(value)}</b><small>{(order.filledQuantity ?? 0) > 0 ? "Executed value" : "Estimated incl. fees"}</small></td>
       <td><StatusBadge status={order.status} />{active && <small>{waitingTime(order.updatedAt ?? order.createdAt)}</small>}{order.riskFlag !== "none" && <small className="risk-note">◇ Risk review</small>}</td>

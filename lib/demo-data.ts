@@ -27,7 +27,7 @@ export type DemoOrder = {
     exchange: number;
     csd: number;
     total: number;
-    policy?: { brokerageScheduleVersion?: string; regulatoryScheduleVersion?: string; commissionPromotion?: { id?: string; name?: string; eligibility?: string; startsOn?: string; endsOn?: string; newClientWindowDays?: number | null } | null };
+    policy?: { brokerageScheduleVersion?: string; regulatoryScheduleVersion?: string; commissionSource?: "promotion" | "client_override" | "tenant_schedule" | "broker_settings"; clientCommissionMandateVersion?: number | null; ratesPct?: { brokerage?: string; regulator?: string; exchange?: string; csd?: string }; commissionPromotion?: { id?: string; name?: string; eligibility?: string; startsOn?: string; endsOn?: string; newClientWindowDays?: number | null } | null };
   } | null;
   estimatedNet: number;
   status: OrderStatus;
@@ -168,6 +168,12 @@ export type BrokerClient = {
   submittedAt?: string | null;
   approvedAt?: string | null;
   rejectionReason?: string | null;
+  commissionSource?: "tenant_default" | "client_override";
+  commissionRatePct?: number | null;
+  commissionMinimumFee?: number | null;
+  commissionMaximumFee?: number | null;
+  commissionEffectiveFrom?: string | null;
+  commissionMandateVersion?: number | null;
   serviceRequests?: Array<{
     id: string;
     requestType: string;

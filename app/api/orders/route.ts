@@ -13,7 +13,8 @@ export const runtime = "nodejs";
 
 const normalizeFeeBreakdown = (value: unknown) => {
   const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  return { brokerage: Number(data.brokerage ?? 0), regulator: Number(data.regulator ?? 0), exchange: Number(data.exchange ?? 0), csd: Number(data.csd ?? 0), total: Number(data.total ?? 0), policy: data.policy };
+  const policy = data.policy && typeof data.policy === "object" ? data.policy as { ratesPct?: { brokerage?: string }; commissionSource?: string } : undefined;
+  return { brokerage: Number(data.brokerage ?? 0), regulator: Number(data.regulator ?? 0), exchange: Number(data.exchange ?? 0), csd: Number(data.csd ?? 0), total: Number(data.total ?? 0), policy };
 };
 
 export async function GET(request: Request) {
@@ -184,14 +185,14 @@ export async function GET(request: Request) {
       };
     });
     if (exporting) {
-      const headers = ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Good-till date", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated gross", "Brokerage", "ECMA fee", "ESX fee", "CSD fee", "Total estimated fees", "Estimated total/net", "Executed value", "Status", "Source", "Submission reference", "Execution references", "Assigned trader", "Next action", "Action owner", "Exception reason"];
+      const headers = ["Order ID", "Submitted", "Last updated", "Client", "Client code", "Trading account", "Instrument", "Side", "Order type", "Validity", "Good-till date", "Limit price", "Trigger price", "Ordered", "Filled", "Remaining", "Estimated gross", "Brokerage", "Commission rate (%)", "Commission source", "ECMA fee", "ESX fee", "CSD fee", "Total estimated fees", "Estimated total/net", "Executed value", "Status", "Source", "Submission reference", "Execution references", "Assigned trader", "Next action", "Action owner", "Exception reason"];
       const csv = [
         headers,
         ...orders.map((order) => [
           order.id, order.createdAt, order.updatedAt, order.client, order.clientCode, order.accountNumber,
           order.symbol, order.side, order.orderType, order.validity, order.goodTillDate ?? "", order.price, order.triggerPrice ?? "",
           order.quantity, order.filledQuantity, order.remainingQuantity, order.estimatedGross,
-          order.estimatedFeeBreakdown?.brokerage ?? order.estimatedFees, order.estimatedFeeBreakdown?.regulator ?? 0,
+          order.estimatedFeeBreakdown?.brokerage ?? order.estimatedFees, order.estimatedFeeBreakdown?.policy?.ratesPct?.brokerage ?? "", order.estimatedFeeBreakdown?.policy?.commissionSource ?? "", order.estimatedFeeBreakdown?.regulator ?? 0,
           order.estimatedFeeBreakdown?.exchange ?? 0, order.estimatedFeeBreakdown?.csd ?? 0, order.estimatedFees, order.estimatedNet, order.executedNet,
           order.status, order.source, order.submissionReference ?? "", order.executionReferences.join("; "),
           order.trader, order.nextAction, order.actionOwner, order.rejectionReason ?? "",

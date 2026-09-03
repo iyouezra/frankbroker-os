@@ -54,7 +54,7 @@ export type OnboardingSubmission = {
   linkedBanks: LinkedBankAccount[];
   documents: Partial<Record<"proof_of_address" | "business_license" | "tin_certificate" | "certificate_of_incorporation" | "article_of_association", File>>;
 };
-export type InvestorFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null; tiers?: Array<{ minimumOrderValue: number; maximumOrderValue: number | null; brokeragePct: number }> };
+export type InvestorFeeRule = { assetClass: string; marketSegment: string; brokeragePct: number; regulatorPct: number; exchangePct: number; csdPct: number; minimumFee: number; maximumFee: number | null; tiers?: Array<{ minimumOrderValue: number; maximumOrderValue: number | null; brokeragePct: number }>; commissionSource?: "promotion" | "client_override" | "tenant_schedule" | "broker_settings"; commissionMandateVersion?: number; commissionEffectiveFrom?: string };
 export type InvestorInstrument = {
   ticker: string;
   name: string;

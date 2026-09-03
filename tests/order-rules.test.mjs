@@ -101,6 +101,36 @@ test("selects a tenant commission tier from total order value and keeps it acros
   assert.deepEqual([toNum(first.breakdown.brokerage), toNum(second.breakdown.brokerage)], [150, 150]);
 });
 
+test("an effective client commission replaces tenant tiers and is frozen into the order snapshot", async () => {
+  const policy = await resolveFeePolicy({
+    feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "3.0", promotions: [], rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), minimumFee: D(25), maximumFee: null, tiers: [{ minimumOrderValue: D(100_000), maximumOrderValue: null, brokeragePct: D(.25) }] }] }) },
+    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(0), exchangePct: D(0), csdPct: D(0) }] }) },
+  }, "brk_1", { assetClass: "equity", marketSegment: "main" }, { brokerageFeePct: D(.5), minimumFee: D(25) }, new Date("2026-09-03"), D(120_000), {
+    createdAt: new Date("2020-01-01"),
+    tradingMandate: { commissionSource: "client_override", commissionRatePct: D(.1), commissionMinimumFee: D(10), commissionMaximumFee: D(500), commissionEffectiveFrom: new Date("2026-09-01"), version: 7 },
+  });
+  assert.equal(toNum(policy.brokeragePct), .1);
+  assert.equal(policy.commissionSource, "client_override");
+  assert.equal(policy.clientCommissionMandateVersion, 7);
+  assert.deepEqual(policy.brokerageTiers, []);
+  const snapshot = serializeFeeBreakdown(computeConfiguredAmounts("buy", 120, 1_000, policy).breakdown, policy);
+  assert.equal(snapshot.policy.commissionSource, "client_override");
+  assert.equal(snapshot.policy.clientCommissionMandateVersion, 7);
+  assert.equal(snapshot.policy.ratesPct.brokerage, "0.1");
+});
+
+test("a future-dated client commission does not replace the active tenant tier", async () => {
+  const policy = await resolveFeePolicy({
+    feeSchedule: { findFirst: async () => ({ id: "tenant-fees", version: "3.0", promotions: [], rules: [{ assetClass: "equity", marketSegment: "main", brokeragePct: D(.5), minimumFee: D(0), maximumFee: null, tiers: [{ minimumOrderValue: D(100_000), maximumOrderValue: null, brokeragePct: D(.25) }] }] }) },
+    platformFeeSchedule: { findFirst: async () => ({ id: "platform-fees", version: "4.0", rules: [{ assetClass: "equity", marketSegment: "main", regulatorPct: D(0), exchangePct: D(0), csdPct: D(0) }] }) },
+  }, "brk_1", { assetClass: "equity", marketSegment: "main" }, null, new Date("2026-09-03"), D(120_000), {
+    createdAt: new Date("2020-01-01"),
+    tradingMandate: { commissionSource: "client_override", commissionRatePct: D(.1), commissionMinimumFee: null, commissionMaximumFee: null, commissionEffectiveFrom: new Date("2026-09-04"), version: 2 },
+  });
+  assert.equal(toNum(policy.brokeragePct), .25);
+  assert.equal(policy.commissionSource, "tenant_schedule");
+});
+
 test("waives only brokerage commission for an eligible commission-free promotion", async () => {
   const promotion = { id: "promo-1", name: "First 30 days free", eligibility: "new_clients", startsOn: new Date("2026-08-01"), endsOn: new Date("2026-08-31"), newClientWindowDays: 30 };
   const policy = await resolveFeePolicy({

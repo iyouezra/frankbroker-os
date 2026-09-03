@@ -15,6 +15,7 @@ import {
   Icon,
   PENDING_CASH_STATUSES,
   calculateConfiguredAmounts,
+  clientCommissionRule,
   displayLabel,
   emptyEndOfDayControl,
   emptyReconBatch,
@@ -585,7 +586,7 @@ export default function FrankBrokerApp() {
     const quantity = Number(newOrder.quantity);
     const price = Number(newOrder.price);
     const assetClass = instrument?.asset.toLowerCase().includes("bond") ? "bond" : "equity";
-    const amounts = calculateConfiguredAmounts(newOrder.side, quantity, price, controls.brokerageFeePct, controls.minimumFee, controls.feeRules.find((rule) => rule.assetClass === assetClass));
+    const amounts = calculateConfiguredAmounts(newOrder.side, quantity, price, controls.brokerageFeePct, controls.minimumFee, clientCommissionRule(controls.feeRules.find((rule) => rule.assetClass === assetClass), client, addisBusinessDate()));
     const owned = client && instrument ? client.holdings.find((holding) => holding.symbol === instrument.symbol)?.available ?? 0 : 0;
     const orderTypeAllowed = controls.allowedOrderTypes.some((item) => normalizedOrderType(item) === normalizedOrderType(newOrder.orderType));
     const validityAllowed = normalizedOrderType(newOrder.orderType) === "market"
