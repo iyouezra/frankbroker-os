@@ -23,13 +23,13 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
   const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
   const [amount, setAmount] = useState("15000");
   const approvedBanks = linkedBanks.filter((account) => account.status === "approved");
-  const [destinationBankId, setDestinationBankId] = useState(approvedBanks[0]?.id ?? "");
+  const [selectedBankId, setSelectedBankId] = useState(approvedBanks[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const selectedPool = pools[0];
-  const selectedDestination = approvedBanks.find((account) => account.id === destinationBankId) ?? approvedBanks[0];
+  const selectedBank = approvedBanks.find((account) => account.id === selectedBankId) ?? approvedBanks[0];
   const value = Number(amount) || 0;
   const withdrawableCash = configuredPools.length ? availableCash : 75_000;
-  const valid = Boolean(selectedPool && value > 0 && (type === "deposit" || (selectedDestination && value <= withdrawableCash)));
+  const valid = Boolean(selectedPool && selectedBank && value > 0 && (type === "deposit" || value <= withdrawableCash));
   const submit = async () => {
     if (!selectedPool) return;
     setBusy(true);
@@ -38,7 +38,8 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
         movementType: type,
         pooledBankAccountId: selectedPool.id,
         amount: value,
-        linkedBankAccountId: type === "withdrawal" ? selectedDestination?.id : undefined,
+        linkedBankAccountId: type === "withdrawal" ? selectedBank?.id : undefined,
+        sourceLinkedBankAccountId: type === "deposit" ? selectedBank?.id : undefined,
       });
       if (saved) onClose();
     } finally { setBusy(false); }
@@ -60,6 +61,9 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
             <span>{t("cash.depositAmount")}</span>
             <div><em>ETB</em><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))} /></div>
           </label>
+          {approvedBanks.length > 0
+            ? <label className={styles.formField}><span>{t("cash.payFromBank")}</span><BrandSelect className="bselect-investor" value={selectedBank?.id ?? ""} onChange={setSelectedBankId} ariaLabel={t("cash.payFromBank")} options={approvedBanks.map((account) => ({ value: account.id, label: `${account.bankName} · ${linkedBankNumber(account)}` }))} /></label>
+            : <div className={styles.cashNotice}><b>{t("cash.noApprovedBank")}</b><span>{t("cash.noApprovedBankNote")}</span></div>}
           <div className={styles.gatewayDepositCard}>
             <span className={styles.gatewayDepositIcon}>↗</span>
             <div><small>{t("cash.gatewayEyebrow")}</small><h3>{t("cash.gatewayTitle")}</h3><p>{t("cash.gatewayIntro")}</p></div>
@@ -68,7 +72,6 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
               <li><i>2</i><span><b>{t("cash.gatewayApproveTitle")}</b><small>{t("cash.gatewayApproveNote")}</small></span></li>
               <li><i>3</i><span><b>{t("cash.gatewayConfirmTitle")}</b><small>{t("cash.gatewayConfirmNote")}</small></span></li>
             </ol>
-            <strong>✓ {t("cash.gatewayNoProof")}</strong>
           </div>
           <div className={styles.gatewayDestination}>
             <span><small>{t("cash.gatewayDestination")}</small><b>{selectedPool?.accountName}</b></span>
@@ -82,9 +85,9 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
             {value > withdrawableCash && <small className={styles.fieldError}>{t("bond.cashError")}</small>}
           </label>
           {approvedBanks.length > 0 ? <>
-            <label className={styles.formField}><span>{t("cash.destinationBank")}</span><BrandSelect className="bselect-investor" value={selectedDestination?.id ?? ""} onChange={setDestinationBankId} ariaLabel={t("cash.destinationBank")} options={approvedBanks.map((account) => ({ value: account.id, label: account.bankName }))} /></label>
-            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>{t("onboarding.accountNumber")}</span><div><input value={selectedDestination ? linkedBankNumber(selectedDestination) : ""} readOnly /></div></label>
-            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>{t("onboarding.accountHolder")}</span><div><input value={selectedDestination?.accountHolderName ?? ""} readOnly /></div></label>
+            <label className={styles.formField}><span>{t("cash.destinationBank")}</span><BrandSelect className="bselect-investor" value={selectedBank?.id ?? ""} onChange={setSelectedBankId} ariaLabel={t("cash.destinationBank")} options={approvedBanks.map((account) => ({ value: account.id, label: account.bankName }))} /></label>
+            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>{t("onboarding.accountNumber")}</span><div><input value={selectedBank ? linkedBankNumber(selectedBank) : ""} readOnly /></div></label>
+            <label className={`${styles.formField} ${styles.readOnlyField}`}><span>{t("onboarding.accountHolder")}</span><div><input value={selectedBank?.accountHolderName ?? ""} readOnly /></div></label>
           </> : <div className={styles.cashNotice}><b>{t("cash.noApprovedBank")}</b><span>{t("cash.noApprovedBankNote")}</span></div>}
           <div className={styles.cashNotice}><b>{t("onboarding.whatNext")}</b><span>{t("cash.withdrawalNote", { amount: formatEtb(value) })}</span></div>
         </>}

@@ -553,7 +553,6 @@
 .gatewayDepositCard li span { display: flex; flex-direction: column; gap: 1px; }
 .gatewayDepositCard li b { color: var(--investor-ink-900); font-size: 10px; }
 .gatewayDepositCard li small { color: var(--investor-ink-500); font-size: 8.5px; }
-.gatewayDepositCard > strong { grid-column: 1 / -1; padding: 7px 9px; border-radius: 9px; background: rgba(255,255,255,.7); color: var(--investor-teal-800); font-size: 9px; }
 .gatewayDestination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 13px; padding: 10px 11px; border: 1px solid var(--investor-ink-100); border-radius: 12px; background: var(--investor-ink-50); }
 .gatewayDestination span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .gatewayDestination small { color: var(--investor-ink-500); font-size: 8px; font-weight: 750; letter-spacing: .06em; }

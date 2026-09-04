@@ -510,6 +510,7 @@ export async function POST(request: Request) {
         destinationAccountName: String(payload.destinationAccountName ?? ""),
         destinationAccountMasked: String(payload.destinationAccountMasked ?? ""),
         linkedBankAccountId: String(payload.linkedBankAccountId ?? "") || undefined,
+        sourceLinkedBankAccountId: String(payload.sourceLinkedBankAccountId ?? "") || undefined,
         notes: String(payload.notes ?? ""),
         proof,
       });

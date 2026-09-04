@@ -47,7 +47,7 @@ export type OrderCheck = { code: string; passed: boolean; message: string };
 export type PlaceResult = { status?: string; checks?: OrderCheck[] };
 export type CashPool = { id: string; bankName: string; accountName: string; accountNumberMasked: string; currency: string; purpose: string; beneficialBalance: number };
 export type CashMovementView = { id: string; type: "deposit" | "withdrawal"; amount: number; currency: string; status: string; bankReference?: string | null; destinationBankName?: string | null; destinationAccountMasked?: string | null; submittedAt: string; pool?: CashPool; proof?: { name: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null };
-export type CashMovementInput = { movementType: "deposit" | "withdrawal"; pooledBankAccountId: string; amount: number; bankReference?: string; proofReference?: string; linkedBankAccountId?: string; proofFile?: File };
+export type CashMovementInput = { movementType: "deposit" | "withdrawal"; pooledBankAccountId: string; amount: number; bankReference?: string; proofReference?: string; linkedBankAccountId?: string; sourceLinkedBankAccountId?: string; proofFile?: File };
 export type LinkedBankAccount = { id: string; bankName: string; accountNumber: string; accountNumberMasked?: string; accountHolderName: string; status: string };
 export type OnboardingSubmission = {
   profile: InvestorKyc;

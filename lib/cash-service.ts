@@ -65,15 +65,18 @@ function clean(value: string | undefined, max = 240) {
   return next ? next.slice(0, max) : null;
 }
 
-function assertInput(input: CashMovementInput) {
+function assertInput(input: CashMovementInput, channel: "investor_portal" | "broker_desk") {
   const amount = money(input.amount);
   if (amount.lte(0)) throw fail("Amount must be greater than zero.", 400);
   if (!input.submissionReference.trim() || input.submissionReference.length > 120) {
     throw fail("A valid submission reference is required.", 400);
   }
   if (!input.pooledBankAccountId) throw fail("Select a pooled client-money account.", 400);
-  if (input.movementType === "deposit" && !clean(input.bankReference, 120)) {
+  if (input.movementType === "deposit" && channel === "broker_desk" && !clean(input.bankReference, 120)) {
     throw fail("Enter the bank transfer or deposit-slip reference.", 400);
+  }
+  if (input.movementType === "deposit" && channel === "investor_portal" && !input.sourceLinkedBankAccountId) {
+    throw fail("Choose an approved linked bank account.", 400);
   }
   if (input.proof && input.movementType !== "deposit") throw fail("Receipts can only be attached to deposits.", 400);
   if (input.movementType === "withdrawal") {
@@ -176,7 +179,7 @@ export async function submitCashMovement(
   context: { brokerId: string; actorId: string | null; channel: "investor_portal" | "broker_desk" },
   input: CashMovementInput,
 ) {
-  const amount = assertInput(input);
+  const amount = assertInput(input, context.channel);
   return prisma.$transaction(async (tx) => {
     const existing = await tx.cashMovement.findUnique({
       where: { brokerId_submissionReference: { brokerId: context.brokerId, submissionReference: input.submissionReference.trim() } },
@@ -225,6 +228,9 @@ export async function submitCashMovement(
         },
       })
       : null;
+    if (input.movementType === "deposit" && input.sourceLinkedBankAccountId && !sourceLinkedBank) {
+      throw fail("Choose an approved linked bank account.", 409);
+    }
     const destinationBankName = linkedBank?.bankName ?? clean(input.destinationBankName, 120);
     const destinationAccountName = linkedBank?.accountHolderName ?? clean(input.destinationAccountName, 160);
     const destinationAccountMasked = linkedBank
