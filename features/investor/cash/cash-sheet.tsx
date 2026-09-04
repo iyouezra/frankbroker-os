@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import { formatEtb } from "../../../lib/investor-data";
 import { getInvestorActivityStatus } from "../../../lib/investor-activity";
 import styles from "../../../app/investor/investor.module.css";
@@ -22,23 +22,14 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
   // `type` is submitted as movementType, so the values stay English.
   const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
   const [amount, setAmount] = useState("15000");
-  const [bankReference, setBankReference] = useState("");
-  const [proofReference, setProofReference] = useState("");
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const approvedBanks = linkedBanks.filter((account) => account.status === "approved");
   const [destinationBankId, setDestinationBankId] = useState(approvedBanks[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
-  const receiptUploadId = useId();
   const selectedPool = pools[0];
   const selectedDestination = approvedBanks.find((account) => account.id === destinationBankId) ?? approvedBanks[0];
-  const accountNumbers: Record<string, string> = {
-    pool_aby_general: "100057894108",
-    pool_aby_fixed_income: "100057897721",
-  };
-  const transferAccountNumber = selectedPool ? accountNumbers[selectedPool.id] ?? selectedPool.accountNumberMasked.replace(/[•\s]/g, "") : "";
   const value = Number(amount) || 0;
   const withdrawableCash = configuredPools.length ? availableCash : 75_000;
-  const valid = Boolean(selectedPool && value > 0 && (type === "deposit" ? bankReference.trim() : selectedDestination && value <= withdrawableCash));
+  const valid = Boolean(selectedPool && value > 0 && (type === "deposit" || (selectedDestination && value <= withdrawableCash)));
   const submit = async () => {
     if (!selectedPool) return;
     setBusy(true);
@@ -47,10 +38,7 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
         movementType: type,
         pooledBankAccountId: selectedPool.id,
         amount: value,
-        bankReference,
-        proofReference,
-        linkedBankAccountId: selectedDestination?.id,
-        proofFile: receiptFile ?? undefined,
+        linkedBankAccountId: type === "withdrawal" ? selectedDestination?.id : undefined,
       });
       if (saved) onClose();
     } finally { setBusy(false); }
@@ -68,35 +56,23 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
       </div>
       {pools.length === 0 ? <div className={styles.cashNotice}>{t("cash.noPool")}</div> : <>
         {type === "deposit" ? <>
-          <div className={styles.bankInstruction}>
-            <span><small>{t("cash.transferTo")}</small><b>{selectedPool?.accountName}</b></span>
-            <dl>
-              <div><dt>{t("cash.bank")}</dt><dd>{selectedPool?.bankName}</dd></div>
-              <div><dt>{t("cash.account")}</dt><dd>{transferAccountNumber}</dd></div>
-              <div><dt>{t("cash.reference")}</dt><dd>{t("cash.useInvestorName")}</dd></div>
-            </dl>
-          </div>
           <label className={styles.formField}>
             <span>{t("cash.depositAmount")}</span>
             <div><em>ETB</em><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))} /></div>
           </label>
-          <label className={styles.formField}>
-            <span>{t("cash.transferReference")}</span>
-            <div><input value={bankReference} onChange={(event) => setBankReference(event.target.value)} placeholder={t("cash.transferReferencePlaceholder")} /></div>
-            <small>{t("cash.transferReferenceHint")}</small>
-          </label>
-          <div className={styles.uploadField}>
-            <span>{t("cash.receipt")}</span>
-            <input id={receiptUploadId} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              setReceiptFile(file);
-              setProofReference(file?.name ?? "");
-            }} />
-            <label htmlFor={receiptUploadId}>
-              <b>{receiptFile ? receiptFile.name : t("cash.uploadDocument")}</b>
-              <small>{receiptFile ? t("onboarding.fileChosen", { size: (receiptFile.size / 1024).toFixed(0) }) : t("onboarding.fileFormats")}</small>
-              <em>{receiptFile ? "✓" : "+"}</em>
-            </label>
+          <div className={styles.gatewayDepositCard}>
+            <span className={styles.gatewayDepositIcon}>↗</span>
+            <div><small>{t("cash.gatewayEyebrow")}</small><h3>{t("cash.gatewayTitle")}</h3><p>{t("cash.gatewayIntro")}</p></div>
+            <ol>
+              <li><i>1</i><span><b>{t("cash.gatewayChooseTitle")}</b><small>{t("cash.gatewayChooseNote")}</small></span></li>
+              <li><i>2</i><span><b>{t("cash.gatewayApproveTitle")}</b><small>{t("cash.gatewayApproveNote")}</small></span></li>
+              <li><i>3</i><span><b>{t("cash.gatewayConfirmTitle")}</b><small>{t("cash.gatewayConfirmNote")}</small></span></li>
+            </ol>
+            <strong>✓ {t("cash.gatewayNoProof")}</strong>
+          </div>
+          <div className={styles.gatewayDestination}>
+            <span><small>{t("cash.gatewayDestination")}</small><b>{selectedPool?.accountName}</b></span>
+            <em>{selectedPool?.bankName}</em>
           </div>
         </> : <>
           <div className={styles.availableCashCard}><span>{t("cash.availableToWithdraw")}</span><b>{formatEtb(withdrawableCash)}</b><small>{t("cash.pendingExcluded")}</small></div>
@@ -112,7 +88,7 @@ export function CashSheet({ pools: configuredPools, movements, linkedBanks, avai
           </> : <div className={styles.cashNotice}><b>{t("cash.noApprovedBank")}</b><span>{t("cash.noApprovedBankNote")}</span></div>}
           <div className={styles.cashNotice}><b>{t("onboarding.whatNext")}</b><span>{t("cash.withdrawalNote", { amount: formatEtb(value) })}</span></div>
         </>}
-        <Button className={styles.full} disabled={!valid || busy} onClick={() => void submit()}>{busy ? t("order.sending") : t(type === "deposit" ? "cash.sendForVerification" : "cash.requestWithdrawal")}</Button>
+        <Button className={styles.full} disabled={!valid || busy} onClick={() => void submit()}>{busy ? t("order.sending") : t(type === "deposit" ? "cash.continueToPayment" : "cash.requestWithdrawal")}</Button>
       </>}
       {movements.length > 0 && <div className={styles.cashHistory}><h3>{t("cash.recentInstructions")}</h3>{movements.slice(0, 3).map((movement) => <div key={movement.id}><span><b>{t(movement.type === "deposit" ? "cash.deposit" : "cash.withdrawal")}</b><small>{new Date(movement.submittedAt).toLocaleDateString("en-GB")} · {movement.id}</small></span><span><b>{formatEtb(movement.amount)}</b><em data-status={movement.status}>{INVESTOR_STATUS_KEYS[movement.status] ? t(INVESTOR_STATUS_KEYS[movement.status]) : getInvestorActivityStatus(movement.status)}</em></span></div>)}<button className={styles.cashActivityLink} onClick={onViewActivity}>{t("cash.seeAllActivity")}</button></div>}
     </section>

@@ -87,7 +87,7 @@ export const om: Dictionary = {
   "msg.requestSendFailed": "Gaaffiin kee ergamuu hin dandeenye.",
   "msg.serviceRequestSent": "Gaaffiin gamaaggama to'annoof gara daldalaa keetiitti ergameera.",
   "msg.serviceRequestFailed": "Gaaffii galchuun hin danda'amne.",
-  "msg.depositSent": "Kuusaan maallaqaa mirkaneessa baankii walabaaf ergameera.",
+  "msg.depositSent": "Kaffaltiin jalqabameera. Erga mirkanaa'ee hafni keessan ni haaromfama.",
   "msg.withdrawalSent": "Baasiin qabamee mirkaneessa daldalaaf ergameera.",
   "msg.cashSubmitFailed": "Qajeelfama maallaqaa galchuun hin danda'amne.",
   "msg.noAgreement": "Waliigalteen daldalummaa maxxanfame hin jiru.",

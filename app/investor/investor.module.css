@@ -541,6 +541,24 @@
 .bankInstruction dl div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 10px; }
 .bankInstruction dt { color: var(--investor-ink-500); }
 .bankInstruction dd { margin: 0; font-family: var(--font-mono); font-weight: 650; text-align: right; }
+.gatewayDepositCard { display: grid; grid-template-columns: auto 1fr; gap: 11px 12px; margin: 2px 0 12px; padding: 14px; border: 1px solid rgba(12,129,137,.2); border-radius: 16px; background: linear-gradient(145deg, rgba(20,211,200,.1), rgba(12,129,137,.04)); }
+.gatewayDepositIcon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: var(--investor-teal-700); color: white; font: 750 17px var(--font-body); }
+.gatewayDepositCard > div { min-width: 0; }
+.gatewayDepositCard > div small { color: var(--investor-teal-700); font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+.gatewayDepositCard h3 { margin: 3px 0 3px; color: var(--investor-ink-900); font-size: 13px; }
+.gatewayDepositCard p { margin: 0; color: var(--investor-ink-600); font-size: 9.5px; line-height: 1.45; }
+.gatewayDepositCard ol { grid-column: 1 / -1; display: grid; gap: 8px; margin: 2px 0 0; padding: 10px 0 0; border-top: 1px solid rgba(12,129,137,.13); list-style: none; }
+.gatewayDepositCard li { display: flex; align-items: center; gap: 9px; }
+.gatewayDepositCard li i { width: 21px; height: 21px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: white; color: var(--investor-teal-700); font-size: 9px; font-style: normal; font-weight: 800; box-shadow: 0 1px 4px rgba(8,62,71,.08); }
+.gatewayDepositCard li span { display: flex; flex-direction: column; gap: 1px; }
+.gatewayDepositCard li b { color: var(--investor-ink-900); font-size: 10px; }
+.gatewayDepositCard li small { color: var(--investor-ink-500); font-size: 8.5px; }
+.gatewayDepositCard > strong { grid-column: 1 / -1; padding: 7px 9px; border-radius: 9px; background: rgba(255,255,255,.7); color: var(--investor-teal-800); font-size: 9px; }
+.gatewayDestination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 13px; padding: 10px 11px; border: 1px solid var(--investor-ink-100); border-radius: 12px; background: var(--investor-ink-50); }
+.gatewayDestination span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gatewayDestination small { color: var(--investor-ink-500); font-size: 8px; font-weight: 750; letter-spacing: .06em; }
+.gatewayDestination b { overflow: hidden; color: var(--investor-ink-800); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.gatewayDestination em { flex: 0 0 auto; color: var(--investor-ink-500); font-size: 8.5px; font-style: normal; }
 .cashNotice { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 13px; padding: 11px 12px; border-radius: 13px; background: var(--investor-ink-50); color: var(--investor-ink-600); font-size: 10px; line-height: 1.45; }
 .cashNotice b { color: var(--investor-ink-900); font-size: 11px; }
 .availableCashCard { display: flex; flex-direction: column; margin: 2px 0 14px; padding: 14px; border: 1px solid rgba(12,129,137,.2); border-radius: 16px; background: linear-gradient(145deg, rgba(20,211,200,.1), rgba(12,129,137,.05)); }
