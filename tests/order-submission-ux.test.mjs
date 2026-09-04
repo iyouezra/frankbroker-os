@@ -116,7 +116,7 @@ test("client commission is refreshed and disclosed before investor review and re
   assert.match(feeService, /commissionSource: policy\.commissionSource/);
 });
 
-test("order authorization supports masked SMS and email delivery", async () => {
+test("investor order authorization uses the registered phone while broker-assisted entry retains channel choice", async () => {
   const [verification, investorRoute, brokerRoute] = await Promise.all([
     readFile(new URL("../lib/verification-service.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/investor/route.ts", import.meta.url), "utf8"),
@@ -125,7 +125,9 @@ test("order authorization supports masked SMS and email delivery", async () => {
   assert.match(verification, /OTP_DELIVERY_CHANNELS = \["sms", "email"\]/);
   assert.match(verification, /method: `\$\{deliveryChannel\}_otp`/);
   assert.match(verification, /otpDestinationHint/);
-  assert.match(investorRoute, /payload\.deliveryChannel/);
+  assert.match(investorRoute, /const destination = client\.phone/);
+  assert.match(investorRoute, /deliveryChannel: "sms"/);
+  assert.doesNotMatch(investorRoute, /const deliveryChannel = String\(payload\.deliveryChannel/);
   assert.match(brokerRoute, /payload\.verificationChannel/);
 });
 

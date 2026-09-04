@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import styles from "../../../app/investor/investor.module.css";
 import { BrandSelect } from "../../shared/brand-select";
 import { Button, type InvestorBootstrap } from "../shared/investor-foundation";
+import { PasskeyManager } from "../auth/passkey-manager";
 
 export type ServiceRequestType = "trade_discrepancy" | "account_closure" | "profile_correction" | "tax_document" | "security_concern";
 export type ServiceRequestInput = { requestType: ServiceRequestType; orderId?: string; description: string; files?: File[]; formalComplaint?: boolean };
@@ -60,11 +61,13 @@ export function ProfileCorrectionSheet({ onClose, onSubmit }: { onClose: () => v
   </Sheet>;
 }
 
-export function SecuritySheet({ profile, onClose, onSubmit }: { profile: InvestorBootstrap["profile"]; onClose: () => void; onSubmit: (input: ServiceRequestInput) => Promise<boolean> }) {
+export function SecuritySheet({ profile, passkeysEnabled, onClose, onSubmit }: { profile: InvestorBootstrap["profile"]; passkeysEnabled: boolean; onClose: () => void; onSubmit: (input: ServiceRequestInput) => Promise<boolean> }) {
   const [details, setDetails] = useState(""); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false);
   const mask = (value?: string | null) => value ? `${value.slice(0, 2)}••••${value.slice(-3)}` : "Not recorded";
   return <Sheet title="Security" eyebrow="ACCOUNT SECURITY" intro="Review the contact points used for account verification and report anything suspicious to your broker." onClose={onClose}>
-    <dl className={styles.securityFacts}><div><dt>Registered mobile</dt><dd>{mask(profile?.phone)}</dd></div><div><dt>Registered email</dt><dd>{mask(profile?.email)}</dd></div><div><dt>Order authorization</dt><dd>One-time code required</dd></div></dl>
+    <dl className={styles.securityFacts}><div><dt>Registered mobile</dt><dd>{mask(profile?.phone)}</dd></div><div><dt>Registered email</dt><dd>{mask(profile?.email)}</dd></div><div><dt>Order authorization</dt><dd>Passkey + SMS code</dd></div></dl>
+    <PasskeyManager enabled={passkeysEnabled} />
+    <div className={styles.workflowDivider} />
     <h3 className={styles.workflowHeading}>Report a security concern</h3><TextArea label="What happened?" value={details} onChange={setDetails} placeholder="Describe the suspicious activity, message, login or account change." /><Evidence files={files} onChange={setFiles} />
     <Button variant="danger" className={styles.full} disabled={details.trim().length < 8 || busy} onClick={() => { setBusy(true); void onSubmit({ requestType: "security_concern", description: details.trim(), files }).then((ok) => { if (ok) onClose(); }).finally(() => setBusy(false)); }}>{busy ? "Sending…" : "Report security concern"}</Button>
   </Sheet>;

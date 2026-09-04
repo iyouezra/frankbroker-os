@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import type { Prisma } from "../app/generated/prisma/client";
 import { prisma } from "./prisma";
-import { isInsecureDemoMode } from "./deployment-mode";
+import { isInsecureDemoMode, isInvestorDemoAuthEnabled } from "./deployment-mode";
 
 export const ORDER_SOURCES = ["digital", "in_person", "neway", "phone", "investor_portal"] as const;
 export type OrderSource = typeof ORDER_SOURCES[number];
@@ -101,6 +101,7 @@ async function deliverOtp(input: { challengeId: string; channel: OtpDeliveryChan
 export async function createOtpChallenge(input: {
   brokerId: string; clientId: string; accountId?: string; purpose: "kyc_phone" | "order_instruction" | "investor_login";
   source: string; payloadHash: string; destination: string; destinationHint?: string; deliveryChannel?: OtpDeliveryChannel; createdBy?: string | null;
+  preAuthMethod?: "webauthn_uv"; preAuthReference?: string;
 }) {
   const deliveryChannel = input.deliveryChannel ?? "sms";
   const demoCode = isInsecureDemoMode() ? resolveDemoOtpCode() : null;
@@ -133,12 +134,13 @@ export async function createOtpChallenge(input: {
     purpose: input.purpose, source: input.source, method: `${deliveryChannel}_otp`, destinationHint: input.destinationHint,
     payloadHash: input.payloadHash, codeHash: codeHash(code, salt), salt,
     expiresAt: new Date(now.getTime() + 5 * 60_000), createdBy: input.createdBy ?? null,
+    preAuthMethod: input.preAuthMethod ?? null, preAuthReference: input.preAuthReference ?? null,
   } });
   await prisma.auditLog.create({ data: {
     id: crypto.randomUUID(), brokerId: input.brokerId, actorId: input.createdBy ?? null,
     action: "VERIFICATION_CHALLENGE_CREATED", entityType: "verification_challenge", entityId: challenge.id,
     summary: `${input.purpose} verification requested by ${deliveryChannel} via ${input.source}`,
-    newValue: JSON.stringify({ purpose: input.purpose, source: input.source, deliveryChannel, expiresAt: challenge.expiresAt }),
+    newValue: JSON.stringify({ purpose: input.purpose, source: input.source, deliveryChannel, expiresAt: challenge.expiresAt, preAuthMethod: input.preAuthMethod ?? null, preAuthReference: input.preAuthReference ?? null }),
   } });
   if (!demoCode) {
     try {
@@ -179,6 +181,29 @@ export async function consumeOrderVerification(tx: Prisma.TransactionClient, inp
   const row = await tx.verificationChallenge.findFirst({ where: { id: input.id, brokerId: input.brokerId, clientId: input.clientId, accountId: input.accountId, purpose: "order_instruction" } });
   if (!row || row.status !== "verified" || row.consumedAt || row.expiresAt <= new Date() || row.payloadHash !== input.payloadHash) {
     throw new Response("A valid, unexpired verification for these exact order details is required.", { status: 409 });
+  }
+  if (row.source === "investor_portal" && !isInvestorDemoAuthEnabled()) {
+    if (row.preAuthMethod !== "webauthn_uv" || !row.preAuthReference) {
+      throw new Response("Passkey verification is required before an investor order can be submitted.", { status: 409 });
+    }
+    const passkeyProof = await tx.investorPasskeyChallenge.findFirst({ where: {
+      id: row.preAuthReference,
+      brokerId: input.brokerId,
+      clientId: input.clientId,
+      purpose: "order_instruction",
+      payloadHash: input.payloadHash,
+      status: "verified",
+      consumedAt: null,
+      expiresAt: { gt: new Date() },
+    } });
+    if (!passkeyProof) {
+      throw new Response("The passkey proof for this order has expired or was already used.", { status: 409 });
+    }
+    const passkeyConsumed = await tx.investorPasskeyChallenge.updateMany({
+      where: { id: passkeyProof.id, status: "verified", consumedAt: null },
+      data: { status: "consumed", consumedAt: new Date() },
+    });
+    if (passkeyConsumed.count !== 1) throw new Response("This passkey proof has already been used.", { status: 409 });
   }
   const consumedAt = new Date();
   const updated = await tx.verificationChallenge.updateMany({ where: { id: row.id, status: "verified", consumedAt: null }, data: { status: "consumed", consumedAt } });

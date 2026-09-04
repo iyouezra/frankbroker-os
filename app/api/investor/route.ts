@@ -1,4 +1,5 @@
 import { prisma } from "../../../lib/prisma";
+import type { AuthenticationResponseJSON } from "@simplewebauthn/server";
 import { addisYear } from "../../../lib/addis-date";
 import { composeFeeRules } from "../../../lib/fee-schedule-view";
 import { toNum } from "../../../lib/money";
@@ -8,7 +9,13 @@ import { apiError as routeError } from "../../../lib/api";
 import { normalizeOrderType, parseOrderSide, parseOrderValidity, parsePositiveFiniteNumber } from "../../../lib/order-input";
 import { createSubmittedOrder } from "../../../lib/oms/order-service";
 import { prepareCashMovementProof, serializeCashMovement, submitInvestorCashMovement } from "../../../lib/cash-service";
-import { confirmOtpChallenge, createOtpChallenge, OTP_DELIVERY_CHANNELS, otpDestinationHint, orderPayloadHash, type OtpDeliveryChannel } from "../../../lib/verification-service";
+import { confirmOtpChallenge, createOtpChallenge, otpDestinationHint, orderPayloadHash } from "../../../lib/verification-service";
+import {
+  assertInvestorOrderPasskey,
+  beginInvestorOrderPasskey,
+  finishInvestorOrderPasskey,
+} from "../../../lib/investor-passkeys";
+import { isInvestorDemoAuthEnabled } from "../../../lib/deployment-mode";
 import { sortInvestorActivity, type InvestorActivity } from "../../../lib/investor-activity";
 import {
   createInvestorThread,
@@ -45,6 +52,30 @@ async function requireInvestorPortalAccess(brokerId: string) {
   if (!context?.modules.investor_servicing || features.investorPortal !== true) {
     throw new Response("The investor portal is not enabled for this tenant's active registration, licence, and modules.", { status: 403 });
   }
+}
+
+async function investorOrderAuthorization(brokerId: string, clientId: string, payload: Record<string, unknown>) {
+  const [client, instrument] = await Promise.all([
+    prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true } }),
+    prisma.instrument.findUnique({ where: { symbol: String(payload.symbol ?? "") } }),
+  ]);
+  const account = client?.accounts[0];
+  if (!client || !account || !instrument) throw new Response("Investor account or instrument not found.", { status: 404 });
+  const validity = parseOrderValidity({ validity: payload.validity, goodTillDate: payload.goodTillDate, orderType: payload.orderType });
+  const payloadHash = orderPayloadHash({
+    accountId: account.id,
+    instrumentId: instrument.id,
+    side: String(payload.side ?? ""),
+    quantity: String(payload.quantity ?? ""),
+    price: String(payload.price ?? ""),
+    triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice),
+    orderType: String(payload.orderType ?? ""),
+    validity: validity.validity,
+    goodTillDate: validity.goodTillDate?.toISOString().slice(0, 10) ?? null,
+    source: "investor_portal",
+    submissionReference: String(payload.submissionReference ?? ""),
+  });
+  return { client, account, payloadHash };
 }
 
 export async function GET(request: Request) {
@@ -422,19 +453,41 @@ export async function POST(request: Request) {
       return Response.json(challenge, { status: 201 });
     }
 
+    if (payload.action === "request_order_passkey") {
+      const authorization = await investorOrderAuthorization(brokerId, clientId, payload);
+      return Response.json(await beginInvestorOrderPasskey(request, { brokerId, clientId, payloadHash: authorization.payloadHash }), { status: 201 });
+    }
+
+    if (payload.action === "verify_order_passkey") {
+      return Response.json(await finishInvestorOrderPasskey({
+        request,
+        brokerId,
+        clientId,
+        challengeId: String(payload.challengeId ?? ""),
+        response: payload.response as AuthenticationResponseJSON,
+      }));
+    }
+
     if (payload.action === "request_order_otp") {
-      const [client, instrument] = await Promise.all([
-        prisma.client.findFirst({ where: { id: clientId, brokerId }, include: { accounts: true } }),
-        prisma.instrument.findUnique({ where: { symbol: String(payload.symbol ?? "") } }),
-      ]);
-      const account = client?.accounts[0];
-      if (!client || !account || !instrument) return Response.json({ error: "Investor account or instrument not found." }, { status: 404 });
-      const validity = parseOrderValidity({ validity: payload.validity, goodTillDate: payload.goodTillDate, orderType: payload.orderType });
-      const deliveryChannel = String(payload.deliveryChannel ?? "sms") as OtpDeliveryChannel;
-      if (!OTP_DELIVERY_CHANNELS.includes(deliveryChannel)) return Response.json({ error: "Choose SMS or email for the verification code." }, { status: 400 });
-      const destination = deliveryChannel === "email" ? client.email : client.phone;
-      if (!destination) return Response.json({ error: `No registered ${deliveryChannel === "email" ? "email address" : "mobile number"} is available for this account.` }, { status: 409 });
-      const challenge = await createOtpChallenge({ brokerId, clientId, accountId: account.id, purpose: "order_instruction", source: "investor_portal", deliveryChannel, destination, destinationHint: otpDestinationHint(deliveryChannel, destination), payloadHash: orderPayloadHash({ accountId: account.id, instrumentId: instrument.id, side: String(payload.side ?? ""), quantity: String(payload.quantity ?? ""), price: String(payload.price ?? ""), triggerPrice: payload.triggerPrice === undefined ? null : String(payload.triggerPrice), orderType: String(payload.orderType ?? ""), validity: validity.validity, goodTillDate: validity.goodTillDate?.toISOString().slice(0, 10) ?? null, source: "investor_portal", submissionReference: String(payload.submissionReference ?? "") }) });
+      const { client, account, payloadHash } = await investorOrderAuthorization(brokerId, clientId, payload);
+      const destination = client.phone;
+      if (!destination) return Response.json({ error: "No registered mobile number is available for this account." }, { status: 409 });
+      const passkeyVerificationId = String(payload.passkeyVerificationId ?? "");
+      if (!isInvestorDemoAuthEnabled()) {
+        await assertInvestorOrderPasskey({ brokerId, clientId, challengeId: passkeyVerificationId, payloadHash });
+      }
+      const challenge = await createOtpChallenge({
+        brokerId,
+        clientId,
+        accountId: account.id,
+        purpose: "order_instruction",
+        source: "investor_portal",
+        deliveryChannel: "sms",
+        destination,
+        destinationHint: otpDestinationHint("sms", destination),
+        payloadHash,
+        ...(!isInvestorDemoAuthEnabled() ? { preAuthMethod: "webauthn_uv" as const, preAuthReference: passkeyVerificationId } : {}),
+      });
       return Response.json(challenge, { status: 201 });
     }
 

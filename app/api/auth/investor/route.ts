@@ -4,6 +4,11 @@ import {
   requestInvestorLogin,
   verifyInvestorLogin,
 } from "../../../../lib/investor-auth";
+import type { AuthenticationResponseJSON } from "@simplewebauthn/server";
+import {
+  beginInvestorPasskeyLogin,
+  finishInvestorPasskeyLogin,
+} from "../../../../lib/investor-passkeys";
 import { prisma } from "../../../../lib/prisma";
 import {
   expiredSessionCookieHeaders,
@@ -65,6 +70,18 @@ export async function POST(request: Request) {
         authenticated: true,
         fullName: authenticated.fullName,
       });
+      return withCookies(response, sessionCookieHeaders(request, authenticated.token));
+    }
+    if (action === "passkey_login_options") {
+      return Response.json(await beginInvestorPasskeyLogin(request), { status: 201 });
+    }
+    if (action === "passkey_login_verify") {
+      const authenticated = await finishInvestorPasskeyLogin(
+        request,
+        String(body.challengeId ?? ""),
+        body.response as AuthenticationResponseJSON,
+      );
+      const response = Response.json({ authenticated: true, fullName: authenticated.fullName });
       return withCookies(response, sessionCookieHeaders(request, authenticated.token));
     }
     if (action === "logout") {

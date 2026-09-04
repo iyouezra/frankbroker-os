@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { startAuthentication } from "@simplewebauthn/browser";
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/server";
 import {
   formatEtb,
   investorBonds,
@@ -112,7 +114,7 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
   const [orderOutcome, setOrderOutcome] = useState<OrderSubmissionOutcome | null>(null);
   const orderOtpResolver = useRef<((verificationId: string | null) => void) | null>(null);
   const onboardingOtpResolver = useRef<((verificationId: string | null) => void) | null>(null);
-  const pendingOtpOrder = useRef<{ order: InvestorOrderInput; submissionReference: string } | null>(null);
+  const pendingOtpOrder = useRef<{ order: InvestorOrderInput; submissionReference: string; passkeyVerificationId?: string } | null>(null);
   const [profileName, setProfileName] = useState("Selam Mekonnen");
   const [bootstrap, setBootstrap] = useState<InvestorBootstrap | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -312,7 +314,7 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
       })()
       : { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify(body) };
     const response = await fetch("/api/investor", init);
-    const data = await response.json().catch(() => ({})) as { id?: string; demoCode?: string; destinationHint?: string; deliveryChannel?: "sms" | "email"; expiresAt?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string; threadId?: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; fullName: string; kycStatus: string } };
+    const data = await response.json().catch(() => ({})) as { id?: string; challengeId?: string; passkeyVerificationId?: string; options?: PublicKeyCredentialRequestOptionsJSON; demoCode?: string; destinationHint?: string; deliveryChannel?: "sms" | "email"; expiresAt?: string; error?: string; order?: { id: string; status: string }; checks?: OrderCheck[]; request?: { id: string; status: string; threadId?: string }; cashMovement?: CashMovementView; account?: { id: string; totalCash: number; availableCash: number; blockedCash: number }; profile?: { id: string; clientCode: string; accountNumber?: string; fullName: string; kycStatus: string } };
     if (!response.ok) throw new Error(data.error ?? t("msg.updateAccountFailed"));
     return data;
   };
@@ -483,9 +485,18 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
     let stage: "authorization" | "submission" = "authorization";
     try {
       const submissionReference = crypto.randomUUID();
-      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel: "sms" });
+      let passkeyVerificationId: string | undefined;
+      if (authMode !== "demo") {
+        const passkeyStart = await postInvestor({ action: "request_order_passkey", ...order, submissionReference });
+        if (!passkeyStart.challengeId || !passkeyStart.options) throw new Error("The passkey check could not be started.");
+        const passkeyResponse = await startAuthentication({ optionsJSON: passkeyStart.options });
+        const passkeyResult = await postInvestor({ action: "verify_order_passkey", challengeId: passkeyStart.challengeId, response: passkeyResponse });
+        if (!passkeyResult.passkeyVerificationId) throw new Error("The passkey check was not completed.");
+        passkeyVerificationId = passkeyResult.passkeyVerificationId;
+      }
+      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel: "sms", passkeyVerificationId });
       if (!challenge.id) throw new Error(t("msg.authCodeRequestFailed"));
-      pendingOtpOrder.current = { order, submissionReference };
+      pendingOtpOrder.current = { order, submissionReference, passkeyVerificationId };
       setOrderOtp({
         id: challenge.id,
         deliveryChannel: challenge.deliveryChannel === "email" ? "email" : "sms",
@@ -526,17 +537,17 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
     }
   };
 
-  const resendInvestorOrderOtp = async (deliveryChannel = orderOtp?.deliveryChannel ?? "sms") => {
+  const resendInvestorOrderOtp = async () => {
     if (!orderOtp || !pendingOtpOrder.current) return;
     setOrderOtp((current) => current ? { ...current, busy: true, error: "" } : current);
     try {
-      const { order, submissionReference } = pendingOtpOrder.current;
-      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel });
+      const { order, submissionReference, passkeyVerificationId } = pendingOtpOrder.current;
+      const challenge = await postInvestor({ action: "request_order_otp", ...order, submissionReference, deliveryChannel: "sms", passkeyVerificationId });
       if (!challenge.id) throw new Error(t("msg.otpSendFailed"));
       setOrderOtp({
         id: challenge.id,
         deliveryChannel: challenge.deliveryChannel === "email" ? "email" : "sms",
-        destinationHint: challenge.destinationHint ?? (deliveryChannel === "email" ? t("msg.registeredEmail") : t("msg.registeredMobile")),
+        destinationHint: challenge.destinationHint ?? t("msg.registeredMobile"),
         expiresAt: challenge.expiresAt,
         demoCode: challenge.demoCode,
         busy: false,
@@ -867,7 +878,7 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
                           ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} servicing={bootstrap?.servicing ?? null} demoFallback={authMode === "demo" && activeClientId === INVESTOR_CLIENT_ID} />
                           : tab === "learn"
                             ? <LearnScreen />
-                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onOpenRequest={(threadId) => { setSupportOpen(true); void openSupportThread(threadId); }} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={createServiceRequest} onDownloadStatement={downloadStatement} onSignOut={authMode === "otp" ? signOut : undefined} />}
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} passkeysEnabled={authMode !== "demo"} onOpenSupport={() => setSupportOpen(true)} onOpenRequest={(threadId) => { setSupportOpen(true); void openSupportThread(threadId); }} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={createServiceRequest} onDownloadStatement={downloadStatement} onSignOut={authMode === "otp" ? signOut : undefined} />}
                 </div>
                 <BottomNav active={tab} onChange={navigate} />
               </>}
@@ -875,7 +886,7 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
         {bellOpen && <div className={styles.sheetBackdrop} onClick={() => setBellOpen(false)}><section className={styles.notifSheet} onClick={(event) => event.stopPropagation()} role="dialog" aria-label={t("notifications.label")}><i className={styles.sheetHandle} /><div className={styles.notifHead}><h2>{t("notifications.title")}</h2>{unreadNotifs > 0 && <button onClick={markAllNotifsRead}>{t("notifications.markAllRead")}</button>}</div><div className={styles.notifList}>{notifications.length === 0 ? <p className={styles.notifEmpty}>{t("notifications.empty")}</p> : notifications.map((item) => <button key={item.id} className={`${styles.notifItem} ${item.read ? "" : styles.notifUnread}`} onClick={() => openNotification(item)}><i className={styles.notifDot} data-sev={item.severity} /><div><b>{item.title}</b><p>{item.body}</p><small>{timeAgo(item.createdAt)}</small></div></button>)}</div></section></div>}
         {newRequestOpen && <NewRequestSheet busy={supportBusy} onClose={() => setNewRequestOpen(false)} onSubmit={createSupportRequest} />}
         {onboardingOtp && <InvestorOrderOtpDialog key={onboardingOtp.id} context="onboarding" challenge={onboardingOtp} onVerify={(code) => void verifyApplicantOtp(code)} onResend={() => void resendApplicantOtp()} onCancel={cancelApplicantOtp} />}
-        {orderOtp && <InvestorOrderOtpDialog key={orderOtp.id} challenge={orderOtp} onVerify={(code) => void verifyInvestorOrderOtp(code)} onResend={() => void resendInvestorOrderOtp()} onDeliveryChange={(channel) => { if (channel !== orderOtp.deliveryChannel) void resendInvestorOrderOtp(channel); }} onCancel={cancelInvestorOrderOtp} />}
+        {orderOtp && <InvestorOrderOtpDialog key={orderOtp.id} challenge={orderOtp} onVerify={(code) => void verifyInvestorOrderOtp(code)} onResend={() => void resendInvestorOrderOtp()} onCancel={cancelInvestorOrderOtp} />}
         {orderOutcome && <InvestorOrderOutcomeDialog outcome={orderOutcome} onClose={() => setOrderOutcome(null)} onViewOrders={() => { setOrderOutcome(null); setStock(null); setBond(null); setTab("profile"); }} />}
         {toast && <div className={styles.toast} role="status"><Icon name="check" size={18} /><span><b>{toast}</b><small>{t("toast.subtitle")}</small></span></div>}
       </div>

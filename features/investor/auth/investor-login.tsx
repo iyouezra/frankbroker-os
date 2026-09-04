@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { startAuthentication } from "@simplewebauthn/browser";
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/server";
 
 import styles from "../../../app/investor/investor.module.css";
 import { AppLogo, Button } from "../shared/investor-foundation";
@@ -32,6 +34,11 @@ export function InvestorLogin({ checking, onAuthenticated }: { checking: boolean
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const passkeySupported = useSyncExternalStore(
+    () => () => undefined,
+    () => "PublicKeyCredential" in window,
+    () => false,
+  );
 
   const requestCode = async () => {
     setBusy(true);
@@ -64,6 +71,23 @@ export function InvestorLogin({ checking, onAuthenticated }: { checking: boolean
     }
   };
 
+  const signInWithPasskey = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const start = await authRequest({ action: "passkey_login_options" });
+      const response = await startAuthentication({
+        optionsJSON: start.options as PublicKeyCredentialRequestOptionsJSON,
+      });
+      const data = await authRequest({ action: "passkey_login_verify", challengeId: start.challengeId, response });
+      await onAuthenticated(data.fullName ? String(data.fullName) : undefined);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("auth.passkeyError"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return <div className={styles.demoSelector}>
     <div className={styles.demoSelectorBrand}><AppLogo /><span>{t("auth.securePortal")}</span></div>
     <div className={styles.demoSelectorIntro}>
@@ -79,6 +103,12 @@ export function InvestorLogin({ checking, onAuthenticated }: { checking: boolean
       event.preventDefault();
       void (challenge ? verify() : requestCode());
     }}>
+      {!challenge && passkeySupported && <>
+        <Button type="button" className={styles.full} disabled={busy} onClick={() => void signInWithPasskey()}>
+          {busy ? t("auth.working") : t("auth.passkeySignIn")}
+        </Button>
+        <div className={styles.authDivider}><span>{t("auth.orCode")}</span></div>
+      </>}
       {!challenge ? <>
         <label><span>{t("auth.clientCode")}</span><input autoCapitalize="characters" autoComplete="username" value={clientCode} onChange={(event) => setClientCode(event.target.value.toUpperCase())} placeholder="CL-10041" /></label>
         <label><span>{t("auth.contact")}</span><input autoComplete="email tel" value={login} onChange={(event) => setLogin(event.target.value)} placeholder="name@example.et or +251…" /></label>

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 import { isInvestorDemoAuthEnabled } from "../lib/deployment-mode.ts";
 import {
@@ -66,4 +67,30 @@ test("session cookies are host-bound on HTTPS and clear both production and loca
   assert.match(cleared, /__Host-frank_session=/);
   assert.match(cleared, /frank_session=/);
   assert.match(cleared, /Max-Age=0/);
+});
+
+test("passkeys use user verification and exact-order proofs without storing biometrics", async () => {
+  const [service, route, verification, schema, migration, login, manager] = await Promise.all([
+    readFile(new URL("../lib/investor-passkeys.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/investor/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/verification-service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
+    readFile(new URL("../prisma/migrations/20260904110000_investor_passkeys/migration.sql", import.meta.url), "utf8"),
+    readFile(new URL("../features/investor/auth/investor-login.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/investor/auth/passkey-manager.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(service, /userVerification: "required"/);
+  assert.match(service, /requireUserVerification: true/);
+  assert.match(service, /payloadHash: input\.payloadHash/);
+  assert.match(route, /request_order_passkey/);
+  assert.match(route, /assertInvestorOrderPasskey/);
+  assert.match(verification, /preAuthMethod !== "webauthn_uv"/);
+  assert.match(verification, /investorPasskeyChallenge\.updateMany/);
+  assert.match(schema, /model InvestorPasskey/);
+  assert.match(migration, /"public_key" BYTEA NOT NULL/);
+  assert.match(login, /passkey_login_options/);
+  assert.match(manager, /register_options/);
+  for (const source of [service, route, verification, schema, migration]) {
+    assert.doesNotMatch(source, /faceprint|fingerprint_template|biometric_template/i);
+  }
 });

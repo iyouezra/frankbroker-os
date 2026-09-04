@@ -42,6 +42,9 @@ export const en = {
   "auth.loadFailed": "Your investor account could not be loaded.",
   "auth.faydaReady": "This sign-in boundary is ready to accept a verified Fayda identity when VeriFayda is connected.",
   "auth.signOut": "Sign out",
+  "auth.passkeySignIn": "Sign in with Face ID, fingerprint or passkey",
+  "auth.passkeyError": "Passkey sign-in was not completed.",
+  "auth.orCode": "or use a one-time code",
 
   // Restricted-access banner
   "restricted.title": "Restricted access",

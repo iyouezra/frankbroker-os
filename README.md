@@ -68,11 +68,13 @@ The server marks the deployment `insecure-demo` and asks search engines not to i
 
 ### Investor authentication boundary
 
-The investor portal now includes an opt-in passwordless OTP sign-in flow for
-existing client records. It binds a verified external identity to an internal
-investor principal, issues a short-lived HttpOnly/SameSite session cookie, and
-derives client ownership on the server. Order authorization remains a separate,
-exact-order-bound OTP.
+The investor portal includes registered-contact OTP sign-in plus WebAuthn
+passkeys. It binds a verified external identity to an internal investor
+principal, issues a short-lived HttpOnly/SameSite session cookie, and derives
+client ownership on the server. In protected mode, an investor order requires
+device user verification through a passkey followed by an exact-order-bound SMS
+OTP to the registered mobile number. Biometric data and credential private keys
+never reach Frank's server.
 
 The safe default remains the existing labelled demo. To enable investor sign-in
 in a properly secured environment, configure:
@@ -84,14 +86,24 @@ FRANK_SESSION_SECRET="at-least-32-random-bytes"
 FRANK_OTP_HASH_SECRET="a-different-32-byte-random-secret"
 FRANK_OTP_DELIVERY_URL="https://your-ethiopia-hosted-otp-adapter.example/send"
 FRANK_OTP_DELIVERY_TOKEN="provider-token"
+FRANK_WEBAUTHN_RP_ID="your-frank-domain.example"
+FRANK_WEBAUTHN_ORIGINS="https://app.your-frank-domain.example"
+FRANK_WEBAUTHN_RP_NAME="Frank Money"
 ```
+
+Use a stable RP ID and HTTPS origin before enrolling passkeys. A passkey created
+for a temporary `*.vercel.app` preview host will not transfer to the production
+domain. Investors enroll and revoke passkeys under **Profile → Security** after
+signing in through the registered-contact flow. Shared demo personas do not
+support passkey enrollment.
 
 The login accepts a client code plus the email or mobile already held on the
 client record. VeriFayda can later replace the OTP authenticator: after a Fayda
 callback cryptographically verifies `iss`, `aud`, signature, nonce, expiry and
 `sub`, it should pass that verified identity to `establishInvestorSession` in
 `lib/investor-auth.ts`. The database supports multiple identity providers per
-client, so enabling Fayda does not require changing authorization or order OTP.
+client, so enabling Fayda does not require changing authorization, passkeys, or
+the order OTP.
 The documented Fayda claim-to-onboarding decisions are recorded in
 `docs/fayda-onboarding-field-map.md`; the executable normalization contract is
 in `lib/fayda-claims.ts`.

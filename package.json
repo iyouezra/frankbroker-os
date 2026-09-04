@@ -23,6 +23,8 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.0",
     "dotenv": "^17.0.0",
     "fflate": "^0.8.2",
     "next": "16.2.6",

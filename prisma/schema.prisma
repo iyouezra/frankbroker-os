@@ -18,6 +18,8 @@ model Broker {
   users                  User[]
   clients                Client[]
   investorIdentities     InvestorIdentity[]
+  investorPasskeys       InvestorPasskey[]
+  passkeyChallenges      InvestorPasskeyChallenge[]
   orders                 Order[]
   reconciliationBatches  ReconciliationBatch[]
   auditLogs              AuditLog[]
@@ -147,63 +149,63 @@ model User {
 }
 
 model Client {
-  id                           String                   @id
-  brokerId                     String                   @map("broker_id")
-  clientCode                   String                   @unique @map("client_code")
-  fullName                     String                   @map("full_name")
-  clientType                   String                   @default("individual") @map("client_type")
+  id                           String                     @id
+  brokerId                     String                     @map("broker_id")
+  clientCode                   String                     @unique @map("client_code")
+  fullName                     String                     @map("full_name")
+  clientType                   String                     @default("individual") @map("client_type")
   phone                        String?
   email                        String?
-  taxId                        String?                  @map("tax_id")
-  taxIdentityReference         String?                  @map("tax_identity_reference")
-  identityReference            String?                  @map("identity_reference")
-  faydaLast7                   String?                  @map("fayda_last7")
-  taxIdLast4                   String?                  @map("tax_id_last4")
-  kycConsentAt                 DateTime?                @map("kyc_consent_at")
+  taxId                        String?                    @map("tax_id")
+  taxIdentityReference         String?                    @map("tax_identity_reference")
+  identityReference            String?                    @map("identity_reference")
+  faydaLast7                   String?                    @map("fayda_last7")
+  taxIdLast4                   String?                    @map("tax_id_last4")
+  kycConsentAt                 DateTime?                  @map("kyc_consent_at")
   address                      String?
-  proofOfAddressType           String?                  @map("proof_of_address_type")
-  proofOfAddressReference      String?                  @map("proof_of_address_reference")
-  proofOfAddressStatus         String                   @default("pending") @map("proof_of_address_status")
-  businessRegistrationNumber   String?                  @map("business_registration_number")
-  authorizedRepresentativeName String?                  @map("authorized_representative_name")
-  signatoryAuthorityConfirmed  Boolean                  @default(false) @map("signatory_authority_confirmed")
-  beneficialOwners             Json?                    @map("beneficial_owners")
-  kycReviewDueAt               DateTime?                @map("kyc_review_due_at")
-  electronicDeliveryConsentAt  DateTime?                @map("electronic_delivery_consent_at")
-  kycStatus                    String                   @default("pending") @map("kyc_status")
-  riskRating                   String                   @default("standard") @map("risk_rating")
-  status                       String                   @default("active")
-  createdBy                    String?                  @map("created_by")
-  submittedAt                  DateTime?                @map("submitted_at")
-  approvedBy                   String?                  @map("approved_by")
-  approvedAt                   DateTime?                @map("approved_at")
-  rejectionReason              String?                  @map("rejection_reason")
-  onboardingChannel            String                   @default("in_person") @map("onboarding_channel")
-  externalClientReference      String?                  @map("external_client_reference")
-  portalAuthSubject            String?                  @map("portal_auth_subject")
-  dateOfBirth                  DateTime?                @map("date_of_birth") @db.Date
+  proofOfAddressType           String?                    @map("proof_of_address_type")
+  proofOfAddressReference      String?                    @map("proof_of_address_reference")
+  proofOfAddressStatus         String                     @default("pending") @map("proof_of_address_status")
+  businessRegistrationNumber   String?                    @map("business_registration_number")
+  authorizedRepresentativeName String?                    @map("authorized_representative_name")
+  signatoryAuthorityConfirmed  Boolean                    @default(false) @map("signatory_authority_confirmed")
+  beneficialOwners             Json?                      @map("beneficial_owners")
+  kycReviewDueAt               DateTime?                  @map("kyc_review_due_at")
+  electronicDeliveryConsentAt  DateTime?                  @map("electronic_delivery_consent_at")
+  kycStatus                    String                     @default("pending") @map("kyc_status")
+  riskRating                   String                     @default("standard") @map("risk_rating")
+  status                       String                     @default("active")
+  createdBy                    String?                    @map("created_by")
+  submittedAt                  DateTime?                  @map("submitted_at")
+  approvedBy                   String?                    @map("approved_by")
+  approvedAt                   DateTime?                  @map("approved_at")
+  rejectionReason              String?                    @map("rejection_reason")
+  onboardingChannel            String                     @default("in_person") @map("onboarding_channel")
+  externalClientReference      String?                    @map("external_client_reference")
+  portalAuthSubject            String?                    @map("portal_auth_subject")
+  dateOfBirth                  DateTime?                  @map("date_of_birth") @db.Date
   nationality                  String?
-  countryOfResidence           String?                  @map("country_of_residence")
+  countryOfResidence           String?                    @map("country_of_residence")
   occupation                   String?
-  employerName                 String?                  @map("employer_name")
-  sourceOfFunds                String?                  @map("source_of_funds")
-  investmentObjective          String?                  @map("investment_objective")
-  taxResidency                 String?                  @map("tax_residency")
-  pepStatus                    String                   @default("not_declared") @map("pep_status")
-  bankName                     String?                  @map("bank_name")
-  bankAccountName              String?                  @map("bank_account_name")
-  bankAccountLast4             String?                  @map("bank_account_last4")
-  phoneVerifiedAt              DateTime?                @map("phone_verified_at")
-  identityVerifiedAt           DateTime?                @map("identity_verified_at")
-  createdAt                    DateTime                 @default(now()) @map("created_at")
-  updatedAt                    DateTime                 @updatedAt @map("updated_at")
-  broker                       Broker                   @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  employerName                 String?                    @map("employer_name")
+  sourceOfFunds                String?                    @map("source_of_funds")
+  investmentObjective          String?                    @map("investment_objective")
+  taxResidency                 String?                    @map("tax_residency")
+  pepStatus                    String                     @default("not_declared") @map("pep_status")
+  bankName                     String?                    @map("bank_name")
+  bankAccountName              String?                    @map("bank_account_name")
+  bankAccountLast4             String?                    @map("bank_account_last4")
+  phoneVerifiedAt              DateTime?                  @map("phone_verified_at")
+  identityVerifiedAt           DateTime?                  @map("identity_verified_at")
+  createdAt                    DateTime                   @default(now()) @map("created_at")
+  updatedAt                    DateTime                   @updatedAt @map("updated_at")
+  broker                       Broker                     @relation(fields: [brokerId], references: [id], onDelete: Restrict)
   accounts                     Account[]
   consents                     ClientConsent[]
   serviceRequests              ClientServiceRequest[]
   notes                        ClientNote[]
-  creator                      User?                    @relation("ClientCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  approver                     User?                    @relation("ClientApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  creator                      User?                      @relation("ClientCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  approver                     User?                      @relation("ClientApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
   cashMovements                CashMovement[]
   verificationChallenges       VerificationChallenge[]
   documents                    ClientDocument[]
@@ -219,6 +221,8 @@ model Client {
   employeeConductProfiles      EmployeeConductProfile[]
   tradingMandate               ClientTradingMandate?
   authIdentities               InvestorIdentity[]
+  passkeys                     InvestorPasskey[]
+  passkeyChallenges            InvestorPasskeyChallenge[]
 
   @@unique([brokerId, identityReference])
   @@unique([brokerId, portalAuthSubject])
@@ -253,6 +257,57 @@ model InvestorIdentity {
   @@unique([clientId, provider, issuer])
   @@index([brokerId, clientId])
   @@map("investor_identities")
+}
+
+/// A WebAuthn public-key credential owned by an investor. Biometric material
+/// and the credential private key remain inside the investor's authenticator.
+model InvestorPasskey {
+  id             String                     @id
+  brokerId       String                     @map("broker_id")
+  clientId       String                     @map("client_id")
+  credentialId   String                     @unique @map("credential_id")
+  publicKey      Bytes                      @map("public_key")
+  webauthnUserId String                     @map("webauthn_user_id")
+  counter        BigInt                     @default(0)
+  deviceType     String                     @map("device_type")
+  backedUp       Boolean                    @default(false) @map("backed_up")
+  transports     Json?
+  label          String?
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  lastUsedAt     DateTime?                  @map("last_used_at")
+  revokedAt      DateTime?                  @map("revoked_at")
+  broker         Broker                     @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client         Client                     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  challenges     InvestorPasskeyChallenge[]
+
+  @@index([brokerId, clientId, revokedAt])
+  @@map("investor_passkeys")
+}
+
+/// Short-lived, single-use server challenge for passkey registration, login,
+/// or an exact-order transaction step-up. It contains no biometric data.
+model InvestorPasskeyChallenge {
+  id          String           @id
+  brokerId    String?          @map("broker_id")
+  clientId    String?          @map("client_id")
+  passkeyId   String?          @map("passkey_id")
+  purpose     String
+  challenge   String           @unique
+  rpId        String           @map("rp_id")
+  origin      String
+  payloadHash String?          @map("payload_hash")
+  status      String           @default("pending")
+  expiresAt   DateTime         @map("expires_at")
+  verifiedAt  DateTime?        @map("verified_at")
+  consumedAt  DateTime?        @map("consumed_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  broker      Broker?          @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  client      Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  passkey     InvestorPasskey? @relation(fields: [passkeyId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, purpose, status])
+  @@index([expiresAt, status])
+  @@map("investor_passkey_challenges")
 }
 
 model ClientDocument {
@@ -1092,29 +1147,31 @@ model Order {
 }
 
 model VerificationChallenge {
-  id              String    @id
-  brokerId        String    @map("broker_id")
-  clientId        String    @map("client_id")
-  accountId       String?   @map("account_id")
-  purpose         String
-  source          String
-  method          String    @default("otp")
-  destinationHint String?   @map("destination_hint")
-  payloadHash     String    @map("payload_hash")
-  codeHash        String    @map("code_hash")
-  salt            String
-  status          String    @default("pending")
-  attempts        Int       @default(0)
-  maxAttempts     Int       @default(5) @map("max_attempts")
-  expiresAt       DateTime  @map("expires_at")
-  verifiedAt      DateTime? @map("verified_at")
-  consumedAt      DateTime? @map("consumed_at")
-  createdBy       String?   @map("created_by")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  broker          Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
-  client          Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  account         Account?  @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  order           Order?
+  id               String    @id
+  brokerId         String    @map("broker_id")
+  clientId         String    @map("client_id")
+  accountId        String?   @map("account_id")
+  purpose          String
+  source           String
+  method           String    @default("otp")
+  destinationHint  String?   @map("destination_hint")
+  payloadHash      String    @map("payload_hash")
+  codeHash         String    @map("code_hash")
+  salt             String
+  status           String    @default("pending")
+  attempts         Int       @default(0)
+  maxAttempts      Int       @default(5) @map("max_attempts")
+  expiresAt        DateTime  @map("expires_at")
+  verifiedAt       DateTime? @map("verified_at")
+  consumedAt       DateTime? @map("consumed_at")
+  createdBy        String?   @map("created_by")
+  preAuthMethod    String?   @map("pre_auth_method")
+  preAuthReference String?   @map("pre_auth_reference")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  broker           Broker    @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client           Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  account          Account?  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  order            Order?
 
   @@index([clientId, purpose, status])
   @@index([clientId, purpose, createdAt])
