@@ -3,6 +3,6 @@
   "buildCommand": "npm run vercel-build",
   "crons": [
     { "path": "/api/cron/daily-notifications", "schedule": "0 4 * * *" },
-    { "path": "/api/cron/order-expiry", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/order-expiry", "schedule": "0 14 * * *" }
   ]
 }
