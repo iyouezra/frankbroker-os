@@ -17,6 +17,7 @@ model Broker {
   updatedAt              DateTime                         @updatedAt @map("updated_at")
   users                  User[]
   clients                Client[]
+  investorIdentities     InvestorIdentity[]
   orders                 Order[]
   reconciliationBatches  ReconciliationBatch[]
   auditLogs              AuditLog[]
@@ -217,12 +218,41 @@ model Client {
   monitoringAlerts             MonitoringAlert[]
   employeeConductProfiles      EmployeeConductProfile[]
   tradingMandate               ClientTradingMandate?
+  authIdentities               InvestorIdentity[]
 
   @@unique([brokerId, identityReference])
   @@unique([brokerId, portalAuthSubject])
   @@index([brokerId])
   @@index([status, kycStatus])
   @@map("clients")
+}
+
+/// Maps an identity asserted by an authentication provider to one internal
+/// investor principal. Fayda/eSignet will use its exact issuer and `sub`; the
+/// current OTP provider uses a Frank-owned issuer and never stores an OTP or
+/// contact value here.
+model InvestorIdentity {
+  id                    String   @id
+  brokerId              String   @map("broker_id")
+  clientId              String   @map("client_id")
+  provider              String
+  issuer                String
+  subject               String
+  assuranceContext      String?  @map("assurance_context")
+  authenticationMethods Json?    @map("authentication_methods")
+  gender                String?
+  portraitReference     String?  @map("portrait_reference")
+  verifiedAt            DateTime @map("verified_at")
+  lastLoginAt           DateTime @map("last_login_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  broker                Broker   @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  client                Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, issuer, subject])
+  @@unique([clientId, provider, issuer])
+  @@index([brokerId, clientId])
+  @@map("investor_identities")
 }
 
 model ClientDocument {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LocaleProvider } from "../../lib/i18n/context";
+import { investorAuthMode } from "../../lib/investor-auth";
 import InvestorApp from "./investor-app";
 
 export const metadata: Metadata = {
@@ -13,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function InvestorPage() {
-  return <LocaleProvider><InvestorApp /></LocaleProvider>;
+  return <LocaleProvider><InvestorApp authMode={investorAuthMode()} /></LocaleProvider>;
 }

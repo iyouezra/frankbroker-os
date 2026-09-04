@@ -57,7 +57,7 @@ That is all. Vercel uses the checked-in build command to apply migrations, run t
 
 The schema is in `prisma/schema.prisma`; the repeatable demonstration seed is in `prisma/seed.ts`. The seed includes three tenants, tenant policies, instrument entitlements, integrations, broker users, Selam Mekonnen, and Blue Nile Trading PLC.
 
-Every local and Vercel deployment is currently a demo/test environment:
+By default, local and Vercel deployments run as demo/test environments:
 
 - `/` exposes the broker role and tenant switchers.
 - `/investor` exposes Selam Mekonnen and Blue Nile Trading PLC.
@@ -66,9 +66,39 @@ Every local and Vercel deployment is currently a demo/test environment:
 
 The server marks the deployment `insecure-demo` and asks search engines not to index it. Do not connect this build to live customer, investor, financial, or employee data.
 
+### Investor authentication boundary
+
+The investor portal now includes an opt-in passwordless OTP sign-in flow for
+existing client records. It binds a verified external identity to an internal
+investor principal, issues a short-lived HttpOnly/SameSite session cookie, and
+derives client ownership on the server. Order authorization remains a separate,
+exact-order-bound OTP.
+
+The safe default remains the existing labelled demo. To enable investor sign-in
+in a properly secured environment, configure:
+
+```bash
+FRANK_DEPLOYMENT_MODE="production"
+FRANK_INVESTOR_AUTH_MODE="otp"
+FRANK_SESSION_SECRET="at-least-32-random-bytes"
+FRANK_OTP_HASH_SECRET="a-different-32-byte-random-secret"
+FRANK_OTP_DELIVERY_URL="https://your-ethiopia-hosted-otp-adapter.example/send"
+FRANK_OTP_DELIVERY_TOKEN="provider-token"
+```
+
+The login accepts a client code plus the email or mobile already held on the
+client record. VeriFayda can later replace the OTP authenticator: after a Fayda
+callback cryptographically verifies `iss`, `aud`, signature, nonce, expiry and
+`sub`, it should pass that verified identity to `establishInvestorSession` in
+`lib/investor-auth.ts`. The database supports multiple identity providers per
+client, so enabling Fayda does not require changing authorization or order OTP.
+The documented Fayda claim-to-onboarding decisions are recorded in
+`docs/fayda-onboarding-field-map.md`; the executable normalization contract is
+in `lib/fayda-claims.ts`.
+
 ## Roles
 
-The MVP exposes a non-operational Broker access admin plus Broker admin, Trader/dealer, Operations, Compliance, Settlement, Relationship, Client service, Management, and Frank super-admin views. Frank bootstraps up to two broker access administrators; those administrators manage ordinary employee invitations, roles, password-reset requests, suspensions, and restorations inside their tenant. The role, tenant, and investor selectors are demonstration controls and are available in every deployment. Authentication and real user provisioning are intentionally deferred.
+The MVP exposes a non-operational Broker access admin plus Broker admin, Trader/dealer, Operations, Compliance, Settlement, Relationship, Client service, Management, and Frank super-admin views. Frank bootstraps up to two broker access administrators; those administrators manage ordinary employee invitations, roles, password-reset requests, suspensions, and restorations inside their tenant. Role, tenant, and investor selectors remain available in demo mode. Investor OTP authentication is opt-in; broker workforce authentication and real user provisioning are still deferred.
 
 ## Current boundaries
 
@@ -77,8 +107,8 @@ The MVP exposes a non-operational Broker access admin plus Broker admin, Trader/
 - Contract notes are printable HTML and can be saved as PDF.
 - Fee schedules, limits, instrument access, and feature switches are tenant-configurable; the seeded values are illustrative and are not regulatory tariffs.
 - Fayda and TIN values entered in the demo are not stored raw. The server retains masked endings and an opaque reference only; production identity verification still needs an Ethiopia-resident provider and formal compliance review.
-- Role, tenant, and investor identities are browser-selectable demo controls, not authentication.
-- Before any live use, implement authentication, server-derived membership, MFA, threat modeling, penetration testing, secrets management, backup/recovery procedures, and regulatory review.
+- In default demo mode, role, tenant, and investor identities are browser-selectable controls, not authentication.
+- Before any live use, configure and independently review investor authentication; implement broker workforce authentication, server-derived membership, appropriate MFA, threat modeling, penetration testing, secrets management, backup/recovery procedures, and regulatory review.
 - This MVP is not production-certified brokerage software.
 
 Future ESX and CSD adapters can implement the contracts in `lib/integrations.ts` without replacing the order, trade, and settlement domain model.

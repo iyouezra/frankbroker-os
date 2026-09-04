@@ -64,8 +64,10 @@ import { fetchJsonWithTransientRetry } from "../../lib/fetch-json";
 import { useLocale } from "../../lib/i18n/context";
 import type { TranslationKey } from "../../lib/i18n/en";
 import { LanguageSwitcher } from "../../features/investor/shared/language-switcher";
+import { InvestorLogin } from "../../features/investor/auth/investor-login";
+import type { InvestorAuthMode } from "../../lib/investor-auth";
 
-type InvestorPhase = "select" | "existing" | "onboarding" | "app";
+type InvestorPhase = "auth" | "select" | "existing" | "onboarding" | "app";
 type SubmittedApplication = {
   id: string;
   clientCode: string;
@@ -92,10 +94,11 @@ const demoPersonas = [
   },
 ] as const satisfies ReadonlyArray<{ id: string; name: string; initials: string; accountTypeKey: TranslationKey; detailKey: TranslationKey }>;
 
-export default function InvestorApp() {
+export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }) {
   const { t } = useLocale();
-  const insecureDemoUiEnabled = true;
-  const [phase, setPhase] = useState<InvestorPhase>(insecureDemoUiEnabled ? "select" : "app");
+  const insecureDemoUiEnabled = authMode === "demo";
+  const [phase, setPhase] = useState<InvestorPhase>(insecureDemoUiEnabled ? "select" : "auth");
+  const [authChecking, setAuthChecking] = useState(authMode !== "demo");
   const [activeClientId, setActiveClientId] = useState(INVESTOR_CLIENT_ID);
   const [onboardingType, setOnboardingType] = useState<InvestorKyc["accountType"]>("retail");
   const [submittedApplication, setSubmittedApplication] = useState<SubmittedApplication | null>(null);
@@ -129,7 +132,7 @@ export default function InvestorApp() {
   const [complaints, setComplaints] = useState<InvestorComplaint[]>([]);
   const [complaintsLoading, setComplaintsLoading] = useState(false);
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null);
-  const investorHeaders = useMemo(() => investorHeadersFor(activeClientId), [activeClientId]);
+  const investorHeaders = useMemo(() => authMode === "demo" ? investorHeadersFor(activeClientId) : {}, [activeClientId, authMode]);
   const featured = useMemo(() => investorStocks.slice(0, 3), []);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
   const navigate = (next: Tab) => { setTab(next); setStock(null); setBond(null); setActivityOpen(false); setActivityInitialItem(null); setSupportOpen(false); setSupportThreadId(null); setComplaintsOpen(false); setSelectedComplaintId(null); };
@@ -146,11 +149,11 @@ export default function InvestorApp() {
     setSelectedComplaintId(null);
     setSubmittedApplication(null);
   };
-  const loadInvestor = async (clientId: string) => {
+  const loadInvestor = async (clientId = activeClientId) => {
     const data = await fetchJsonWithTransientRetry<InvestorBootstrap>(
       "/api/investor",
-      { headers: investorHeadersFor(clientId) },
-      { fallbackMessage: t("msg.openDemoFailed") },
+      { headers: authMode === "demo" ? investorHeadersFor(clientId) : {} },
+      { fallbackMessage: authMode === "demo" ? t("msg.openDemoFailed") : t("auth.loadFailed") },
     );
     setBootstrap({ ...data, activity: data.activity ?? [] });
     if (data.profile?.fullName) setProfileName(data.profile.fullName);
@@ -168,6 +171,45 @@ export default function InvestorApp() {
     } finally {
       setEntryBusy(null);
     }
+  };
+  const enterAuthenticatedPortal = async (fullName?: string) => {
+    const data = await loadInvestor();
+    resetWorkspace();
+    if (fullName || data.profile?.fullName) setProfileName(fullName ?? data.profile!.fullName);
+    setPhase("app");
+  };
+
+  useEffect(() => {
+    if (authMode === "demo") return;
+    const controller = new AbortController();
+    void fetch("/api/auth/investor", { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error(t("auth.loadFailed"))))
+      .then(async (session: { authenticated?: boolean; fullName?: string }) => {
+        if (!session.authenticated) return;
+        const data = await fetchJsonWithTransientRetry<InvestorBootstrap>(
+          "/api/investor",
+          {},
+          { fallbackMessage: t("auth.loadFailed") },
+        );
+        setBootstrap({ ...data, activity: data.activity ?? [] });
+        if (session.fullName || data.profile?.fullName) setProfileName(session.fullName ?? data.profile!.fullName);
+        setPhase("app");
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!controller.signal.aborted) setAuthChecking(false); });
+    return () => controller.abort();
+  }, [authMode, t]);
+
+  const signOut = async () => {
+    await fetch("/api/auth/investor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "logout" }),
+    }).catch(() => undefined);
+    resetWorkspace();
+    setBootstrap(null);
+    setNotifications([]);
+    setPhase("auth");
   };
   const startApplication = (accountType: InvestorKyc["accountType"]) => {
     resetWorkspace();
@@ -192,7 +234,7 @@ export default function InvestorApp() {
         .then((response) => response.ok ? response.json() : Promise.reject(new Error("offline")))
         .then((data: { notifications: NotificationItem[] }) => setNotifications(data.notifications))
         .catch(() => {
-          if (!controller.signal.aborted) setNotifications(demoInvestorNotifications());
+          if (!controller.signal.aborted) setNotifications(authMode === "demo" ? demoInvestorNotifications() : []);
         });
     };
     refreshInvestorNotifications();
@@ -201,7 +243,7 @@ export default function InvestorApp() {
       window.clearInterval(interval);
       controller.abort();
     };
-  }, [investorHeaders, phase]);
+  }, [authMode, investorHeaders, phase]);
   const unreadNotifs = notifications.filter((item) => !item.read).length;
   const markAllNotifsRead = () => {
     setNotifications((current) => current.map((item) => ({ ...item, read: true })));
@@ -224,6 +266,7 @@ export default function InvestorApp() {
     else if (item.category === "kyc") navigate("profile");
   };
   useEffect(() => {
+    if (authMode !== "demo" && phase !== "app") return;
     const controller = new AbortController();
     void fetch("/api/investor", { headers: investorHeaders, signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject())
@@ -233,7 +276,7 @@ export default function InvestorApp() {
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [investorHeaders]);
+  }, [authMode, investorHeaders, phase]);
   useEffect(() => {
     if (phase !== "app") return;
     const controller = new AbortController();
@@ -521,12 +564,13 @@ export default function InvestorApp() {
       setSupportThreads(data.threads);
       setSupportUnread(data.summary.unread);
     } catch {
-      setSupportThreads(fallbackSupportThreads);
-      setSupportUnread(fallbackSupportThreads.reduce((total, thread) => total + thread.unread, 0));
+      const fallback = authMode === "demo" ? fallbackSupportThreads : [];
+      setSupportThreads(fallback);
+      setSupportUnread(fallback.reduce((total, thread) => total + thread.unread, 0));
     } finally {
       setSupportLoading(false);
     }
-  }, [investorHeaders]);
+  }, [authMode, investorHeaders]);
 
   const loadComplaints = useCallback(async () => {
     setComplaintsLoading(true);
@@ -560,7 +604,7 @@ export default function InvestorApp() {
       await postInvestor({ action: "support_thread_read", threadId });
       void loadSupport();
     } catch {
-      setSupportDetail(fallbackSupportDetail(threadId));
+      setSupportDetail(authMode === "demo" ? fallbackSupportDetail(threadId) : null);
     }
   };
 
@@ -721,7 +765,7 @@ export default function InvestorApp() {
   const theme = { "--investor-accent": bootstrap?.tenant.primaryColor ?? "#0c8189" } as CSSProperties;
   const activity = mergeInvestorActivity(
     bootstrap?.activity ?? [],
-    activeClientId === INVESTOR_CLIENT_ID ? demoInvestorActivity : [],
+    authMode === "demo" && activeClientId === INVESTOR_CLIENT_ID ? demoInvestorActivity : [],
   );
   const tradeRestricted = bootstrap ? !bootstrap.access.canTrade : false;
   const cashRestricted = bootstrap ? !bootstrap.access.canMoveCash : false;
@@ -733,7 +777,7 @@ export default function InvestorApp() {
   const restrictionCanSelfResolve = Boolean(bootstrap?.access.reasons.some((reason) => reason.action));
   const linkedBanks = bootstrap?.linkedBanks?.length
     ? bootstrap.linkedBanks
-    : activeClientId === INVESTOR_CLIENT_ID
+    : authMode === "demo" && activeClientId === INVESTOR_CLIENT_ID
       ? fallbackLinkedBanks
       : [];
 
@@ -758,7 +802,8 @@ export default function InvestorApp() {
           <span><Icon name="check" size={18} /></span>
           <div><b>{bootstrap.tenant.feeSchedule.commissionPromotion.name}</b><small>{t("promotion.active", { date: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${bootstrap.tenant.feeSchedule.commissionPromotion.endsOn}T12:00:00Z`)) })}</small><em>{t("promotion.marketFees")}</em></div>
         </div>}
-        {phase === "select" ? <div className={styles.demoSelector}>
+        {phase === "auth" ? <InvestorLogin checking={authChecking} onAuthenticated={enterAuthenticatedPortal} />
+          : phase === "select" ? <div className={styles.demoSelector}>
           <div className={styles.demoSelectorBrand}><AppLogo /><span>{t("entry.brand")}</span></div>
           <div className={styles.demoSelectorIntro}>
             <small>{t("entry.eyebrow")}</small>
@@ -809,7 +854,7 @@ export default function InvestorApp() {
                     : activityOpen
                     ? <ActivityScreen activity={activity} initialItem={activityInitialItem} onBack={() => { setActivityOpen(false); setActivityInitialItem(null); }} />
                     : tab === "home"
-                      ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} tradeRestricted={tradeRestricted} cashRestricted={cashRestricted} demoFallback={activeClientId === INVESTOR_CLIENT_ID} unread={unreadNotifs} onBell={() => {
+                      ? <HomeScreen openStock={openStock} go={navigate} account={bootstrap?.account ?? null} activity={activity} tradeRestricted={tradeRestricted} cashRestricted={cashRestricted} demoFallback={authMode === "demo" && activeClientId === INVESTOR_CLIENT_ID} unread={unreadNotifs} onBell={() => {
                         setBellOpen(true);
                         void fetch("/api/notifications", { headers: investorHeaders })
                           .then((response) => response.ok ? response.json() : Promise.reject())
@@ -819,10 +864,10 @@ export default function InvestorApp() {
                       : tab === "markets"
                         ? <MarketsScreen openStock={openStock} openBond={openBond} enabledTickers={enabledTickers} bondsEnabled={bondsEnabled} bonds={availableBonds} />
                         : tab === "portfolio"
-                          ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} servicing={bootstrap?.servicing ?? null} demoFallback={activeClientId === INVESTOR_CLIENT_ID} />
+                          ? <PortfolioScreen openStock={openStock} account={bootstrap?.account ?? null} servicing={bootstrap?.servicing ?? null} demoFallback={authMode === "demo" && activeClientId === INVESTOR_CLIENT_ID} />
                           : tab === "learn"
                             ? <LearnScreen />
-                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onOpenRequest={(threadId) => { setSupportOpen(true); void openSupportThread(threadId); }} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={createServiceRequest} onDownloadStatement={downloadStatement} />}
+                            : <ProfileScreen notify={notify} name={profileName} profile={bootstrap?.profile ?? null} accountNumber={bootstrap?.account?.accountNumber ?? null} orders={bootstrap?.account?.orders ?? []} requests={bootstrap?.serviceRequests ?? []} legalDocument={bootstrap?.tenant.legalDocument ?? null} documents={bootstrap?.documents ?? []} linkedBanks={linkedBanks} supportUnread={supportUnread} onOpenSupport={() => setSupportOpen(true)} onOpenRequest={(threadId) => { setSupportOpen(true); void openSupportThread(threadId); }} onAddBank={addLinkedBank} onDeleteBank={deleteLinkedBank} onAcceptTerms={acceptBrokerageTerms} onUpdateKyc={updateKycDocuments} onRequest={createServiceRequest} onDownloadStatement={downloadStatement} onSignOut={authMode === "otp" ? signOut : undefined} />}
                 </div>
                 <BottomNav active={tab} onChange={navigate} />
               </>}

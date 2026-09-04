@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Role } from "./frank";
 import { hasPermission, workflowPermissions } from "./frank";
 import { prisma } from "./prisma";
-import { isInsecureDemoMode } from "./deployment-mode";
+import { isInsecureDemoMode, isInvestorDemoAuthEnabled } from "./deployment-mode";
 
 export type Actor = {
   id: string;
@@ -32,6 +32,7 @@ export type InvestorSession = BaseSession & { kind: "investor"; clientId: string
 export type FrankSession = BrokerSession | InvestorSession;
 
 const SESSION_COOKIE = "__Host-frank_session";
+const DEVELOPMENT_SESSION_COOKIE = "frank_session";
 const DEFAULT_SESSION_SECONDS = 15 * 60;
 const MAX_SESSION_SECONDS = 60 * 60;
 
@@ -106,6 +107,10 @@ function sessionSecret() {
   return secret;
 }
 
+export function assertSessionConfiguration() {
+  sessionSecret();
+}
+
 function decodeBase64Json(value: string): unknown {
   try {
     return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
@@ -149,7 +154,10 @@ function cookieValue(request: Request, name: string) {
 function tokenFrom(request: Request): { token: string; source: "bearer" | "cookie" } | null {
   const authorization = request.headers.get("authorization");
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : null;
-  const cookie = cookieValue(request, SESSION_COOKIE);
+  const hostCookie = cookieValue(request, SESSION_COOKIE);
+  const developmentCookie = cookieValue(request, DEVELOPMENT_SESSION_COOKIE);
+  if (hostCookie && developmentCookie && hostCookie !== developmentCookie) unauthorized("Conflicting session cookies were supplied.");
+  const cookie = hostCookie ?? developmentCookie;
   if (bearer && cookie && bearer !== cookie) unauthorized("Conflicting authentication credentials were supplied.");
   if (bearer) return { token: bearer, source: "bearer" };
   if (cookie) return { token: cookie, source: "cookie" };
@@ -213,6 +221,28 @@ export function createSessionToken(input: { kind: "broker"; userId: string; brok
   return `${payload}.${signature}`;
 }
 
+/**
+ * Production uses the __Host- cookie rules required for a host-bound session.
+ * The unprefixed cookie exists only so local HTTP development can exercise the
+ * complete login flow; production refuses to issue it over plain HTTP.
+ */
+export function sessionCookieHeaders(request: Request, token: string, expiresInSeconds = DEFAULT_SESSION_SECONDS) {
+  const secure = new URL(request.url).protocol === "https:";
+  if (process.env.NODE_ENV === "production" && !secure) {
+    throw new Response("Investor authentication requires HTTPS.", { status: 503 });
+  }
+  const name = secure ? SESSION_COOKIE : DEVELOPMENT_SESSION_COOKIE;
+  const maxAge = Math.max(60, Math.min(MAX_SESSION_SECONDS, Math.floor(expiresInSeconds)));
+  return [`${name}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`];
+}
+
+export function expiredSessionCookieHeaders() {
+  return [
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure`,
+    `${DEVELOPMENT_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+  ];
+}
+
 export async function resolveActor(request: Request): Promise<Actor> {
   const session = verifiedSession(request);
   if (!session) {
@@ -253,7 +283,7 @@ export async function requirePlatformAdmin(request: Request) {
 export async function resolveInvestorContext(request: Request): Promise<InvestorContext> {
   const session = verifiedSession(request);
   if (!session) {
-    if (demoAuthEnabled()) {
+    if (isInvestorDemoAuthEnabled()) {
       return {
         brokerId: demoBrokerId(request),
         clientId: request.headers.get("x-frank-client-id")?.trim() || "cli_investor_demo",
@@ -289,7 +319,7 @@ export async function resolveAuthContext(request: Request) {
   const session = verifiedSession(request);
   if (session?.kind === "investor") return { kind: "investor" as const, investor: await resolveInvestorContext(request) };
   if (session?.kind === "broker") return { kind: "broker" as const, actor: await resolveActor(request) };
-  if (demoAuthEnabled() && request.headers.has("x-frank-client-id")) {
+  if (isInvestorDemoAuthEnabled() && request.headers.has("x-frank-client-id")) {
     return { kind: "investor" as const, investor: await resolveInvestorContext(request) };
   }
   return { kind: "broker" as const, actor: await resolveActor(request) };

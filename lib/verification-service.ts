@@ -99,11 +99,11 @@ async function deliverOtp(input: { challengeId: string; channel: OtpDeliveryChan
 }
 
 export async function createOtpChallenge(input: {
-  brokerId: string; clientId: string; accountId?: string; purpose: "kyc_phone" | "order_instruction";
+  brokerId: string; clientId: string; accountId?: string; purpose: "kyc_phone" | "order_instruction" | "investor_login";
   source: string; payloadHash: string; destination: string; destinationHint?: string; deliveryChannel?: OtpDeliveryChannel; createdBy?: string | null;
 }) {
   const deliveryChannel = input.deliveryChannel ?? "sms";
-  const demoCode = resolveDemoOtpCode();
+  const demoCode = isInsecureDemoMode() ? resolveDemoOtpCode() : null;
   const code = demoCode ?? String(randomInt(100000, 1000000));
   const salt = randomBytes(16).toString("hex");
   const challengeId = `VER-${crypto.randomUUID().slice(0, 10).toUpperCase()}`;
