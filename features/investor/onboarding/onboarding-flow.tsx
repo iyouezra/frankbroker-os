@@ -1,5 +1,7 @@
 "use client";
 
+import { investmentOptions, parseInvestmentProfile, type InvestmentProfile } from "../../../lib/investment-profile";
+import { en } from "../../../lib/i18n/en";
 import Image from "next/image";
 import { useId, useState } from "react";
 import styles from "../../../app/investor/investor.module.css";
@@ -80,6 +82,8 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
   const firstStepValid = profile.fullName.trim().length >= 3 && phoneValid && emailValid;
   const identityStepValid = faydaValid
     && tinValid
+    && profile.sourceOfFunds.trim().length >= 3
+    && profile.sourceOfFunds.trim().length <= 500
     && profile.pepStatus !== "not_declared"
     && (profile.accountType === "retail" || (profile.address.trim().length >= 4 && profile.registrationNumber.trim().length >= 4 && profile.representativeName.trim().length >= 3 && profile.beneficialOwnerName.trim().length >= 3));
   const bankStepValid = linkedBanks.length > 0 && linkedBanks.length <= 3 && linkedBanks.every((account) =>
@@ -133,6 +137,7 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
       </>}
       <div><dt>{t("onboarding.fieldFaydaId")}</dt><dd>{masked(profile.faydaId)}</dd></div>
       <div><dt>{t("onboarding.fieldTin")}</dt><dd>{masked(profile.tin)}</dd></div>
+      <div><dt>{t("suitability.source")}</dt><dd>{profile.sourceOfFunds}</dd></div>
       <div><dt>{t("onboarding.fieldPep")}</dt><dd>{t(profile.pepStatus === "not_pep" ? "onboarding.pepNone" : profile.pepStatus === "pep" ? "onboarding.pepDeclared" : "onboarding.pepRelatedDeclared")}</dd></div>
       {profile.accountType === "retail"
         ? <div><dt>{t("onboarding.fieldAddressEvidence")}</dt><dd>{profile.proofOfAddressType}{profile.proofOfAddressReference ? ` · ${profile.proofOfAddressReference}` : ""}</dd></div>
@@ -172,6 +177,7 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
     <div className={styles.kycForm}>
       <KycField label={t(profile.accountType === "retail" ? "onboarding.faydaLabel" : "onboarding.faydaRepLabel")} value={profile.faydaId} onChange={(value) => update("faydaId", value.replace(/\D/g, "").slice(0, 16))} inputMode="numeric" maxLength={16} placeholder={t("onboarding.faydaPlaceholder")} hint={profile.faydaId && !faydaValid ? t("onboarding.faydaError") : t("onboarding.faydaHint")} />
       <KycField label={t("onboarding.tinLabel")} value={profile.tin} onChange={(value) => update("tin", value.replace(/[^0-9-]/g, "").slice(0, 13))} inputMode="numeric" placeholder="0012814908" hint={profile.tin && !tinValid ? t("onboarding.tinError") : t("onboarding.tinHint")} />
+      <KycField label={t(profile.accountType === "retail" ? "suitability.sourceRetail" : "suitability.sourceInstitution")} value={profile.sourceOfFunds} onChange={(value) => update("sourceOfFunds", value)} maxLength={500} placeholder={t(profile.accountType === "retail" ? "suitability.sourceRetailExample" : "suitability.sourceInstitutionExample")} hint={t("suitability.sourceHint")} />
       {profile.accountType === "institution" && <>
         <KycField label={t("onboarding.regNumber")} value={profile.registrationNumber} onChange={(value) => update("registrationNumber", value)} placeholder={t("onboarding.regNumberPlaceholder")} />
         <KycField label={t("onboarding.authorizedRep")} value={profile.representativeName} onChange={(value) => update("representativeName", value)} placeholder={t("onboarding.fullLegalName")} />
@@ -274,15 +280,21 @@ function KycOnboarding({ initialAccountType, onBack, onVerifyIdentity, onComplet
 
 export function Onboarding({ initialAccountType, onBack, onVerifyIdentity, onDone, legalDocument }: { initialAccountType: InvestorKyc["accountType"]; onBack: () => void; onVerifyIdentity: (phone: string) => Promise<string | null>; onDone: (submission: OnboardingSubmission) => void; legalDocument: InvestorBootstrap["tenant"]["legalDocument"] }) {
   const [submission, setSubmission] = useState<OnboardingSubmission | null>(null);
-  return submission ? <InvestmentOnboarding onDone={() => onDone(submission)} /> : <KycOnboarding initialAccountType={initialAccountType} onBack={onBack} onVerifyIdentity={onVerifyIdentity} onComplete={setSubmission} legalDocument={legalDocument} />;
+  return submission ? <InvestmentOnboarding onDone={(investmentProfile) => onDone({ ...submission, profile: { ...submission.profile, investmentProfile, investmentObjective: investmentProfile.goal ? en[investmentOptions.goal[investmentProfile.goal]] : "" } })} /> : <KycOnboarding initialAccountType={initialAccountType} onBack={onBack} onVerifyIdentity={onVerifyIdentity} onComplete={setSubmission} legalDocument={legalDocument} />;
 }
 
-export function InvestmentOnboarding({ onDone }: { onDone: () => void }) {
+export function InvestmentOnboarding({ onDone }: { onDone: (profile: InvestmentProfile) => void }) {
   const t = useT();
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState("");
   const [horizon, setHorizon] = useState("");
   const [reaction, setReaction] = useState("");
+  const [sharesExperience, setSharesExperience] = useState("");
+  const [bondsExperience, setBondsExperience] = useState("");
+  const [liquidityNeeds, setLiquidityNeeds] = useState("");
+  const [lossCapacity, setLossCapacity] = useState("");
+  const finish = () => onDone(parseInvestmentProfile({ goal, horizon, reaction, sharesExperience, bondsExperience, liquidityNeeds, lossCapacity }));
+  const needsReview = lossCapacity !== "substantial" || liquidityNeeds === "regular";
   const strategy = horizon === "short" || reaction === "sell" || goal === "income" ? "Steady" : horizon === "long" && reaction === "buy" && goal === "grow" ? "Growth" : "Balanced";
   const mix = strategy === "Steady" ? [70, 30] : strategy === "Growth" ? [30, 70] : [50, 50];
   // The first element of each row is the stored answer value and stays in English.
@@ -294,11 +306,24 @@ export function InvestmentOnboarding({ onDone }: { onDone: () => void }) {
   const selection = step === 1 ? goal : step === 2 ? horizon : reaction;
   const choose = (value: string) => step === 1 ? setGoal(value) : step === 2 ? setHorizon(value) : setReaction(value);
 
-  if (step === 0) return <div className={styles.onboarding}><button className={styles.skip} onClick={onDone}>{t("strategy.skip")}</button><div className={styles.onboardingIntro}><Image src="/frankscore-icon.png" alt={t("strategy.logoAlt")} width={74} height={104} priority /><h1>{t("strategy.introTitleLine1")}<br />{t("strategy.introTitleLine2")}</h1><p>{t("strategy.introNote")}</p></div><Button className={styles.full} onClick={() => setStep(1)}>{t("strategy.start")}</Button><ProgressDots step={0} /></div>;
+  if (step === 0) return <div className={styles.onboarding}><button className={styles.skip} onClick={finish}>{t("strategy.skip")}</button><div className={styles.onboardingIntro}><Image src="/frankscore-icon.png" alt={t("strategy.logoAlt")} width={74} height={104} priority /><h1>{t("strategy.introTitleLine1")}<br />{t("strategy.introTitleLine2")}</h1><p>{t("strategy.introNote")}</p></div><Button className={styles.full} onClick={() => setStep(1)}>{t("strategy.start")}</Button><ProgressDots step={0} total={7} /></div>;
 
-  if (step === 4) return <div className={styles.onboarding}><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(3)} aria-label={t("common.back")}><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>{t("strategy.resultTitle", { strategy: t(STRATEGY_LABELS[strategy]) })}</h1><p>{t(STRATEGY_NOTES[strategy])}</p></div><Card className={styles.strategyResult}><div className={styles.strategyResultTop}><span><b>{t("strategy.mixLabel", { strategy: t(STRATEGY_LABELS[strategy]) })}</b><small>{t("strategy.mixDetail", { bonds: mix[0], stocks: mix[1] })}</small></span></div><AllocationBar bonds={mix[0]} stocks={mix[1]} light /></Card><p className={styles.strategyNote}>{t("strategy.note")}</p><Button className={styles.full} onClick={onDone}>{t("strategy.getStarted")}</Button><ProgressDots step={3} /></div>;
+  const selectAnswer = (field: "sharesExperience" | "bondsExperience" | "liquidityNeeds" | "lossCapacity", label: TranslationKey, value: string, onChange: (value: string) => void) => <label className={styles.formField}><span>{t(label)}</span><BrandSelect value={value} onChange={onChange} ariaLabel={t(label)} options={[{ value: "", label: t("suitability.choose") }, ...Object.entries(investmentOptions[field]).map(([value, key]) => ({ value, label: t(key) }))]} /></label>;
+  if (step === 4 || step === 5) return <div className={styles.onboarding}>
+    <div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(step - 1)} aria-label={t("common.back")}><Icon name="back" size={20} /></button><button className={styles.skip} onClick={finish}>{t("strategy.skip")}</button></div>
+    <div className={styles.onboardingCopy}><h1>{t(step === 4 ? "suitability.experienceQuestion" : "suitability.capacityQuestion")}</h1><p>{t(step === 4 ? "suitability.experienceNote" : "suitability.capacityNote")}</p></div>
+    <div className={styles.kycForm}>{step === 4 ? <>
+      {selectAnswer("sharesExperience", "suitability.shares", sharesExperience, setSharesExperience)}
+      {selectAnswer("bondsExperience", "suitability.bonds", bondsExperience, setBondsExperience)}
+    </> : <>
+      {selectAnswer("liquidityNeeds", "suitability.liquidity", liquidityNeeds, setLiquidityNeeds)}
+      {selectAnswer("lossCapacity", "suitability.capacity", lossCapacity, setLossCapacity)}
+    </>}</div><Button className={styles.full} disabled={step === 4 ? !sharesExperience || !bondsExperience : !liquidityNeeds || !lossCapacity} onClick={() => setStep(step + 1)}>{t("onboarding.continue")}</Button><ProgressDots step={step} total={7} />
+  </div>;
+  if (step === 6 && needsReview) return <div className={styles.onboarding}><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(5)} aria-label={t("common.back")}><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>{t("suitability.reviewTitle")}</h1><p>{t("suitability.review")}</p></div><Button className={styles.full} onClick={finish}>{t("strategy.getStarted")}</Button><ProgressDots step={6} total={7} /></div>;
+  if (step === 6) return <div className={styles.onboarding}><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(5)} aria-label={t("common.back")}><Icon name="back" size={20} /></button></div><div className={styles.onboardingCopy}><h1>{t("strategy.resultTitle", { strategy: t(STRATEGY_LABELS[strategy]) })}</h1><p>{t(STRATEGY_NOTES[strategy])}</p></div><Card className={styles.strategyResult}><div className={styles.strategyResultTop}><span><b>{t("strategy.mixLabel", { strategy: t(STRATEGY_LABELS[strategy]) })}</b><small>{t("strategy.mixDetail", { bonds: mix[0], stocks: mix[1] })}</small></span></div><AllocationBar bonds={mix[0]} stocks={mix[1]} light /></Card><p className={styles.strategyNote}>{t("strategy.note")}</p><Button className={styles.full} onClick={finish}>{t("strategy.getStarted")}</Button><ProgressDots step={6} total={7} /></div>;
 
   const heading = t(step === 1 ? "strategy.q1" : step === 2 ? "strategy.q2" : "strategy.q3");
   const subheading = t(step === 1 ? "strategy.q1Sub" : step === 2 ? "strategy.q2Sub" : "strategy.q3Sub");
-  return <div className={styles.onboarding}><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(step - 1)} aria-label={t("common.back")}><Icon name="back" size={20} /></button><button className={styles.skip} onClick={onDone}>{t("strategy.skip")}</button></div><div className={styles.onboardingCopy}><h1>{heading}</h1><p>{subheading}</p></div><div className={styles.choiceList}>{choices.map(([value, labelKey, descriptionKey]) => <button key={value} className={`${styles.choiceCard} ${selection === value ? styles.choiceSelected : ""}`} onClick={() => choose(value)}><i>{selection === value && <Icon name="check" size={13} />}</i><span><b>{t(labelKey)}</b><small>{t(descriptionKey)}</small></span></button>)}</div><Button className={styles.full} disabled={!selection} onClick={() => setStep(step === 3 ? 4 : step + 1)}>{t("onboarding.continue")}</Button><ProgressDots step={step} /></div>;
+  return <div className={styles.onboarding}><div className={styles.onboardingTop}><button className={styles.iconButton} onClick={() => setStep(step - 1)} aria-label={t("common.back")}><Icon name="back" size={20} /></button><button className={styles.skip} onClick={finish}>{t("strategy.skip")}</button></div><div className={styles.onboardingCopy}><h1>{heading}</h1><p>{subheading}</p></div><div className={styles.choiceList}>{choices.map(([value, labelKey, descriptionKey]) => <button key={value} className={`${styles.choiceCard} ${selection === value ? styles.choiceSelected : ""}`} onClick={() => choose(value)}><i>{selection === value && <Icon name="check" size={13} />}</i><span><b>{t(labelKey)}</b><small>{t(descriptionKey)}</small></span></button>)}</div><Button className={styles.full} disabled={!selection} onClick={() => setStep(step + 1)}>{t("onboarding.continue")}</Button><ProgressDots step={step} total={7} /></div>;
 }

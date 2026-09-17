@@ -38,6 +38,7 @@ export type InvestorKyc = {
   occupation: string;
   sourceOfFunds: string;
   investmentObjective: string;
+  investmentProfile?: import("../../../lib/investment-profile").InvestmentProfile;
   taxResidency: string;
   pepStatus: "not_declared" | "not_pep" | "pep" | "related_to_pep";
   verificationId?: string;
@@ -87,7 +88,7 @@ export type InvestorHolding = {
 };
 export type InvestorBootstrap = {
   tenant: { name: string; primaryColor: string; welcomeMessage?: string; brokerageFeePct: number; minimumFee: number; allowedOrderTypes: Array<"Market" | "Limit" | "Stop-loss">; features: Record<string, boolean>; requireTermsAcceptance: boolean; discrepancyWindowDays: number; legalDocument: { id: string; title: string; version: string; summary: string; content: string; effectiveAt: string } | null; feeSchedule: { id: string; version: string; regulatoryVersion: string; effectiveFrom: string; rules: InvestorFeeRule[]; commissionPromotion: { id: string; name: string; eligibility: string; startsOn: string; endsOn: string } | null } | null };
-  profile: { fullName: string; email?: string | null; phone?: string | null; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
+  profile: { sourceOfFunds?: string | null; investmentObjective?: string | null; investmentProfile?: unknown; fullName: string; email?: string | null; phone?: string | null; clientType?: string; status?: string; kycStatus: string; proofOfAddressStatus?: string; termsAcceptedVersion?: string | null; kycReviewDueAt?: string | null } | null;
   account: { id: string; accountNumber: string; status?: string; restrictionReason?: string | null; restrictedAt?: string | null; totalCash: number; availableCash: number; blockedCash: number; holdings: InvestorHolding[]; orders: Array<{ id: string; ticker: string; side: string; quantity: number; price: number; status: string; createdAt: string }> } | null;
   access: {
     restricted: boolean;
@@ -346,9 +347,9 @@ export function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: T
   return <nav className={styles.bottomNav} aria-label={t("nav.label")}>{items.map((item) => <button key={item.id} className={active === item.id ? styles.navActive : ""} onClick={() => onChange(item.id)}><Icon name={item.icon} size={22} /><span>{t(item.labelKey)}</span></button>)}</nav>;
 }
 
-export function ProgressDots({ step }: { step: number }) {
+export function ProgressDots({ step, total = 4 }: { step: number; total?: number }) {
   const t = useT();
-  return <div className={styles.progressDots} aria-label={t("chart.onboardingStep", { step: Math.min(step, 3) + 1 })}>{[0, 1, 2, 3].map((dot) => <i key={dot} className={dot === Math.min(step, 3) ? styles.currentDot : ""} />)}</div>;
+  return <div className={styles.progressDots} aria-label={t("suitability.progress", { step: Math.min(step, total - 1) + 1, total })}>{Array.from({ length: total }, (_, index) => index).map((dot) => <i key={dot} className={dot === Math.min(step, total - 1) ? styles.currentDot : ""} />)}</div>;
 }
 
 export const retailDemo: InvestorKyc = { accountType: "retail", fullName: "Selam Mekonnen", phone: "0911000041", email: "selam.mekonnen@example.et", faydaId: "1234567890123456", tin: "0012814908", address: "", proofOfAddressType: "Drivers License", proofOfAddressReference: "", registrationNumber: "", representativeName: "", beneficialOwnerName: "", signatoryAuthorityConfirmed: true, termsAccepted: false, electronicDeliveryConsent: false, nationality: "Ethiopian", countryOfResidence: "Ethiopia", occupation: "Private employee", sourceOfFunds: "Employment income", investmentObjective: "Long-term growth", taxResidency: "Ethiopia", pepStatus: "not_pep" };

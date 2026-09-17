@@ -359,6 +359,9 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
         ...current,
         profile: {
           fullName: result.profile!.fullName,
+          sourceOfFunds: profile.sourceOfFunds,
+          investmentObjective: profile.investmentObjective,
+          investmentProfile: profile.investmentProfile,
           email: profile.email,
           phone: profile.phone,
           clientType: profile.accountType === "institution" ? "institution" : "individual",

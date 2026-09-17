@@ -233,3 +233,9 @@ translation. `/investor?pseudo=0` turns it off.
 
 Anything that appears **without** surrounding brackets in that mode is a string
 still hardcoded in the JSX and not yet extracted.
+
+## Investment profile additions (September 2026)
+
+Review the new `suitability.*` Amharic draft strings, particularly the distinction
+between willingness to take risk, ability to absorb loss, and cash withdrawal needs.
+Afaan Oromoo uses the established English fallback for these additions.

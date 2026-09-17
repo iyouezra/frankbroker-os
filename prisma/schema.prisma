@@ -189,6 +189,7 @@ model Client {
   occupation                   String?
   employerName                 String?                    @map("employer_name")
   sourceOfFunds                String?                    @map("source_of_funds")
+  investmentProfile            Json?                      @map("investment_profile")
   investmentObjective          String?                    @map("investment_objective")
   taxResidency                 String?                    @map("tax_residency")
   pepStatus                    String                     @default("not_declared") @map("pep_status")

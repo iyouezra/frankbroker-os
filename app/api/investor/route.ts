@@ -1,3 +1,5 @@
+import { parseInvestmentProfile, investmentOptions } from "../../../lib/investment-profile";
+import { en } from "../../../lib/i18n/en";
 import { prisma } from "../../../lib/prisma";
 import type { AuthenticationResponseJSON } from "@simplewebauthn/server";
 import { addisYear } from "../../../lib/addis-date";
@@ -305,6 +307,9 @@ export async function GET(request: Request) {
         id: client.id, fullName: client.fullName, clientType: client.clientType, phone: client.phone, email: client.email, status: client.status,
         kycStatus: client.kycStatus, faydaMasked: client.faydaLast7 ? `••••• ${client.faydaLast7}` : null,
         taxIdMasked: client.taxIdLast4 ? `••••••${client.taxIdLast4}` : null,
+        sourceOfFunds: client.sourceOfFunds,
+        investmentObjective: client.investmentObjective,
+        investmentProfile: client.investmentProfile,
         address: client.address,
         proofOfAddressStatus: client.proofOfAddressStatus,
         kycReviewDueAt: client.kycReviewDueAt?.toISOString() ?? null,
@@ -602,6 +607,11 @@ export async function POST(request: Request) {
     }
 
     if (payload.action === "kyc") {
+      const sourceOfFunds = typeof payload.sourceOfFunds === "string" ? payload.sourceOfFunds.trim() : "";
+      if (sourceOfFunds.length < 3 || sourceOfFunds.length > 500) return Response.json({ error: "Describe the source of funds (3–500 characters)." }, { status: 400 });
+      let investmentProfile;
+      try { investmentProfile = parseInvestmentProfile(payload.investmentProfile ?? {}); }
+      catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Invalid investment profile." }, { status: 400 }); }
       const fullName = String(payload.fullName ?? "").trim();
       const email = String(payload.email ?? "").trim();
       const faydaId = String(payload.faydaId ?? "").replace(/\D/g, "");
@@ -674,8 +684,9 @@ export async function POST(request: Request) {
         submittedAt: new Date(),
         onboardingChannel: "investor_portal",
         phoneVerifiedAt: new Date(),
-        sourceOfFunds: String(payload.sourceOfFunds ?? "").trim() || null,
-        investmentObjective: String(payload.investmentObjective ?? "").trim() || null,
+        sourceOfFunds,
+        investmentProfile,
+        investmentObjective: investmentProfile.goal ? en[investmentOptions.goal[investmentProfile.goal]] : null,
         taxResidency: String(payload.taxResidency ?? "Ethiopia").trim(),
         pepStatus,
         nationality: String(payload.nationality ?? "Ethiopian").trim(),
@@ -754,7 +765,7 @@ export async function POST(request: Request) {
         await tx.auditLog.create({ data: {
           id: crypto.randomUUID(), brokerId, actorId: null, action: "INVESTOR_KYC_SUBMITTED",
           entityType: "client", entityId: targetClientId, summary: `Digital KYC submitted for broker review for ${fullName}; only masked identifiers retained`,
-          newValue: JSON.stringify({ clientType: applicationClientType, pepStatus, riskRating: clientData.riskRating, source: "investor_portal" }),
+          newValue: JSON.stringify({ clientType: applicationClientType, pepStatus, riskRating: clientData.riskRating, sourceOfFunds, investmentProfile, source: "investor_portal" }),
         } });
         await writeNotificationOnce(tx, {
           dedupeKey: `investor-onboarding:${targetClientId}`,
