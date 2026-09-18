@@ -77,6 +77,9 @@ export type Client360Tab = "overview" | "assets" | "orders" | "trades" | "transa
 
 export type CrmAttachment = { id: string; name: string; mimeType: string; sizeBytes: number; visibility?: string };
 export type CrmMessage = {
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  deliveryStatus?: "sent" | "delivered" | "read";
   id: string;
   body: string;
   createdAt: string;
@@ -87,6 +90,7 @@ export type CrmMessage = {
   attachments: CrmAttachment[];
 };
 export type CrmThreadSummary = {
+  broadcastLabel?: string | null;
   id: string;
   subject: string;
   category: string;

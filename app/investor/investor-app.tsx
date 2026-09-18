@@ -607,6 +607,37 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
   }, [loadComplaints, loadSupport, phase]);
   useEffect(() => { if (phase === "app" && complaintsOpen) void loadComplaints(); }, [complaintsOpen, loadComplaints, phase]);
 
+  useEffect(() => {
+    if (phase !== "app" || !supportOpen || complaintsOpen || stock || bond || !supportDetail || supportDetail.id !== supportThreadId) return;
+    const messageIds = supportDetail.messages.filter((message) => !message.mine && !message.readAt).map((message) => message.id);
+    if (!messageIds.length) return;
+    let acknowledged = false;
+    const acknowledge = () => {
+      if (acknowledged || document.visibilityState !== "visible") return;
+      acknowledged = true;
+      void fetch("/api/investor", { method: "POST", headers: { ...investorHeaders, "content-type": "application/json" }, body: JSON.stringify({ action: "support_thread_read", threadId: supportDetail.id, messageIds }) })
+        .then((response) => { if (response.ok) void loadSupport(); else acknowledged = false; }).catch(() => { acknowledged = false; });
+    };
+    acknowledge();
+    document.addEventListener("visibilitychange", acknowledge);
+    return () => document.removeEventListener("visibilitychange", acknowledge);
+  }, [phase, supportOpen, complaintsOpen, stock, bond, supportThreadId, supportDetail, investorHeaders, loadSupport]);
+
+  useEffect(() => {
+    if (phase !== "app" || !supportOpen || complaintsOpen || stock || bond || !supportThreadId) return;
+    const controller = new AbortController();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void fetch(`/api/investor/support?threadId=${encodeURIComponent(supportThreadId)}`, { headers: investorHeaders, signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const data = await response.json() as { thread: SupportThreadDetail };
+          if (!controller.signal.aborted) setSupportDetail(data.thread);
+        }).catch(() => undefined);
+    }, 15_000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [phase, supportOpen, complaintsOpen, stock, bond, supportThreadId, investorHeaders]);
+
   const openSupportThread = async (threadId: string) => {
     setSupportThreadId(threadId);
     setSupportDetail(null);
@@ -615,7 +646,7 @@ export default function InvestorApp({ authMode }: { authMode: InvestorAuthMode }
       if (!response.ok) throw new Error("unavailable");
       const data = await response.json() as { thread: SupportThreadDetail };
       setSupportDetail(data.thread);
-      await postInvestor({ action: "support_thread_read", threadId });
+
       void loadSupport();
     } catch {
       setSupportDetail(authMode === "demo" ? fallbackSupportDetail(threadId) : null);

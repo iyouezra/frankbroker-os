@@ -84,27 +84,28 @@ export function useThreadList(role: Role, filters: ThreadFilters, clientId?: str
 export function useThreadDetail(role: Role, threadId: string | null, refreshToken: number) {
   const [thread, setThread] = useState<CrmThreadDetail | null>(null);
   const [loading, setLoading] = useState(false);
-
   useEffect(() => {
     const controller = new AbortController();
+    let firstLoad = true;
     const load = async () => {
       if (!threadId) { setThread(null); return; }
-      setLoading(true);
+      if (firstLoad) { setLoading(true); setThread(null); }
       try {
         const response = await fetch(`/api/crm/threads/${encodeURIComponent(threadId)}`, { signal: controller.signal, headers: headers(role) });
         if (!response.ok) throw new Error("Conversation unavailable");
         const data = (await response.json()) as { thread: CrmThreadDetail };
-        setThread(data.thread);
+        if (!controller.signal.aborted) setThread(data.thread);
       } catch {
-        setThread(fallbackCrmThreads.find((item) => item.id === threadId) ?? null);
+        if (firstLoad && !controller.signal.aborted) setThread(fallbackCrmThreads.find((item) => item.id === threadId) ?? null);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
+        firstLoad = false;
       }
     };
     void load();
-    return () => controller.abort();
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 15_000);
+    return () => { controller.abort(); window.clearInterval(timer); };
   }, [role, threadId, refreshToken]);
-
   return { thread, loading };
 }
 

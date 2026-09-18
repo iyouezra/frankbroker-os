@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CRM_PERMISSIONS, hasPermission, roleLabels, type Role } from "../../../lib/frank";
 import { CATEGORY_LABELS, RELATED_TYPE_LABELS, type RelatedType, type ThreadCategory } from "../../../lib/crm/categories";
 import { THREAD_STATUS_LABELS, availableThreadStatuses, isThreadClosed, type ThreadStatus } from "../../../lib/crm/status";
 import { auditTime, type CrmAttachment, type CrmMessage, type CrmThreadDetail } from "../shared/broker-foundation";
+import { postThreadAction } from "./use-threads";
 import { PriorityBadge } from "./thread-list";
 import { BrandSelect } from "../../shared/brand-select";
 
@@ -34,6 +35,7 @@ export function MessageBubble({ message }: { message: CrmMessage }) {
     </header>
     <p>{message.body}</p>
     <AttachmentList attachments={message.attachments} basePath="/api/crm/attachments" />
+    {!internal && !fromInvestor && <small className={`crm-receipt ${message.readAt ? "read" : ""}`} title={message.readAt ? `Opened ${auditTime(message.readAt)}` : message.deliveredAt ? `Placed in the client’s in-app inbox ${auditTime(message.deliveredAt)}; device delivery is not tracked.` : "Sent; historical delivery time is not recorded."}><span aria-hidden="true">{message.readAt || message.deliveredAt ? "✓✓" : "✓"}</span> {message.readAt ? "Read" : message.deliveredAt ? "Delivered to inbox" : "Sent"}</small>}
     {internal && <small className="crm-internal-hint">Only your team can see internal notes.</small>}
   </article>;
 }
@@ -63,6 +65,23 @@ export function ThreadDetail({
   onCreateTask?: () => void;
   onOpenRelated?: (type: string, id: string) => void;
 }) {
+  const detailElement = useRef<HTMLDivElement>(null);
+  const displayedIds = JSON.stringify(thread.messages.filter((message) => message.authorType === "investor" && message.visibility === "shared" && !message.readAt).map((message) => message.id));
+  useEffect(() => {
+    const element = detailElement.current;
+    if (!element || displayedIds === "[]") return;
+    let acknowledged = false;
+    let visible = false;
+    const acknowledge = () => {
+      if (acknowledged || !visible || document.visibilityState !== "visible") return;
+      acknowledged = true;
+      void postThreadAction(role, thread.id, "read", { messageIds: JSON.parse(displayedIds) }).catch(() => { acknowledged = false; });
+    };
+    const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; acknowledge(); });
+    observer.observe(element);
+    document.addEventListener("visibilitychange", acknowledge);
+    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", acknowledge); };
+  }, [role, thread.id, displayedIds]);
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<"reply" | "note">("reply");
   const [files, setFiles] = useState<File[]>([]);
@@ -87,7 +106,7 @@ export function ThreadDetail({
     if (sent) { setDraft(""); setFiles([]); }
   };
 
-  return <div className="crm-detail">
+  return <div className="crm-detail" ref={detailElement}>
     <header className="crm-detail-head">
       {onBack && <button className="btn secondary small crm-back" onClick={onBack}>← All conversations</button>}
       <div>
@@ -101,6 +120,7 @@ export function ThreadDetail({
       </div>
     </header>
 
+    {thread.broadcastLabel && <div className="crm-related"><span><small>BROADCAST</small><b>{thread.broadcastLabel}</b></span></div>}
     <RelatedRecordCard thread={thread} onOpenRelated={onOpenRelated} />
 
     {thread.serviceRequest && <section className="crm-service-request">

@@ -52,7 +52,7 @@ export function ClientConversationsTab({ clientId, role, onMessage }: { clientId
         loading={loading}
         onOpen={(summary) => {
           setSelectedId(summary.id);
-          if (summary.unread > 0) void postThreadAction(role, summary.id, "read", {}).then(refresh).catch(() => undefined);
+
         }}
       />
     </section>

@@ -11,6 +11,10 @@
  * translated server-side.
  */
 export const en = {
+  "support.read": "Read",
+  "support.delivered": "Delivered to inbox",
+  "support.sent": "Sent",
+
   "suitability.title": "Investment profile",
   "suitability.notRecorded": "Not recorded",
   "suitability.objective": "Investment objective / income or growth preference",

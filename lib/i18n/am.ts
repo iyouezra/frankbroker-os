@@ -17,6 +17,10 @@ import type { Dictionary } from "./en";
  * safe to delete a line you are unsure about rather than ship a bad guess.
  */
 export const am: Dictionary = {
+  "support.read": "ተነቧል",
+  "support.delivered": "ወደ መልዕክት ሳጥን ደርሷል",
+  "support.sent": "ተልኳል",
+
   "suitability.title": "የኢንቨስትመንት መረጃ",
   "suitability.notRecorded": "አልተመዘገበም",
   "suitability.objective": "የኢንቨስትመንት ዓላማ / ገቢ ወይም ዕድገት",

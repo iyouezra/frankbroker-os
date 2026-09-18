@@ -1,5 +1,6 @@
 "use client";
 
+import { BroadcastPanel } from "./broadcast-panel";
 import { useState } from "react";
 import type { BrokerClient } from "../../../lib/demo-data";
 import { CRM_PERMISSIONS, hasPermission, type Role } from "../../../lib/frank";
@@ -24,6 +25,7 @@ export function CrmInboxPage({
   onNewThread: () => void;
   onOpenRelated?: (type: string, id: string) => void;
 }) {
+  const [view, setView] = useState<"conversations" | "broadcasts">("conversations");
   const [filters, setFilters] = useState<ThreadFilters>(focus?.status ? { ...emptyFilters, status: focus.status } : emptyFilters);
   // `focus.threadId` seeds the selection; the shell remounts this screen with a
   // new key when a notification deep-links, so no prop-to-state sync is needed.
@@ -35,13 +37,11 @@ export function CrmInboxPage({
   // On wide screens the detail pane shows the first row until one is picked;
   // derived rather than synced, so there is no cascading render.
   const shownId = selectedId ?? threads[0]?.id ?? null;
-  const { thread } = useThreadDetail(role, shownId, detailToken);
+  const { thread } = useThreadDetail(role, view === "conversations" ? shownId : null, detailToken);
 
   const open = (summary: CrmThreadSummary) => {
     setSelectedId(summary.id);
-    if (summary.unread > 0) {
-      void postThreadAction(role, summary.id, "read", {}).then(refresh).catch(() => undefined);
-    }
+
   };
 
   const act = async (action: ThreadAction, payload: Record<string, unknown>, files: File[]) => {
@@ -68,8 +68,10 @@ export function CrmInboxPage({
       eyebrow="CLIENT CONVERSATIONS"
       title={clientName ? `Conversations · ${clientName}` : "Conversations"}
       copy="Investor questions, requests and complaints."
-      action={hasPermission(role, CRM_PERMISSIONS.create) ? <button className="btn primary" onClick={onNewThread}>+ New conversation</button> : undefined}
+      action={view === "conversations" && hasPermission(role, CRM_PERMISSIONS.create) ? <button className="btn primary" onClick={onNewThread}>+ New conversation</button> : undefined}
     />
+    {!focus?.clientId && <div className="crm-view-tabs" role="group" aria-label="Communication view"><button aria-pressed={view === "conversations"} onClick={() => setView("conversations")}>Conversations</button><button aria-pressed={view === "broadcasts"} onClick={() => setView("broadcasts")}>Broadcasts</button></div>}
+    {view === "broadcasts" ? <BroadcastPanel role={role} onNotify={onNotify} onOpenThread={(id) => { setSelectedId(id); setView("conversations"); }} /> : <>
     <section className="metric-grid crm-metrics">
       <Metric label="Unread" value={String(facets.unreadThreads)} note="Conversations with new investor messages" tone={facets.unreadThreads ? "warning" : "success"} />
       <Metric label="Assigned to me" value={String(facets.mine)} note="Open conversations you own" tone="brand" />
@@ -103,6 +105,8 @@ export function CrmInboxPage({
         )}
       </section>
     </div>
+
+    </>}
 
     {escalation && thread && (
       <EscalationDrawer

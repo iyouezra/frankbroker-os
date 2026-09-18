@@ -41,6 +41,7 @@ export function BrandSelect({
   id?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [portalTarget, setPortalTarget] = useState<Element | null>(null);
   const [coords, setCoords] = useState<Coords | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -53,6 +54,7 @@ export function BrandSelect({
 
   const place = useCallback(() => {
     const trigger = triggerRef.current;
+    setPortalTarget(trigger?.closest("dialog") ?? null);
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
     const below = window.innerHeight - rect.bottom;
@@ -166,7 +168,8 @@ export function BrandSelect({
         </li>
       ))}
     </ul>,
-    document.body,
+    // Native dialogs are in the top layer; their menus must remain inside it.
+    portalTarget ?? document.body,
   ) : null;
 
   return (

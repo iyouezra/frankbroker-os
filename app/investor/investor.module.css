@@ -899,3 +899,6 @@
 :global(html[data-script="ethiopic"]) .demoSelectorBrand > span,
 :global(html[data-script="ethiopic"]) .licenseBadge,
 :global(html[data-script="ethiopic"]) .dialogEyebrow { letter-spacing: 0; }
+
+.msgReceipt, .msgReceiptRead { display: block; margin-top: 6px; font-size: 10px; color: var(--investor-ink-500); }
+.msgReceiptRead { color: #087da4; }

@@ -54,7 +54,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     if (action === "read") {
       const actor = await requirePermission(request, CRM_PERMISSIONS.view);
-      return Response.json(await markThreadReadByBroker(actor, id));
+      return Response.json(await markThreadReadByBroker(actor, id, payload.messageIds));
     }
     if (action === "service_request") {
       const actor = await requirePermission(request, "adjust");

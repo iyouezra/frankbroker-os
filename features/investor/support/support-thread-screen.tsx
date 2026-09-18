@@ -13,6 +13,9 @@ import { statusTone } from "./support-screen";
  */
 
 export type SupportMessage = {
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  deliveryStatus?: "sent" | "delivered" | "read";
   id: string;
   body: string;
   createdAt: string;
@@ -22,6 +25,7 @@ export type SupportMessage = {
 };
 
 export type SupportThreadDetail = {
+  broadcastLabel?: string | null;
   id: string;
   subject: string;
   status: string;
@@ -62,6 +66,7 @@ export function SupportThreadScreen({
     <ScreenHeader title={t("support.conversation")} onBack={onBack} />
     <Card className={styles.msgHeadCard}>
       <b>{thread.subject}</b>
+      {thread.broadcastLabel && <small>{thread.broadcastLabel}</small>}
       <span className={`${styles.msgStatus} ${statusTone(thread.status)}`}>{thread.statusLabel}</span>
       {thread.relatedId && <small>{t("support.about", { reference: thread.relatedId })}</small>}
     </Card>
@@ -71,6 +76,7 @@ export function SupportThreadScreen({
         <article key={message.id} className={`${styles.msgBubble} ${message.mine ? styles.msgMine : ""}`}>
           <header><b>{message.authorLabel}</b><time>{when(message.createdAt)}</time></header>
           <p>{message.body}</p>
+          {message.mine && message.deliveryStatus && <small className={message.readAt ? styles.msgReceiptRead : styles.msgReceipt} aria-label={t(message.readAt ? "support.read" : message.deliveredAt ? "support.delivered" : "support.sent")}><span aria-hidden="true">{message.deliveredAt || message.readAt ? "✓✓" : "✓"}</span> {t(message.readAt ? "support.read" : message.deliveredAt ? "support.delivered" : "support.sent")}</small>}
           {message.attachments.map((attachment) => (
             <a key={attachment.id} className={styles.attachmentChip} href={`/api/investor/support/attachments/${encodeURIComponent(attachment.id)}`} target="_blank" rel="noreferrer">
               {attachment.name}

@@ -9,6 +9,7 @@
  * Pure - no Prisma import - so every rule is unit-testable without a database.
  */
 
+import { messageReceipt } from "./broadcasts";
 import { INVESTOR_STATUS_LABELS, THREAD_STATUS_LABELS, type ThreadStatus } from "./status";
 
 export const SHARED = "shared";
@@ -25,6 +26,8 @@ export type MessageLike = {
   author?: { id: string; fullName: string } | null;
   body: string;
   createdAt: Date | string;
+  deliveredAt?: Date | string | null;
+  readAt?: Date | string | null;
   attachments?: AttachmentLike[];
 };
 
@@ -39,6 +42,7 @@ export type AttachmentLike = {
 export type ThreadLike = {
   id: string;
   subject: string;
+  broadcast?: { contextLabel: string | null } | null;
   category: string;
   priority: string;
   status: string;
@@ -99,8 +103,14 @@ export function serializeMessage(audience: Audience, message: MessageLike) {
   const attachments = visibleAttachmentsFor(audience, message.attachments ?? []).map((item) =>
     serializeAttachment(audience, item),
   );
+  const receipt = message.visibility === INTERNAL ? {} : {
+    deliveredAt: message.deliveredAt ? iso(message.deliveredAt) : null,
+    readAt: message.readAt ? iso(message.readAt) : null,
+    deliveryStatus: messageReceipt(message),
+  };
   if (audience === "investor") {
     return {
+      ...receipt,
       id: message.id,
       body: message.body,
       createdAt: iso(message.createdAt),
@@ -116,6 +126,7 @@ export function serializeMessage(audience: Audience, message: MessageLike) {
     visibility: message.visibility,
     authorType: message.authorType,
     authorUserId: message.authorUserId ?? null,
+    ...receipt,
     authorName: message.author?.fullName ?? (message.authorType === "investor" ? "Investor" : "System"),
     attachments,
   };
@@ -129,6 +140,7 @@ export function serializeThreadSummary(audience: Audience, thread: ThreadLike) {
   const base = {
     id: thread.id,
     subject: thread.subject,
+    broadcastLabel: thread.broadcast ? (thread.broadcast.contextLabel || "Broadcast") : null,
     category: thread.category,
     status: thread.status,
     statusLabel: (audience === "broker" ? THREAD_STATUS_LABELS : INVESTOR_STATUS_LABELS)[thread.status as ThreadStatus] ?? thread.status,

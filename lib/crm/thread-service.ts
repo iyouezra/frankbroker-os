@@ -1,3 +1,4 @@
+import { parseReadMessageIds } from "./broadcasts";
 import { Prisma } from "../../app/generated/prisma/client";
 import { prisma } from "../prisma";
 import type { Actor } from "../server-auth";
@@ -58,6 +59,7 @@ const newMessageId = () => `MSG-${crypto.randomUUID().slice(0, 8).toUpperCase()}
 const newAttachmentId = () => `ATT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
 const threadInclude = {
+  broadcast: { select: { contextLabel: true } },
   client: { select: { id: true, clientCode: true, fullName: true } },
   account: { select: { id: true, accountNumber: true } },
   assignedTo: { select: { id: true, fullName: true } },
@@ -122,6 +124,7 @@ export async function appendMessage(
       authorUserId: input.authorUserId,
       body: input.body,
       createdAt,
+      deliveredAt: input.visibility === SHARED ? createdAt : null,
     },
   });
 
@@ -191,6 +194,9 @@ export async function listThreads(actor: Actor, query: ListThreadsQuery) {
   if (query.category) where.category = query.category;
   if (query.priority) where.priority = query.priority;
   if (query.clientId) where.clientId = query.clientId;
+  // Unanswered broadcasts stay in their compact campaign view. Replies enter
+  // the ordinary inbox, while Client 360 retains every individual copy.
+  else where.AND = [{ OR: [{ broadcastId: null }, { messageCount: { gt: 1 } }] }];
   if (query.assigned === "unassigned") where.assignedToUserId = null;
   else if (query.assigned === "me") where.assignedToUserId = actor.id;
   else if (query.assigned) where.assignedToUserId = query.assigned;
@@ -216,7 +222,7 @@ export async function listThreads(actor: Actor, query: ListThreadsQuery) {
     }),
     prisma.communicationThread.count({ where }),
     prisma.communicationThread.count({ where: { brokerId: actor.brokerId, brokerUnreadCount: { gt: 0 } } }),
-    prisma.communicationThread.count({ where: { brokerId: actor.brokerId, assignedToUserId: actor.id, status: { in: ["open", "pending_broker", "pending_client"] } } }),
+    prisma.communicationThread.count({ where: { brokerId: actor.brokerId, assignedToUserId: actor.id, status: { in: ["open", "pending_broker", "pending_client"] }, OR: [{ broadcastId: null }, { messageCount: { gt: 1 } }] } }),
     prisma.communicationThread.count({ where: { brokerId: actor.brokerId, assignedToUserId: null, status: { in: ["open", "pending_broker", "pending_client"] } } }),
   ]);
 
@@ -540,13 +546,26 @@ export async function changeThreadPriority(actor: Actor, threadId: string, next:
   }, transactionOptions);
 }
 
-export async function markThreadReadByBroker(actor: Actor, threadId: string) {
-  const updated = await prisma.communicationThread.updateMany({
-    where: { id: threadId, brokerId: actor.brokerId },
-    data: { brokerUnreadCount: 0 },
+export async function markThreadReadByBroker(actor: Actor, threadId: string, messageIds: unknown) {
+  return acknowledgeMessages(actor, threadId, messageIds, "broker");
+}
+
+/** Acknowledge only the message IDs displayed by the caller. Locking the thread
+ * keeps unread counters consistent with concurrent replies; repeated reads do
+ * not move timestamps or cause broadcast totals to grow. */
+async function acknowledgeMessages(context: { brokerId: string; clientId?: string }, threadId: string, rawIds: unknown, reader: "broker" | "investor") {
+  const ids = parseReadMessageIds(rawIds);
+  return prisma.$transaction(async (tx) => {
+    await lockThread(tx, threadId);
+    const thread = await tx.communicationThread.findFirst({ where: { id: threadId, brokerId: context.brokerId, ...(reader === "investor" ? { clientId: context.clientId } : {}) } });
+    if (!thread) throw new Response(NOT_FOUND_MESSAGE, { status: 404 });
+    const incoming = { threadId, visibility: SHARED, authorType: reader === "broker" ? "investor" : "broker" };
+    await tx.communicationMessage.updateMany({ where: { ...incoming, id: { in: ids }, readAt: null }, data: { readAt: new Date() } });
+    // Historical null receipt fields mean unknown, not newly unread.
+    const unread = await tx.communicationMessage.count({ where: { ...incoming, deliveredAt: { not: null }, readAt: null } });
+    await tx.communicationThread.update({ where: { id: threadId }, data: reader === "broker" ? { brokerUnreadCount: unread } : { investorUnreadCount: unread } });
+    return { ok: true };
   });
-  if (!updated.count) throw new Response(NOT_FOUND_MESSAGE, { status: 404 });
-  return { ok: true };
 }
 
 export async function getAttachmentForBroker(actor: Actor, attachmentId: string) {
@@ -739,13 +758,8 @@ export async function postInvestorMessage(
   }, transactionOptions);
 }
 
-export async function markThreadReadByInvestor(context: InvestorContextLike, threadId: string) {
-  const updated = await prisma.communicationThread.updateMany({
-    where: { id: threadId, ...investorThreadWhere(context) },
-    data: { investorUnreadCount: 0 },
-  });
-  if (!updated.count) throw new Response(NOT_FOUND_MESSAGE, { status: 404 });
-  return { ok: true };
+export async function markThreadReadByInvestor(context: InvestorContextLike, threadId: string, messageIds: unknown) {
+  return acknowledgeMessages(context, threadId, messageIds, "investor");
 }
 
 export async function getAttachmentForInvestor(context: InvestorContextLike, attachmentId: string) {

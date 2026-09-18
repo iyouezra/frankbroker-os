@@ -34,6 +34,7 @@ model Broker {
   verificationChallenges VerificationChallenge[]
   clientDocuments        ClientDocument[]
   linkedBankAccounts     LinkedBankAccount[]
+  communicationBroadcasts CommunicationBroadcast[]
   communicationThreads   CommunicationThread[]
   crmTasks               CrmTask[]
   serviceCases           ServiceCase[]
@@ -437,6 +438,7 @@ model Instrument {
   restrictedSecurities    RestrictedSecurity[]
   sensitiveInfoAccess     SensitiveInformationAccess[]
   journalLines            JournalLine[]
+  communicationBroadcasts CommunicationBroadcast[]
   corporateActions        CorporateAction[]
   taxLots                 TaxLot[]
 
@@ -1316,6 +1318,7 @@ model CorporateAction {
   updatedAt                DateTime                     @updatedAt @map("updated_at")
   broker                   Broker                       @relation(fields: [brokerId], references: [id], onDelete: Restrict)
   instrument               Instrument                   @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  communicationBroadcasts CommunicationBroadcast[]
   entitlements             CorporateActionEntitlement[]
 
   @@unique([brokerId, sourceReference])
@@ -2254,6 +2257,8 @@ model Notification {
 /// enforced per message (see lib/crm/visibility.ts).
 model CommunicationThread {
   id                  String                    @id
+  broadcastId         String?                   @map("broadcast_id")
+  broadcast           CommunicationBroadcast?   @relation(fields: [broadcastId], references: [id], onDelete: Restrict)
   brokerId            String                    @map("broker_id")
   clientId            String                    @map("client_id")
   accountId           String?                   @map("account_id")
@@ -2285,6 +2290,7 @@ model CommunicationThread {
   serviceCase         ServiceCase?
   serviceRequest      ClientServiceRequest?
 
+  @@unique([broadcastId, clientId])
   @@index([brokerId, status, lastMessageAt])
   @@index([clientId, lastMessageAt])
   @@index([brokerId, assignedToUserId, status])
@@ -2297,6 +2303,10 @@ model CommunicationThread {
 /// investor-facing endpoint.
 model CommunicationMessage {
   id           String                    @id
+  broadcastId  String?                   @map("broadcast_id")
+  broadcast    CommunicationBroadcast?   @relation(fields: [broadcastId], references: [id], onDelete: Restrict)
+  deliveredAt  DateTime?                 @map("delivered_at")
+  readAt       DateTime?                 @map("read_at")
   threadId     String                    @map("thread_id")
   visibility   String                    @default("shared")
   authorType   String                    @map("author_type")
@@ -2307,6 +2317,8 @@ model CommunicationMessage {
   author       User?                     @relation("MessageAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
   attachments  CommunicationAttachment[]
 
+  @@unique([broadcastId, threadId])
+  @@index([broadcastId, readAt])
   @@index([threadId, visibility, createdAt])
   @@map("communication_messages")
 }
@@ -2661,4 +2673,32 @@ model JournalLine {
   @@index([ledgerAccountId, valueDate])
   @@index([brokerId, valueDate])
   @@map("journal_lines")
+}
+
+/// An immutable, tenant-scoped broadcast. Each recipient gets a private CRM thread.
+/// Only its initial message points back here, so replies cannot inflate totals.
+model CommunicationBroadcast {
+  id                String @id
+  brokerId          String @map("broker_id")
+  requestKey        String @map("request_key")
+  requestHash       String @map("request_hash")
+  createdBy         String @map("created_by")
+  subject           String
+  body              String
+  segment           String
+  channel           String @default("in_app")
+  instrumentId      String? @map("instrument_id")
+  corporateActionId String? @map("corporate_action_id")
+  contextLabel      String? @map("context_label")
+  recipientCount    Int @map("recipient_count")
+  sentAt            DateTime @default(now()) @map("sent_at")
+  broker            Broker @relation(fields: [brokerId], references: [id], onDelete: Restrict)
+  instrument        Instrument? @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  corporateAction   CorporateAction? @relation(fields: [corporateActionId], references: [id], onDelete: Restrict)
+  threads           CommunicationThread[]
+  messages          CommunicationMessage[]
+
+  @@unique([brokerId, requestKey])
+  @@index([brokerId, sentAt])
+  @@map("communication_broadcasts")
 }

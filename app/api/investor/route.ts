@@ -874,7 +874,7 @@ export async function POST(request: Request) {
     }
 
     if (payload.action === "support_thread_read") {
-      return Response.json(await markThreadReadByInvestor({ brokerId, clientId }, String(payload.threadId ?? "")));
+      return Response.json(await markThreadReadByInvestor({ brokerId, clientId }, String(payload.threadId ?? ""), payload.messageIds));
     }
 
     if (payload.action === "order") {

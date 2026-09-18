@@ -84,6 +84,7 @@ export const CRM_PERMISSIONS = {
   caseView: "crm.case.view",
   caseManage: "crm.case.manage",
   relationshipAssign: "crm.relationship.assign",
+  broadcastSend: "crm.broadcast.send",
 } as const;
 
 export const MARKET_PERMISSIONS = {
@@ -154,6 +155,7 @@ export const workflowPermissions: Record<Role, string[]> = {
     "report",
     CRM_PERMISSIONS.view,
     CRM_PERMISSIONS.create,
+    CRM_PERMISSIONS.broadcastSend,
     CRM_PERMISSIONS.reply,
     CRM_PERMISSIONS.note,
     CRM_PERMISSIONS.status,
